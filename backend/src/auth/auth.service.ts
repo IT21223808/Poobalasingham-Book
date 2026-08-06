@@ -15,7 +15,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   async register(registerDto: RegisterDto) {
     const existingUser = await this.usersService.findByEmail(
@@ -29,7 +29,8 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
 
     const user = await this.usersService.create({
-      name: registerDto.name,
+      firstName: registerDto.firstName,
+      lastName: registerDto.lastName,
       email: registerDto.email,
       password: hashedPassword,
       role: registerDto.role,
@@ -66,7 +67,8 @@ export class AuthService {
       access_token: await this.jwtService.signAsync(payload),
       user: {
         id: user.id,
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         email: user.email,
         role: user.role,
       },

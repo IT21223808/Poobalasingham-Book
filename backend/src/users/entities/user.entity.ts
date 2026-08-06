@@ -15,7 +15,10 @@ export class User {
   id!: number;
 
   @Column({ length: 100 })
-  name!: string;
+  firstName!: string;
+
+  @Column({ length: 100 })
+  lastName!: string;
 
   @Column({ unique: true })
   email!: string;
@@ -27,7 +30,7 @@ export class User {
   @Column({
     type: 'enum',
     enum: UserRole,
-    default: UserRole.STAFF,
+    default: UserRole.USER,
   })
   role!: UserRole;
 
