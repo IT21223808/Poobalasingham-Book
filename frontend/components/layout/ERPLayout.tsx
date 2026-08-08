@@ -1,25 +1,46 @@
-'use client';
+"use client";
 
-import { ReactNode } from 'react';
-import Sidebar from './Sidebar';
-import Header from './Header';
+import { useState } from "react";
+
+import Sidebar from "./Sidebar";
+import Header from "./Header";
 
 interface ERPLayoutProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
-export default function ERPLayout({ children }: ERPLayoutProps) {
-  return (
-    <div className="flex min-h-screen bg-gray-100">
-      <Sidebar />
+export default function ERPLayout({
+  children,
+}: ERPLayoutProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(false);
 
-      <div className="flex flex-1 flex-col">
+  const toggleSidebar = () => {
+    setSidebarCollapsed((previous) => !previous);
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+
+      {/* Sidebar - Fixed */}
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onLogoClick={toggleSidebar}
+      />
+
+      {/* Right Side */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+
+        {/* Header - Fixed */}
         <Header />
 
-        <main className="flex-1 p-6">
+        {/* Dashboard Content - Only this scrolls */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 lg:p-8">
           {children}
         </main>
+
       </div>
+
     </div>
   );
 }

@@ -1,26 +1,38 @@
-'use client';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { isAuthenticated } from '@/lib/auth';
-import ERPLayout from '@/components/layout/ERPLayout';
+import DashboardCards from "@/components/dashboard/DashboardCards";
+import SalesChart from "@/components/dashboard/SalesChart";
+import QuickActions from "@/components/dashboard/QuickActions";
+import RecentSales from "@/components/dashboard/RecentSales";
+import LowStock from "@/components/dashboard/LowStock";
+import Breadcrumb from "@/components/ui/Breadcrumb";
 
 export default function DashboardPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isAuthenticated()) {
-      router.replace('/login');
-    }
-  }, [router]);
-
   return (
-    <ERPLayout>
-      <h1 className="text-3xl font-bold">Dashboard</h1>
+    <div className="space-y-6">
+<div className="hidden md:block">
+    <Breadcrumb />
+  </div>
+      <DashboardCards />
 
-      <p className="mt-4">
-        Welcome to Poobalasingham Book Depot ERP 🎉
-      </p>
-    </ERPLayout>
+      <div className="grid gap-6 xl:grid-cols-3">
+
+        <div className="space-y-6 xl:col-span-2">
+
+          <SalesChart />
+
+          <RecentSales />
+
+        </div>
+
+        <div className="space-y-6">
+
+          <QuickActions />
+
+          <LowStock />
+
+        </div>
+
+      </div>
+
+    </div>
   );
 }
