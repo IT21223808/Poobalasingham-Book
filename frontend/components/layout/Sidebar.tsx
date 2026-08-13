@@ -9,6 +9,7 @@ import {
   BookOpen,
   FolderOpen,
   Boxes,
+  Package,
   ShoppingCart,
   CreditCard,
   Users,
@@ -34,6 +35,11 @@ const menuItems = [
     title: "Books",
     href: "/dashboard/books",
     icon: BookOpen,
+  },
+  {
+    title: "Products",
+    href: "/dashboard/products",
+    icon: Package,
   },
   {
     title: "Categories",
