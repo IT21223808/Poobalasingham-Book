@@ -10,6 +10,7 @@ import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { ProductsModule } from './products/products.module';
 import { CategoriesModule } from './categories/categories.module';
 import { SubcategoriesModule } from './subcategories/subcategories.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
   imports: [
@@ -39,6 +40,8 @@ import { SubcategoriesModule } from './subcategories/subcategories.module';
     CategoriesModule,
 
     SubcategoriesModule,
+
+    InventoryModule,
   ],
 
   controllers: [AppController],
