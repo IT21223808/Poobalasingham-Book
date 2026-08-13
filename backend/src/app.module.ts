@@ -7,6 +7,9 @@ import databaseConfig from './config/database.config';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
+import { ProductsModule } from './products/products.module';
+import { CategoriesModule } from './categories/categories.module';
+import { SubcategoriesModule } from './subcategories/subcategories.module';
 
 @Module({
   imports: [
@@ -30,6 +33,12 @@ import { JwtStrategy } from './auth/strategies/jwt.strategy';
         synchronize: true,
       }),
     }),
+
+    ProductsModule,
+
+    CategoriesModule,
+
+    SubcategoriesModule,
   ],
 
   controllers: [AppController],
