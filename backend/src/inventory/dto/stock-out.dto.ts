@@ -1,4 +1,4 @@
-import { IsInt, IsUUID, Min } from 'class-validator';
+import { IsInt, IsUUID, Min,IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class StockOutDto {
@@ -9,4 +9,8 @@ export class StockOutDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 }
