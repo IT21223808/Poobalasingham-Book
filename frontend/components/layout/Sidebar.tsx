@@ -99,9 +99,8 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`flex h-screen shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-300 ${
-        collapsed ? "w-20" : "w-72"
-      }`}
+      className={`flex h-screen shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-300 ${collapsed ? "w-20" : "w-72"
+        }`}
     >
 
       {/* ================= LOGO ================= */}
@@ -114,11 +113,10 @@ export default function Sidebar({
             ? "Expand sidebar"
             : "Collapse sidebar"
         }
-        className={`border-b border-gray-200 px-4 py-5 transition hover:bg-slate-50 ${
-          collapsed
+        className={`border-b border-gray-200 px-4 py-5 transition hover:bg-slate-50 ${collapsed
             ? "flex w-full justify-center"
             : "flex w-full justify-center"
-        }`}
+          }`}
       >
         {collapsed ? (
           <Image
@@ -157,10 +155,10 @@ export default function Sidebar({
             const Icon = item.icon;
 
             const active =
-              pathname === item.href ||
-              pathname.startsWith(
-                item.href + "/"
-              );
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname === item.href ||
+                pathname.startsWith(item.href + "/");
 
             return (
               <Link
@@ -171,15 +169,13 @@ export default function Sidebar({
                     ? item.title
                     : undefined
                 }
-                className={`group relative flex items-center rounded-lg py-3 transition-all duration-200 ${
-                  collapsed
+                className={`group relative flex items-center rounded-lg py-3 transition-all duration-200 ${collapsed
                     ? "justify-center px-2"
                     : "gap-3 px-4"
-                } ${
-                  active
+                  } ${active
                     ? "bg-blue-50 font-semibold text-blue-700"
                     : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
-                }`}
+                  }`}
               >
 
                 {active && (
@@ -188,11 +184,10 @@ export default function Sidebar({
 
                 <Icon
                   size={20}
-                  className={`shrink-0 ${
-                    active
+                  className={`shrink-0 ${active
                       ? "text-blue-700"
                       : "text-gray-500 group-hover:text-gray-700"
-                  }`}
+                    }`}
                 />
 
                 {!collapsed && (
@@ -224,15 +219,13 @@ export default function Sidebar({
                 ? "Settings"
                 : undefined
             }
-            className={`group flex items-center rounded-lg py-3 transition ${
-              collapsed
+            className={`group flex items-center rounded-lg py-3 transition ${collapsed
                 ? "justify-center px-2"
                 : "gap-3 px-4"
-            } ${
-              pathname === "/dashboard/settings"
+              } ${pathname === "/dashboard/settings"
                 ? "bg-blue-50 font-semibold text-blue-600"
                 : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
-            }`}
+              }`}
           >
             <Settings
               size={20}
@@ -257,11 +250,10 @@ export default function Sidebar({
                 ? "Logout"
                 : undefined
             }
-            className={`group flex w-full items-center rounded-lg py-3 text-gray-700 transition hover:bg-red-50 hover:text-red-600 ${
-              collapsed
+            className={`group flex w-full items-center rounded-lg py-3 text-gray-700 transition hover:bg-red-50 hover:text-red-600 ${collapsed
                 ? "justify-center px-2"
                 : "gap-3 px-4"
-            }`}
+              }`}
           >
             <LogOut
               size={20}
@@ -282,11 +274,10 @@ export default function Sidebar({
       <div className="border-t border-gray-200 p-4">
 
         <div
-          className={`flex items-center rounded-xl bg-gray-50 p-3 ${
-            collapsed
+          className={`flex items-center rounded-xl bg-gray-50 p-3 ${collapsed
               ? "justify-center"
               : "gap-3"
-          }`}
+            }`}
         >
 
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
