@@ -17,6 +17,7 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  MapPin,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -45,6 +46,11 @@ const menuItems = [
     href: "/dashboard/inventory",
     icon: Boxes,
   },
+  {
+  title: "Locations",
+  href: "/dashboard/inventory/locations",
+  icon: MapPin,
+},
   {
     title: "Purchasing",
     href: "/dashboard/purchasing",
@@ -148,12 +154,14 @@ export default function Sidebar({
           {menuItems.map((item) => {
             const Icon = item.icon;
 
-            const active =
-              item.href === "/dashboard"
-                ? pathname === "/dashboard"
-                : pathname === item.href ||
-                pathname.startsWith(item.href + "/");
-
+           const active =
+  item.href === "/dashboard"
+    ? pathname === "/dashboard"
+    : item.href === "/dashboard/inventory"
+      ? pathname === "/dashboard/inventory"
+      : pathname === item.href ||
+        pathname.startsWith(item.href + "/");
+        
             return (
               <Link
                 key={item.title}
