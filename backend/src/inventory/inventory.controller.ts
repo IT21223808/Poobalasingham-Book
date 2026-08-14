@@ -65,6 +65,13 @@ export class InventoryController {
     );
   }
 
+  // INVENTORY DASHBOARD
+@Get('dashboard')
+@UseGuards(AuthGuard('jwt'))
+async getDashboard() {
+  return this.inventoryService.getDashboard();
+}
+
   // MOVEMENT HISTORY
   @Get('movements')
   @UseGuards(AuthGuard('jwt'))

@@ -372,7 +372,80 @@ export class InventoryService {
       data: movements,
     };
   }
+// ========================================
+// INVENTORY DASHBOARD
+// ========================================
 
+// ========================================
+// INVENTORY DASHBOARD
+// ========================================
+
+async getDashboard() {
+  const products = await this.productRepository.find();
+
+  // Total Products
+  const totalProducts = products.length;
+
+  // Total Stock
+  const totalStock = products.reduce(
+    (total, product) =>
+      total + Number(product.stockQuantity ?? 0),
+    0,
+  );
+
+  // Low Stock Products
+  // stock <= reorder level
+  // reorder level must be greater than 0
+  const lowStockProducts = products
+    .filter(
+      (product) =>
+        Number(product.reorderLevel ?? 0) > 0 &&
+        Number(product.stockQuantity ?? 0) <=
+          Number(product.reorderLevel ?? 0),
+    )
+    .map((product) => ({
+      id: product.id,
+      productName: product.productName,
+      stockQuantity: Number(product.stockQuantity ?? 0),
+      reorderLevel: Number(product.reorderLevel ?? 0),
+    }));
+
+  // Active Locations
+  const locations = await this.locationRepository.count({
+    where: {
+      isActive: true,
+    },
+  });
+
+  // Recent Movements
+  const recentMovements =
+    await this.stockMovementRepository.find({
+      relations: {
+        product: true,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+      take: 5,
+    });
+
+  return {
+    success: true,
+
+    data: {
+      summary: {
+        totalProducts,
+        totalStock,
+        lowStock: lowStockProducts.length,
+        locations,
+      },
+
+      recentMovements,
+
+      lowStockProducts,
+    },
+  };
+}
 
   async createLocation(
   dto: CreateLocationDto,
