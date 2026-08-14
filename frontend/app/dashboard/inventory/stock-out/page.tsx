@@ -1,517 +1,616 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import {ArrowDownToLine,Package,CheckCircle2,AlertCircle,} from "lucide-react";
 import {
-  AlertCircle,
-  ArrowUpFromLine,
-  CheckCircle,
-  Package,
-  Search,
-} from "lucide-react";
+  getLocations,
+  getLocationStock,
+  stockIn,
+  Location,
+  InventoryStock,
+} from "@/services/inventory.service";
+import Link from "next/link";
+import { getProducts, Product } from "@/services/product.service";
 
-import {
-  getProducts,
-  Product,
-} from "@/services/product.service";
-
-import { stockOut } from "@/services/inventory.service";
-
-export default function StockOutPage() {
+export default function StockInPage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProductId, setSelectedProductId] =
-    useState("");
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [locationStock, setLocationStock] = useState<
+    InventoryStock[]
+  >([]);
 
-  const [search, setSearch] = useState("");
+  const [productId, setProductId] = useState("");
+  const [locationId, setLocationId] = useState("");
   const [quantity, setQuantity] = useState("");
 
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
 
   const [successMessage, setSuccessMessage] =
     useState("");
-
   const [errorMessage, setErrorMessage] =
     useState("");
 
   // ========================================
-  // Load Products
+  // LOAD PRODUCTS + LOCATIONS
   // ========================================
 
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-
-      setErrorMessage("");
-
-      const data = await getProducts();
-
-      setProducts(data);
-    } catch (error) {
-      console.error(
-        "Failed to load products:",
-        error,
-      );
-
-      setErrorMessage(
-        "Failed to load products. Please try again.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadProducts();
+    const loadData = async () => {
+      try {
+        setLoadingData(true);
+
+        const [productData, locationData] =
+          await Promise.all([
+            getProducts(),
+            getLocations(),
+          ]);
+
+        setProducts(productData);
+        setLocations(locationData);
+      } catch (error) {
+        console.error(error);
+        setErrorMessage(
+          "Failed to load products or locations.",
+        );
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    loadData();
   }, []);
 
   // ========================================
-  // Selected Product
+  // LOAD LOCATION STOCK
   // ========================================
 
-  const selectedProduct = useMemo(() => {
-    return products.find(
-      (product) =>
-        product.id === selectedProductId,
-    );
-  }, [products, selectedProductId]);
-
-  // ========================================
-  // Product Search
-  // ========================================
-
-  const filteredProducts = useMemo(() => {
-    const searchValue = search
-      .toLowerCase()
-      .trim();
-
-    if (!searchValue) {
-      return products;
+  useEffect(() => {
+    if (!locationId) {
+      setLocationStock([]);
+      return;
     }
 
-    return products.filter((product) => {
-      return (
-        product.productName
-          ?.toLowerCase()
-          .includes(searchValue) ||
-        product.productCode
-          ?.toLowerCase()
-          .includes(searchValue) ||
-        product.barcode
-          ?.toLowerCase()
-          .includes(searchValue) ||
-        product.isbn
-          ?.toLowerCase()
-          .includes(searchValue)
-      );
-    });
-  }, [products, search]);
+    const loadStock = async () => {
+      try {
+        const data =
+          await getLocationStock(locationId);
+
+        setLocationStock(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    loadStock();
+  }, [locationId]);
 
   // ========================================
-  // Submit Stock Out
+  // SELECTED PRODUCT
+  // ========================================
+
+  const selectedProduct = products.find(
+    (product) => product.id === productId,
+  );
+
+  const selectedLocationStock =
+    locationStock.find(
+      (item) =>
+        item.product.id === productId,
+    );
+
+  const currentLocationStock =
+    Number(
+      selectedLocationStock?.quantity ?? 0,
+    );
+
+  const currentTotalStock =
+    Number(
+      selectedProduct?.stockQuantity ?? 0,
+    );
+
+  const addQuantity =
+    Number(quantity || 0);
+
+  const newLocationStock =
+    currentLocationStock + addQuantity;
+
+  const newTotalStock =
+    currentTotalStock + addQuantity;
+
+  // ========================================
+  // SUBMIT
   // ========================================
 
   const handleSubmit = async (
-    event: React.FormEvent<HTMLFormElement>,
+    e: React.FormEvent,
   ) => {
-    event.preventDefault();
+    e.preventDefault();
 
     setSuccessMessage("");
     setErrorMessage("");
 
-    // Product validation
-    if (!selectedProductId) {
+    if (!productId) {
       setErrorMessage(
         "Please select a product.",
       );
       return;
     }
 
-    // Quantity validation
-    const parsedQuantity = Number(quantity);
-
-    if (
-      !quantity ||
-      !Number.isInteger(parsedQuantity) ||
-      parsedQuantity <= 0
-    ) {
+    if (!locationId) {
       setErrorMessage(
-        "Quantity must be a positive whole number.",
+        "Please select a location.",
       );
       return;
     }
 
-    // Available stock validation
-    const currentStock = Number(
-      selectedProduct?.stockQuantity ?? 0,
-    );
-
-    if (parsedQuantity > currentStock) {
+    if (addQuantity <= 0) {
       setErrorMessage(
-        `Insufficient stock. Available stock: ${currentStock}.`,
+        "Quantity must be greater than 0.",
       );
       return;
     }
 
     try {
-      setSubmitting(true);
+      setLoading(true);
 
-      const response = await stockOut({
-        productId: selectedProductId,
-        quantity: parsedQuantity,
+      await stockIn({
+        productId,
+        locationId,
+        quantity: addQuantity,
       });
 
       setSuccessMessage(
-        `${response.data.productName}: ${response.data.quantityRemoved} units removed successfully. Stock ${response.data.previousStock} → ${response.data.newStock}.`,
+        "Stock added successfully.",
       );
 
-      // Reset form
-      setSelectedProductId("");
-      setSearch("");
       setQuantity("");
 
-      // Refresh product data
-      await loadProducts();
+      // Refresh location stock
+      const updatedStock =
+        await getLocationStock(
+          locationId,
+        );
+
+      setLocationStock(updatedStock);
+
+      // Refresh products
+      const updatedProducts =
+        await getProducts();
+
+      setProducts(updatedProducts);
     } catch (error: any) {
-      console.error(
-        "Stock Out failed:",
-        error,
+      console.error(error);
+
+      setErrorMessage(
+        error?.response?.data?.message ||
+          "Failed to add stock.",
       );
-
-      const message =
-        error?.response?.data?.message;
-
-      if (Array.isArray(message)) {
-        setErrorMessage(
-          message.join(", "),
-        );
-      } else if (typeof message === "string") {
-        setErrorMessage(message);
-      } else {
-        setErrorMessage(
-          "Failed to remove stock. Please try again.",
-        );
-      }
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
-  // ========================================
-  // JSX
-  // ========================================
-
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-slate-50 p-6">
 
-      {/* ========================================
-          Header
-      ======================================== */}
+      {/* ================================= */}
+      {/* HEADER */}
+      {/* ================================= */}
 
-      <div>
-        <div className="flex items-center gap-3">
+      <div className="mb-6">
+  <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
 
-          <div className="rounded-xl bg-red-50 p-3">
-            <ArrowUpFromLine
-              size={24}
-              className="text-red-600"
-            />
-          </div>
+    <Link href="/dashboard/inventory">
+      Inventory
+    </Link>
 
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Stock Out
-            </h1>
+    <span>/</span>
 
-            <p className="mt-1 text-sm text-gray-500">
-              Remove stock from your inventory
-            </p>
-          </div>
+    <span className="font-medium text-slate-900">
+      Stock Out
+    </span>
+  </div>
 
-        </div>
-      </div>
+  <h1 className="text-3xl font-bold text-slate-900">
+    Stock Out
+  </h1>
 
-      {/* ========================================
-          Success
-      ======================================== */}
+  <p className="mt-1 text-sm text-slate-500">
+    Remove products from inventory.
+  </p>
+</div>
 
-      {successMessage && (
-        <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-4">
+      {/* ================================= */}
+      {/* MAIN GRID */}
+      {/* ================================= */}
 
-          <CheckCircle
-            size={20}
-            className="mt-0.5 shrink-0 text-green-600"
-          />
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
-          <div>
-            <p className="font-medium text-green-800">
-              Stock Out Successful
-            </p>
+        {/* ================================= */}
+        {/* FORM */}
+        {/* ================================= */}
 
-            <p className="mt-1 text-sm text-green-700">
-              {successMessage}
-            </p>
-          </div>
+        <div className="xl:col-span-2">
 
-        </div>
-      )}
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-xl border border-slate-200 bg-white"
+          >
 
-      {/* ========================================
-          Error
-      ======================================== */}
+            {/* FORM HEADER */}
 
-      {errorMessage && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+            <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
 
-          <AlertCircle
-            size={20}
-            className="mt-0.5 shrink-0 text-red-600"
-          />
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                <ArrowDownToLine
+                  size={22}
+                />
+              </div>
 
-          <div>
-            <p className="font-medium text-red-800">
-              Stock Out Failed
-            </p>
+              <div>
 
-            <p className="mt-1 text-sm text-red-700">
-              {errorMessage}
-            </p>
-          </div>
+                <h2 className="font-semibold text-slate-900">
+                  Add Stock
+                </h2>
 
-        </div>
-      )}
-
-      {/* ========================================
-          Form
-      ======================================== */}
-
-      <form
-        onSubmit={handleSubmit}
-        className="max-w-3xl rounded-xl border border-gray-200 bg-white p-6"
-      >
-
-        <div className="space-y-6">
-
-          {/* Search */}
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Search Product
-            </label>
-
-            <div className="relative">
-
-              <Search
-                size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setSelectedProductId("");
-                  setSuccessMessage("");
-                  setErrorMessage("");
-                }}
-                placeholder="Search by name, code, barcode or ISBN..."
-                className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-gray-500 focus:ring-1 focus:ring-gray-300"
-              />
-
-            </div>
-          </div>
-
-          {/* Select Product */}
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Select Product
-            </label>
-
-            <select
-              value={selectedProductId}
-              onChange={(event) => {
-                setSelectedProductId(
-                  event.target.value,
-                );
-
-                setSuccessMessage("");
-                setErrorMessage("");
-              }}
-              disabled={
-                loading || submitting
-              }
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-gray-500 focus:ring-1 focus:ring-gray-300 disabled:bg-gray-100"
-            >
-              <option value="">
-                {loading
-                  ? "Loading products..."
-                  : "Select a product"}
-              </option>
-
-              {filteredProducts.map(
-                (product) => (
-                  <option
-                    key={product.id}
-                    value={product.id}
-                  >
-                    {product.productName} —{" "}
-                    {product.productCode}
-                  </option>
-                ),
-              )}
-            </select>
-
-            {!loading &&
-              filteredProducts.length === 0 && (
-                <p className="mt-2 text-sm text-gray-500">
-                  No products found.
+                <p className="text-xs text-slate-500">
+                  Select a product and
+                  inventory location
                 </p>
-              )}
-          </div>
-
-          {/* Product Info */}
-
-          {selectedProduct && (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-
-              <div className="flex items-center gap-4">
-
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-white">
-
-                  <Package
-                    size={22}
-                    className="text-gray-500"
-                  />
-
-                </div>
-
-                <div className="flex-1">
-
-                  <p className="font-semibold text-gray-900">
-                    {selectedProduct.productName}
-                  </p>
-
-                  <p className="mt-1 text-xs text-gray-500">
-                    Code:{" "}
-                    {selectedProduct.productCode}
-                  </p>
-
-                </div>
-
-                <div className="text-right">
-
-                  <p className="text-xs text-gray-500">
-                    Available Stock
-                  </p>
-
-                  <p className="text-2xl font-bold text-gray-900">
-                    {Number(
-                      selectedProduct.stockQuantity ?? 0,
-                    )}
-                  </p>
-
-                </div>
 
               </div>
 
             </div>
-          )}
 
-          {/* Quantity */}
+            {/* FORM BODY */}
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Quantity
-            </label>
+            <div className="space-y-5 p-6">
 
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={quantity}
-              onChange={(event) => {
-                setQuantity(
-                  event.target.value,
-                );
+              {successMessage && (
+                <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  <CheckCircle2
+                    size={18}
+                  />
+                  {successMessage}
+                </div>
+              )}
 
-                setSuccessMessage("");
-                setErrorMessage("");
-              }}
-              placeholder="Enter quantity"
-              disabled={submitting}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-gray-500 focus:ring-1 focus:ring-gray-300 disabled:bg-gray-100"
-            />
+              {errorMessage && (
+                <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <AlertCircle
+                    size={18}
+                  />
+                  {errorMessage}
+                </div>
+              )}
 
-            <p className="mt-2 text-xs text-gray-500">
-              Quantity cannot exceed available stock.
-            </p>
-          </div>
+              {/* PRODUCT */}
 
-          {/* Stock Preview */}
+              <div>
 
-          {selectedProduct &&
-            Number(quantity) > 0 && (
-              <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Product
+                </label>
 
-                <div className="flex items-center justify-between">
+                <select
+                  value={productId}
+                  onChange={(e) =>
+                    setProductId(
+                      e.target.value,
+                    )
+                  }
+                  disabled={loadingData}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
 
-                  <div>
+                  <option value="">
+                    Select product
+                  </option>
 
-                    <p className="text-sm text-orange-700">
-                      Stock after Stock Out
-                    </p>
+                  {products.map(
+                    (product) => (
+                      <option
+                        key={product.id}
+                        value={product.id}
+                      >
+                        {
+                          product.productName
+                        }{" "}
+                        —{" "}
+                        {
+                          product.productCode
+                        }
+                      </option>
+                    ),
+                  )}
 
-                    <p className="mt-1 text-2xl font-bold text-orange-900">
-                      {Math.max(
-                        0,
-                        Number(
-                          selectedProduct.stockQuantity ?? 0,
-                        ) -
-                          Number(quantity),
-                      )}
-                    </p>
+                </select>
+
+              </div>
+
+              {/* LOCATION */}
+
+              <div>
+
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Location
+                </label>
+
+                <select
+                  value={locationId}
+                  onChange={(e) =>
+                    setLocationId(
+                      e.target.value,
+                    )
+                  }
+                  disabled={loadingData}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+
+                  <option value="">
+                    Select location
+                  </option>
+
+                  {locations
+                    .filter(
+                      (location) =>
+                        location.isActive,
+                    )
+                    .map(
+                      (location) => (
+                        <option
+                          key={location.id}
+                          value={
+                            location.id
+                          }
+                        >
+                          {
+                            location.name
+                          }
+                        </option>
+                      ),
+                    )}
+
+                </select>
+
+              </div>
+
+              {/* QUANTITY */}
+
+              <div>
+
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Quantity
+                </label>
+
+                <input
+                  type="number"
+                  min="1"
+                  value={quantity}
+                  onChange={(e) =>
+                    setQuantity(
+                      e.target.value,
+                    )
+                  }
+                  placeholder="Enter quantity"
+                  className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+
+              </div>
+
+              {/* PRODUCT INFO */}
+
+              {selectedProduct && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+
+                  <div className="mb-3 flex items-center gap-3">
+
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm">
+                      <Package
+                        size={19}
+                      />
+                    </div>
+
+                    <div>
+                      <p className="font-semibold text-slate-800">
+                        {
+                          selectedProduct.productName
+                        }
+                      </p>
+
+                      <p className="text-xs text-slate-500">
+                        {
+                          selectedProduct.productCode
+                        }
+                      </p>
+                    </div>
 
                   </div>
 
-                  <ArrowUpFromLine
-                    size={28}
-                    className="text-orange-600"
-                  />
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+
+                    <InfoItem
+                      label="Total Stock"
+                      value={
+                        currentTotalStock
+                      }
+                    />
+
+                    <InfoItem
+                      label="Location Stock"
+                      value={
+                        currentLocationStock
+                      }
+                    />
+
+                    <InfoItem
+                      label="Reorder Level"
+                      value={
+                        selectedProduct.reorderLevel ??
+                        10
+                      }
+                    />
+
+                  </div>
 
                 </div>
+              )}
 
-              </div>
-            )}
+              {/* SUBMIT */}
 
-          {/* Submit */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ArrowDownToLine
+                  size={18}
+                />
 
-          <div className="flex justify-end border-t border-gray-200 pt-5">
+                {loading
+                  ? "Adding Stock..."
+                  : "Add Stock"}
+              </button>
 
-            <button
-              type="submit"
-              disabled={
-                submitting ||
-                loading ||
-                !selectedProductId ||
-                !quantity
+            </div>
+          </form>
+
+        </div>
+
+        {/* ================================= */}
+        {/* PREVIEW */}
+        {/* ================================= */}
+
+        <div className="rounded-xl border border-slate-200 bg-white p-6">
+
+          <div className="mb-5">
+
+            <h2 className="font-semibold text-slate-900">
+              Stock Preview
+            </h2>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Review the stock change
+              before submitting
+            </p>
+
+          </div>
+
+          <div className="space-y-4">
+
+            <PreviewRow
+              label="Location"
+              value={
+                locations.find(
+                  (location) =>
+                    location.id ===
+                    locationId,
+                )?.name || "—"
               }
-              className="flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            />
 
-              <ArrowUpFromLine size={18} />
+            <PreviewRow
+              label="Current Stock"
+              value={
+                locationId
+                  ? currentLocationStock
+                  : "—"
+              }
+            />
 
-              {submitting
-                ? "Removing Stock..."
-                : "Remove Stock"}
+            <PreviewRow
+              label="Quantity Added"
+              value={
+                addQuantity > 0
+                  ? `+${addQuantity}`
+                  : "—"
+              }
+            />
 
-            </button>
+            <div className="border-t border-slate-200 pt-4">
+
+              <p className="text-xs text-slate-500">
+                New Location Stock
+              </p>
+
+              <p className="mt-1 text-3xl font-bold text-emerald-600">
+                {locationId
+                  ? newLocationStock
+                  : "—"}
+              </p>
+
+            </div>
+
+            <div className="rounded-lg bg-blue-50 p-4">
+
+              <p className="text-xs font-medium text-blue-700">
+                Product Total After
+                Stock In
+              </p>
+
+              <p className="mt-1 text-lg font-bold text-blue-800">
+                {selectedProduct
+                  ? newTotalStock
+                  : "—"}
+              </p>
+
+            </div>
 
           </div>
 
         </div>
 
-      </form>
+      </div>
+
+    </div>
+  );
+}
+
+// ========================================
+// SMALL COMPONENTS
+// ========================================
+
+function InfoItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-lg bg-white p-3">
+
+      <p className="text-xs text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-1 font-semibold text-slate-800">
+        {value}
+      </p>
+
+    </div>
+  );
+}
+
+function PreviewRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+
+      <span className="text-sm text-slate-500">
+        {label}
+      </span>
+
+      <span className="text-sm font-semibold text-slate-800">
+        {value}
+      </span>
+
     </div>
   );
 }
