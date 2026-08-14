@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 
 import {
   LayoutDashboard,
-  BookOpen,
   FolderOpen,
   Boxes,
   Package,
@@ -30,11 +29,6 @@ const menuItems = [
     title: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
-  },
-  {
-    title: "Books",
-    href: "/dashboard/books",
-    icon: BookOpen,
   },
   {
     title: "Products",
