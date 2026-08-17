@@ -18,12 +18,15 @@ import { StockOutDto } from './dto/stock-out.dto';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { StockTransferDto } from './dto/stock-transfer.dto';
+import { StockAdjustmentDto } from './dto/stock-adjustment.dto';
+import { PhysicalStockCountDto } from './dto/physical-stock-count.dto';
+import { DamagedLostDto } from './dto/damaged-lost.dto';
 
 @Controller('inventory')
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
-  ) {}
+  ) { }
 
   // STOCK IN
   @Post('stock-in')
@@ -66,12 +69,60 @@ export class InventoryController {
   }
 
   // INVENTORY DASHBOARD
-@Get('dashboard')
+  @Get('dashboard')
+  @UseGuards(AuthGuard('jwt'))
+  async getDashboard() {
+    return this.inventoryService.getDashboard();
+  }
+
+  // STOCK ADJUSTMENT
+@Post('stock-adjustment')
 @UseGuards(AuthGuard('jwt'))
-async getDashboard() {
-  return this.inventoryService.getDashboard();
+async stockAdjustment(
+  @Body() dto: StockAdjustmentDto,
+  @Req() req: Request,
+) {
+  const user = req.user as {
+    sub?: string | number;
+    id?: string | number;
+  };
+
+  const userId =
+    user?.sub ?? user?.id;
+
+  return this.inventoryService.stockAdjustment(
+    dto,
+    userId
+      ? String(userId)
+      : undefined,
+  );
 }
 
+// ========================================
+// PHYSICAL STOCK COUNT
+// ========================================
+
+@Post('physical-stock-count')
+@UseGuards(AuthGuard('jwt'))
+async physicalStockCount(
+  @Body() dto: PhysicalStockCountDto,
+  @Req() req: Request,
+) {
+  const user = req.user as {
+    sub?: string | number;
+    id?: string | number;
+  };
+
+  const userId =
+    user?.sub ?? user?.id;
+
+  return this.inventoryService.physicalStockCount(
+    dto,
+    userId
+      ? String(userId)
+      : undefined,
+  );
+} 
   // MOVEMENT HISTORY
   @Get('movements')
   @UseGuards(AuthGuard('jwt'))
@@ -79,69 +130,86 @@ async getDashboard() {
     return this.inventoryService.getMovements();
   }
 
-
   @Post('locations')
-@UseGuards(AuthGuard('jwt'))
-async createLocation(
-  @Body() dto: CreateLocationDto,
-) {
-  return this.inventoryService.createLocation(dto);
-}
+  @UseGuards(AuthGuard('jwt'))
+  async createLocation(
+    @Body() dto: CreateLocationDto,
+  ) {
+    return this.inventoryService.createLocation(dto);
+  }
 
-@Get('locations')
-@UseGuards(AuthGuard('jwt'))
-async getLocations() {
-  return this.inventoryService.getLocations();
-}
+  @Get('locations')
+  @UseGuards(AuthGuard('jwt'))
+  async getLocations() {
+    return this.inventoryService.getLocations();
+  }
 
-@Get('locations/:id')
-@UseGuards(AuthGuard('jwt'))
-async getLocation(
-  @Param('id') id: string,
-) {
-  return this.inventoryService.getLocation(id);
-}
+  @Get('locations/:id')
+  @UseGuards(AuthGuard('jwt'))
+  async getLocation(
+    @Param('id') id: string,
+  ) {
+    return this.inventoryService.getLocation(id);
+  }
 
-@Patch('locations/:id')
-@UseGuards(AuthGuard('jwt'))
-async updateLocation(
-  @Param('id') id: string,
-  @Body() dto: UpdateLocationDto,
-) {
-  return this.inventoryService.updateLocation(
-    id,
-    dto,
-  );
-}
+  @Patch('locations/:id')
+  @UseGuards(AuthGuard('jwt'))
+  async updateLocation(
+    @Param('id') id: string,
+    @Body() dto: UpdateLocationDto,
+  ) {
+    return this.inventoryService.updateLocation(
+      id,
+      dto,
+    );
+  }
 
-@Delete('locations/:id')
-@UseGuards(AuthGuard('jwt'))
-async deleteLocation(
-  @Param('id') id: string,
-) {
-  return this.inventoryService.deleteLocation(id);
-}
+  @Delete('locations/:id')
+  @UseGuards(AuthGuard('jwt'))
+  async deleteLocation(
+    @Param('id') id: string,
+  ) {
+    return this.inventoryService.deleteLocation(id);
+  }
 
-@Get('locations/:id/stock')
-@UseGuards(AuthGuard('jwt'))
-async getLocationStock(
-  @Param('id') id: string,
-) {
-  return this.inventoryService.getLocationStock(id);
-}
+  @Get('locations/:id/stock')
+  @UseGuards(AuthGuard('jwt'))
+  async getLocationStock(
+    @Param('id') id: string,
+  ) {
+    return this.inventoryService.getLocationStock(id);
+  }
 
-@Post('stock-transfer')
+  @Post('stock-transfer')
+  @UseGuards(AuthGuard('jwt'))
+  async stockTransfer(
+    @Body() dto: StockTransferDto,
+    @Req() req: Request,
+  ) {
+    const userId =
+      (req.user as any)?.sub;
+
+    return this.inventoryService.stockTransfer(
+      dto,
+      userId,
+    );
+  }
+
+  // DAMAGED / LOST ITEMS
+
+@Post('damaged-lost')
 @UseGuards(AuthGuard('jwt'))
-async stockTransfer(
-  @Body() dto: StockTransferDto,
+async recordDamagedLost(
+  @Body() dto: DamagedLostDto,
   @Req() req: Request,
 ) {
   const userId =
-    (req.user as any)?.sub;
+    (req.user as any)?.sub ??
+    (req.user as any)?.id;
 
-  return this.inventoryService.stockTransfer(
+  return this.inventoryService.recordDamagedLost(
     dto,
-    userId,
+    userId ? String(userId) : undefined,
   );
 }
 }

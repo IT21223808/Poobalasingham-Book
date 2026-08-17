@@ -13,6 +13,13 @@ export enum MovementType {
   OUT = 'OUT',
   TRANSFER_IN = 'TRANSFER_IN',
   TRANSFER_OUT = 'TRANSFER_OUT',
+
+  // Day 8
+  ADJUSTMENT_IN = 'ADJUSTMENT_IN',
+  ADJUSTMENT_OUT = 'ADJUSTMENT_OUT',
+  PHYSICAL_COUNT = 'PHYSICAL_COUNT',
+  DAMAGED = 'DAMAGED',
+  LOST = 'LOST',
 }
 
 @Entity('stock_movements')
@@ -50,9 +57,17 @@ export class StockMovement {
   newStock!: number;
 
   @Column({
+    type: 'varchar',
     nullable: true,
   })
-  userId!: string;
+  reason!: string | null;
+
+  @Column({
+    name: 'user_id',
+    type: 'varchar',
+    nullable: true,
+  })
+  userId!: string | null;
 
   @CreateDateColumn({
     name: 'created_at',

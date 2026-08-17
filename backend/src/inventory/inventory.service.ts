@@ -10,6 +10,9 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { Location } from './entities/location.entity';
 import { InventoryStock } from './entities/inventory-stock.entity';
 import { StockTransferDto } from './dto/stock-transfer.dto';
+import { StockAdjustmentDto } from './dto/stock-adjustment.dto';
+import { PhysicalStockCountDto } from './dto/physical-stock-count.dto';
+import { DamagedLostDto,DamagedLostType} from './dto/damaged-lost.dto';
 
 @Injectable()
 export class InventoryService {
@@ -352,6 +355,354 @@ export class InventoryService {
   );
 }
 
+// ========================================
+// STOCK ADJUSTMENT
+// ========================================
+
+async stockAdjustment(
+  dto: StockAdjustmentDto,
+  userId?: string,
+) {
+  const {
+    productId,
+    quantity,
+    adjustmentType,
+    reason,
+  } = dto;
+
+  if (quantity <= 0) {
+    throw new BadRequestException(
+      'Quantity must be greater than 0',
+    );
+  }
+
+  return this.dataSource.transaction(
+    async (manager) => {
+      const product = await manager.findOne(
+        Product,
+        {
+          where: {
+            id: productId,
+          },
+        },
+      );
+
+      if (!product) {
+        throw new NotFoundException(
+          `Product with ID ${productId} not found`,
+        );
+      }
+
+      const previousStock =
+        Number(product.stockQuantity ?? 0);
+
+      let newStock: number;
+      let movementType: MovementType;
+
+      if (adjustmentType === 'INCREASE') {
+        newStock =
+          previousStock + quantity;
+
+        movementType =
+          MovementType.ADJUSTMENT_IN;
+      } else {
+        if (quantity > previousStock) {
+          throw new BadRequestException(
+            `Insufficient stock. Available stock: ${previousStock}`,
+          );
+        }
+
+        newStock =
+          previousStock - quantity;
+
+        movementType =
+          MovementType.ADJUSTMENT_OUT;
+      }
+
+      product.stockQuantity = newStock;
+
+      await manager.save(
+        Product,
+        product,
+      );
+
+      const movement =
+        manager.create(StockMovement, {
+          product,
+          movementType,
+          quantity,
+          previousStock,
+          newStock,
+          userId,
+        });
+
+      await manager.save(
+        StockMovement,
+        movement,
+      );
+
+      return {
+        success: true,
+        message:
+          'Stock adjusted successfully',
+
+        data: {
+          productId: product.id,
+          productName:
+            product.productName,
+
+          adjustmentType,
+
+          quantityAdjusted:
+            quantity,
+
+          previousStock,
+
+          newStock,
+
+          reason:
+            reason ?? null,
+
+          movementId:
+            movement.id,
+        },
+      };
+    },
+  );
+}
+
+// ========================================
+// PHYSICAL STOCK COUNT
+// ========================================
+
+async physicalStockCount(
+  dto: PhysicalStockCountDto,
+  userId?: string,
+) {
+  const {
+    productId,
+    physicalQuantity,
+    note,
+  } = dto;
+
+  if (physicalQuantity < 0) {
+    throw new BadRequestException(
+      'Physical quantity cannot be negative',
+    );
+  }
+
+  return this.dataSource.transaction(
+    async (manager) => {
+      const product = await manager.findOne(
+        Product,
+        {
+          where: {
+            id: productId,
+          },
+        },
+      );
+
+      if (!product) {
+        throw new NotFoundException(
+          `Product with ID ${productId} not found`,
+        );
+      }
+
+      // Current system stock
+      const systemStock = Number(
+        product.stockQuantity ?? 0,
+      );
+
+      // Difference between physical and system stock
+      const difference =
+        physicalQuantity - systemStock;
+
+      // No stock change required
+      if (difference === 0) {
+        return {
+          success: true,
+          message:
+            'Physical count matches system stock',
+          data: {
+            productId: product.id,
+            productName: product.productName,
+            systemStock,
+            physicalStock: physicalQuantity,
+            difference: 0,
+            newStock: systemStock,
+            movementId: null,
+          },
+        };
+      }
+
+      // Update product stock
+      product.stockQuantity =
+        physicalQuantity;
+
+      await manager.save(
+        Product,
+        product,
+      );
+
+      // Create movement
+      const movement =
+        manager.create(StockMovement, {
+          product,
+
+          movementType:
+            MovementType.PHYSICAL_COUNT,
+
+          quantity: Math.abs(difference),
+
+          previousStock: systemStock,
+
+          newStock: physicalQuantity,
+
+          userId,
+
+          reason:
+            note ??
+            `Physical stock count adjustment: ${
+              difference > 0
+                ? 'increase'
+                : 'decrease'
+            }`,
+        });
+
+      await manager.save(
+        StockMovement,
+        movement,
+      );
+
+      return {
+        success: true,
+        message:
+          'Physical stock count applied successfully',
+
+        data: {
+          productId: product.id,
+          productName: product.productName,
+
+          systemStock,
+
+          physicalStock:
+            physicalQuantity,
+
+          difference,
+
+          newStock:
+            physicalQuantity,
+
+          movementId:
+            movement.id,
+        },
+      };
+    },
+  );
+}
+
+// ========================================
+// DAMAGED / LOST ITEMS
+// ========================================
+
+async recordDamagedLost(
+  dto: DamagedLostDto,
+  userId?: string,
+) {
+  const {
+    productId,
+    quantity,
+    type,
+    reason,
+  } = dto;
+
+  if (quantity <= 0) {
+    throw new BadRequestException(
+      'Quantity must be greater than 0',
+    );
+  }
+
+  return this.dataSource.transaction(
+    async (manager) => {
+      const product = await manager.findOne(
+        Product,
+        {
+          where: {
+            id: productId,
+          },
+        },
+      );
+
+      if (!product) {
+        throw new NotFoundException(
+          `Product with ID ${productId} not found`,
+        );
+      }
+
+      const previousStock =
+        Number(product.stockQuantity ?? 0);
+
+      if (quantity > previousStock) {
+        throw new BadRequestException(
+          `Insufficient stock. Available stock: ${previousStock}`,
+        );
+      }
+
+      const newStock =
+        previousStock - quantity;
+
+      product.stockQuantity = newStock;
+
+      await manager.save(
+        Product,
+        product,
+      );
+
+      const movementType =
+        type === DamagedLostType.DAMAGED
+          ? MovementType.DAMAGED
+          : MovementType.LOST;
+
+      const movement =
+        manager.create(
+          StockMovement,
+          {
+            product,
+            movementType,
+            quantity,
+            previousStock,
+            newStock,
+            reason: reason ?? null,
+            userId: userId ?? null,
+          },
+        );
+
+      await manager.save(
+        StockMovement,
+        movement,
+      );
+
+      return {
+        success: true,
+        message:
+          type === DamagedLostType.DAMAGED
+            ? 'Damaged stock recorded successfully'
+            : 'Lost stock recorded successfully',
+
+        data: {
+          productId: product.id,
+          productName: product.productName,
+          type,
+          quantity,
+          previousStock,
+          newStock,
+          reason: reason ?? null,
+          movementId: movement.id,
+        },
+      };
+    },
+  );
+}
   // ========================================
   // MOVEMENT HISTORY
   // ========================================
