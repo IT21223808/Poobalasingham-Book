@@ -429,7 +429,7 @@ export default function LocationsPage() {
 
                       <td className="px-5 py-4 text-sm text-slate-500">
                         {new Date(
-                          location.createdAt,
+                          location.createdAt ?? Date.now(),
                         ).toLocaleDateString()}
                       </td>
 

@@ -1,18 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {ArrowDownToLine,Package,CheckCircle2,AlertCircle,} from "lucide-react";
+import {
+  Package,
+  CheckCircle2,
+  AlertCircle,
+  ArrowLeft,
+  ArrowUpFromLine,
+} from "lucide-react";
+import Link from "next/link";
+
 import {
   getLocations,
   getLocationStock,
-  stockIn,
+  stockOut,
   Location,
   InventoryStock,
 } from "@/services/inventory.service";
-import Link from "next/link";
-import { getProducts, Product } from "@/services/product.service";
 
-export default function StockInPage() {
+import {
+  getProducts,
+  Product,
+} from "@/services/product.service";
+
+export default function StockOutPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationStock, setLocationStock] = useState<
@@ -28,6 +39,7 @@ export default function StockInPage() {
 
   const [successMessage, setSuccessMessage] =
     useState("");
+
   const [errorMessage, setErrorMessage] =
     useState("");
 
@@ -50,6 +62,7 @@ export default function StockInPage() {
         setLocations(locationData);
       } catch (error) {
         console.error(error);
+
         setErrorMessage(
           "Failed to load products or locations.",
         );
@@ -79,6 +92,8 @@ export default function StockInPage() {
         setLocationStock(data);
       } catch (error) {
         console.error(error);
+
+        setLocationStock([]);
       }
     };
 
@@ -99,24 +114,27 @@ export default function StockInPage() {
         item.product.id === productId,
     );
 
-  const currentLocationStock =
-    Number(
-      selectedLocationStock?.quantity ?? 0,
-    );
+  const currentLocationStock = Number(
+    selectedLocationStock?.quantity ?? 0,
+  );
 
-  const currentTotalStock =
-    Number(
-      selectedProduct?.stockQuantity ?? 0,
-    );
+  const currentTotalStock = Number(
+    selectedProduct?.stockQuantity ?? 0,
+  );
 
-  const addQuantity =
-    Number(quantity || 0);
+  // ========================================
+  // STOCK OUT CALCULATION
+  // ========================================
+
+  const removeQuantity = Number(
+    quantity || 0,
+  );
 
   const newLocationStock =
-    currentLocationStock + addQuantity;
+    currentLocationStock - removeQuantity;
 
   const newTotalStock =
-    currentTotalStock + addQuantity;
+    currentTotalStock - removeQuantity;
 
   // ========================================
   // SUBMIT
@@ -130,6 +148,7 @@ export default function StockInPage() {
     setSuccessMessage("");
     setErrorMessage("");
 
+    // Product validation
     if (!productId) {
       setErrorMessage(
         "Please select a product.",
@@ -137,6 +156,7 @@ export default function StockInPage() {
       return;
     }
 
+    // Location validation
     if (!locationId) {
       setErrorMessage(
         "Please select a location.",
@@ -144,9 +164,32 @@ export default function StockInPage() {
       return;
     }
 
-    if (addQuantity <= 0) {
+    // Quantity validation
+    if (removeQuantity <= 0) {
       setErrorMessage(
         "Quantity must be greater than 0.",
+      );
+      return;
+    }
+
+    // Frontend location stock validation
+    if (
+      removeQuantity >
+      currentLocationStock
+    ) {
+      setErrorMessage(
+        `Insufficient stock. Available stock at this location: ${currentLocationStock}`,
+      );
+      return;
+    }
+
+    // Frontend total stock validation
+    if (
+      removeQuantity >
+      currentTotalStock
+    ) {
+      setErrorMessage(
+        `Insufficient total stock. Available stock: ${currentTotalStock}`,
       );
       return;
     }
@@ -154,19 +197,27 @@ export default function StockInPage() {
     try {
       setLoading(true);
 
-      await stockIn({
+      // ====================================
+      // STOCK OUT API
+      // ====================================
+
+      await stockOut({
         productId,
         locationId,
-        quantity: addQuantity,
+        quantity: removeQuantity,
       });
 
       setSuccessMessage(
-        "Stock added successfully.",
+        "Stock removed successfully.",
       );
 
+      // Clear quantity
       setQuantity("");
 
-      // Refresh location stock
+      // ====================================
+      // REFRESH LOCATION STOCK
+      // ====================================
+
       const updatedStock =
         await getLocationStock(
           locationId,
@@ -174,7 +225,10 @@ export default function StockInPage() {
 
       setLocationStock(updatedStock);
 
-      // Refresh products
+      // ====================================
+      // REFRESH PRODUCTS
+      // ====================================
+
       const updatedProducts =
         await getProducts();
 
@@ -184,7 +238,7 @@ export default function StockInPage() {
 
       setErrorMessage(
         error?.response?.data?.message ||
-          "Failed to add stock.",
+          "Failed to remove stock.",
       );
     } finally {
       setLoading(false);
@@ -199,27 +253,33 @@ export default function StockInPage() {
       {/* ================================= */}
 
       <div className="mb-6">
-  <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
 
-    <Link href="/dashboard/inventory">
-      Inventory
-    </Link>
+        <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
 
-    <span>/</span>
+          <Link
+            href="/dashboard/inventory"
+            className="hover:text-blue-600"
+          >
+            Inventory
+          </Link>
 
-    <span className="font-medium text-slate-900">
-      Stock Out
-    </span>
-  </div>
+          <span>/</span>
 
-  <h1 className="text-3xl font-bold text-slate-900">
-    Stock Out
-  </h1>
+          <span className="font-medium text-slate-900">
+            Stock Out
+          </span>
 
-  <p className="mt-1 text-sm text-slate-500">
-    Remove products from inventory.
-  </p>
-</div>
+        </div>
+
+        <h1 className="text-3xl font-bold text-slate-900">
+          Stock Out
+        </h1>
+
+        <p className="mt-1 text-sm text-slate-500">
+          Remove products from inventory.
+        </p>
+
+      </div>
 
       {/* ================================= */}
       {/* MAIN GRID */}
@@ -242,16 +302,18 @@ export default function StockInPage() {
 
             <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
 
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                <ArrowDownToLine
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+
+                <ArrowUpFromLine
                   size={22}
                 />
+
               </div>
 
               <div>
 
                 <h2 className="font-semibold text-slate-900">
-                  Add Stock
+                  Remove Stock
                 </h2>
 
                 <p className="text-xs text-slate-500">
@@ -267,21 +329,31 @@ export default function StockInPage() {
 
             <div className="space-y-5 p-6">
 
+              {/* SUCCESS */}
+
               {successMessage && (
                 <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+
                   <CheckCircle2
                     size={18}
                   />
+
                   {successMessage}
+
                 </div>
               )}
 
+              {/* ERROR */}
+
               {errorMessage && (
                 <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+
                   <AlertCircle
                     size={18}
                   />
+
                   {errorMessage}
+
                 </div>
               )}
 
@@ -295,11 +367,13 @@ export default function StockInPage() {
 
                 <select
                   value={productId}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setProductId(
                       e.target.value,
-                    )
-                  }
+                    );
+                    setErrorMessage("");
+                    setSuccessMessage("");
+                  }}
                   disabled={loadingData}
                   className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
@@ -314,13 +388,8 @@ export default function StockInPage() {
                         key={product.id}
                         value={product.id}
                       >
-                        {
-                          product.productName
-                        }{" "}
-                        —{" "}
-                        {
-                          product.productCode
-                        }
+                        {product.productName} —{" "}
+                        {product.productCode}
                       </option>
                     ),
                   )}
@@ -339,11 +408,13 @@ export default function StockInPage() {
 
                 <select
                   value={locationId}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setLocationId(
                       e.target.value,
-                    )
-                  }
+                    );
+                    setErrorMessage("");
+                    setSuccessMessage("");
+                  }}
                   disabled={loadingData}
                   className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
@@ -361,13 +432,9 @@ export default function StockInPage() {
                       (location) => (
                         <option
                           key={location.id}
-                          value={
-                            location.id
-                          }
+                          value={location.id}
                         >
-                          {
-                            location.name
-                          }
+                          {location.name}
                         </option>
                       ),
                     )}
@@ -387,6 +454,11 @@ export default function StockInPage() {
                 <input
                   type="number"
                   min="1"
+                  max={
+                    currentLocationStock > 0
+                      ? currentLocationStock
+                      : undefined
+                  }
                   value={quantity}
                   onChange={(e) =>
                     setQuantity(
@@ -396,6 +468,16 @@ export default function StockInPage() {
                   placeholder="Enter quantity"
                   className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
+
+                {locationId &&
+                  selectedProduct && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      Available at this location:{" "}
+                      <span className="font-semibold text-slate-700">
+                        {currentLocationStock}
+                      </span>
+                    </p>
+                  )}
 
               </div>
 
@@ -407,12 +489,15 @@ export default function StockInPage() {
                   <div className="mb-3 flex items-center gap-3">
 
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm">
+
                       <Package
                         size={19}
                       />
+
                     </div>
 
                     <div>
+
                       <p className="font-semibold text-slate-800">
                         {
                           selectedProduct.productName
@@ -424,6 +509,7 @@ export default function StockInPage() {
                           selectedProduct.productCode
                         }
                       </p>
+
                     </div>
 
                   </div>
@@ -461,25 +547,50 @@ export default function StockInPage() {
 
               <button
                 type="submit"
-                disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={
+                  loading ||
+                  loadingData
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <ArrowDownToLine
+
+                <ArrowUpFromLine
                   size={18}
                 />
 
                 {loading
-                  ? "Adding Stock..."
-                  : "Add Stock"}
+                  ? "Removing Stock..."
+                  : "Out Stock"}
+
               </button>
 
             </div>
+
           </form>
+
+          {/* BACK */}
+
+          <div className="mt-5">
+
+            <Link
+              href="/dashboard/inventory"
+              className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600"
+            >
+
+              <ArrowLeft
+                size={16}
+              />
+
+              Back to Inventory
+
+            </Link>
+
+          </div>
 
         </div>
 
         {/* ================================= */}
-        {/* PREVIEW */}
+        {/* STOCK PREVIEW */}
         {/* ================================= */}
 
         <div className="rounded-xl border border-slate-200 bg-white p-6">
@@ -499,6 +610,8 @@ export default function StockInPage() {
 
           <div className="space-y-4">
 
+            {/* LOCATION */}
+
             <PreviewRow
               label="Location"
               value={
@@ -510,6 +623,8 @@ export default function StockInPage() {
               }
             />
 
+            {/* CURRENT STOCK */}
+
             <PreviewRow
               label="Current Stock"
               value={
@@ -519,14 +634,18 @@ export default function StockInPage() {
               }
             />
 
+            {/* QUANTITY REMOVED */}
+
             <PreviewRow
-              label="Quantity Added"
+              label="Quantity Removed"
               value={
-                addQuantity > 0
-                  ? `+${addQuantity}`
+                removeQuantity > 0
+                  ? `-${removeQuantity}`
                   : "—"
               }
             />
+
+            {/* NEW LOCATION STOCK */}
 
             <div className="border-t border-slate-200 pt-4">
 
@@ -534,7 +653,13 @@ export default function StockInPage() {
                 New Location Stock
               </p>
 
-              <p className="mt-1 text-3xl font-bold text-emerald-600">
+              <p
+                className={`mt-1 text-3xl font-bold ${
+                  newLocationStock < 0
+                    ? "text-red-600"
+                    : "text-orange-600"
+                }`}
+              >
                 {locationId
                   ? newLocationStock
                   : "—"}
@@ -542,11 +667,13 @@ export default function StockInPage() {
 
             </div>
 
+            {/* TOTAL STOCK */}
+
             <div className="rounded-lg bg-blue-50 p-4">
 
               <p className="text-xs font-medium text-blue-700">
                 Product Total After
-                Stock In
+                Stock Out
               </p>
 
               <p className="mt-1 text-lg font-bold text-blue-800">

@@ -10,8 +10,12 @@ import {
   Boxes,
   MapPin,
   Package,
+  AlertOctagon,
   AlertTriangle,
   ChevronRight,
+  ClipboardCheck,
+  PackageX,
+  Calculator,
 } from "lucide-react";
 import Cookies from "js-cookie";
 
@@ -20,6 +24,8 @@ interface Product {
   productName: string;
   stockQuantity: number;
   reorderLevel: number;
+  imageUrl?: string | null;
+  image?: string | null;
 }
 
 interface Movement {
@@ -31,10 +37,10 @@ interface Movement {
   };
 
   movementType:
-    | "IN"
-    | "OUT"
-    | "TRANSFER_IN"
-    | "TRANSFER_OUT";
+  | "IN"
+  | "OUT"
+  | "TRANSFER_IN"
+  | "TRANSFER_OUT";
 
   quantity: number;
   previousStock: number;
@@ -64,9 +70,9 @@ export default function InventoryPage() {
 
   const [error, setError] = useState("");
 
-  // ========================================
-  // FETCH DASHBOARD DATA
-  // ========================================
+  // =====================================================
+  // FETCH INVENTORY DASHBOARD
+  // =====================================================
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -87,19 +93,17 @@ export default function InventoryPage() {
           "http://localhost:5000/api/inventory/dashboard",
           {
             method: "GET",
-
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-
             cache: "no-store",
           },
         );
 
         if (!response.ok) {
           throw new Error(
-            "Failed to fetch inventory dashboard",
+            "Failed to fetch inventory dashboard.",
           );
         }
 
@@ -111,7 +115,7 @@ export default function InventoryPage() {
 
         setError(
           err?.message ||
-            "Failed to load inventory dashboard",
+          "Failed to load inventory dashboard.",
         );
       } finally {
         setLoading(false);
@@ -121,9 +125,9 @@ export default function InventoryPage() {
     fetchDashboard();
   }, []);
 
-  // ========================================
+  // =====================================================
   // LOADING
-  // ========================================
+  // =====================================================
 
   if (loading) {
     return (
@@ -141,9 +145,9 @@ export default function InventoryPage() {
     );
   }
 
-  // ========================================
+  // =====================================================
   // ERROR
-  // ========================================
+  // =====================================================
 
   if (error) {
     return (
@@ -161,9 +165,9 @@ export default function InventoryPage() {
     return null;
   }
 
-  // ========================================
+  // =====================================================
   // SUMMARY CARDS
-  // ========================================
+  // =====================================================
 
   const summaryCards = [
     {
@@ -173,7 +177,6 @@ export default function InventoryPage() {
       iconBg: "bg-blue-50",
       iconColor: "text-blue-600",
     },
-
     {
       title: "Total Stock",
       value: dashboard.summary.totalStock,
@@ -181,7 +184,6 @@ export default function InventoryPage() {
       iconBg: "bg-emerald-50",
       iconColor: "text-emerald-600",
     },
-
     {
       title: "Low Stock",
       value: dashboard.summary.lowStock,
@@ -189,7 +191,6 @@ export default function InventoryPage() {
       iconBg: "bg-orange-50",
       iconColor: "text-orange-600",
     },
-
     {
       title: "Locations",
       value: dashboard.summary.locations,
@@ -199,55 +200,98 @@ export default function InventoryPage() {
     },
   ];
 
-  // ========================================
-  // INVENTORY OPERATIONS
-  // ========================================
+  // =====================================================
+  // PRIMARY OPERATIONS
+  // =====================================================
 
-  const inventoryActions = [
+  const primaryActions = [
     {
       title: "Stock In",
-      description:
-        "Add new stock to your inventory",
+      description: "Add new stock to your inventory",
       href: "/dashboard/inventory/stock-in",
       icon: ArrowDownToLine,
       iconBg: "bg-emerald-50",
       iconColor: "text-emerald-600",
+      buttonColor: "text-emerald-600",
     },
-
     {
       title: "Stock Out",
-      description:
-        "Remove stock from inventory",
+      description: "Remove stock from inventory",
       href: "/dashboard/inventory/stock-out",
       icon: ArrowUpFromLine,
       iconBg: "bg-orange-50",
       iconColor: "text-orange-600",
+      buttonColor: "text-orange-600",
     },
-
     {
       title: "Stock Transfer",
-      description:
-        "Transfer stock between locations",
+      description: "Transfer stock between locations",
       href: "/dashboard/inventory/stock-transfer",
       icon: ArrowRightLeft,
       iconBg: "bg-purple-50",
       iconColor: "text-purple-600",
+      buttonColor: "text-purple-600",
     },
+  ];
 
+  // =====================================================
+  // SECONDARY OPERATIONS
+  // =====================================================
+
+  const secondaryActions = [
     {
       title: "Movement History",
-      description:
-        "View all inventory movements",
+      description: "View inventory movements",
       href: "/dashboard/inventory/movements",
       icon: History,
       iconBg: "bg-blue-50",
       iconColor: "text-blue-600",
     },
+    {
+      title: "Stock Adjustment",
+      description: "Increase or decrease stock",
+      href: "/dashboard/inventory/stock-adjustment",
+      icon: Boxes,
+      iconBg: "bg-indigo-50",
+      iconColor: "text-indigo-600",
+    },
+    {
+      title: "Physical Stock Count",
+      description: "Compare physical and system stock",
+      href: "/dashboard/inventory/physical-stock-count",
+      icon: ClipboardCheck,
+      iconBg: "bg-cyan-50",
+      iconColor: "text-cyan-600",
+    },
+    {
+      title: "Damaged / Lost",
+      description: "Record damaged or lost stock",
+      href: "/dashboard/inventory/damaged-lost",
+      icon: PackageX,
+      iconBg: "bg-red-50",
+      iconColor: "text-red-600",
+    },
+    {
+      title: "Out of Stock",
+      description: "View products with zero stock",
+      href: "/dashboard/inventory/out-of-stock",
+      icon: AlertOctagon,
+      iconBg: "bg-rose-50",
+      iconColor: "text-rose-600",
+    },
+    {
+      title: "Stock Valuation",
+      description: "Calculate current inventory value",
+      href: "/dashboard/inventory/stock-valuation",
+      icon: Calculator,
+      iconBg: "bg-violet-50",
+      iconColor: "text-violet-600",
+    },
   ];
 
-  // ========================================
+  // =====================================================
   // MOVEMENT TYPE
-  // ========================================
+  // =====================================================
 
   const getMovementType = (
     type: Movement["movementType"],
@@ -276,7 +320,7 @@ export default function InventoryPage() {
 
       case "TRANSFER_OUT":
         return {
-          label: "Transfer",
+          label: "Transfer Out",
           className:
             "bg-purple-50 text-purple-700",
         };
@@ -290,16 +334,35 @@ export default function InventoryPage() {
     }
   };
 
+  // =====================================================
+  // DATE FORMAT
+  // Fixed locale/timezone to avoid hydration mismatch
+  // =====================================================
+
+  const formatDate = (date: string) => {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(date));
+  };
+
+  // =====================================================
+  // UI
+  // =====================================================
+
   return (
-    <div className="min-h-screen bg-slate-50 p-2 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
 
-      {/* ================= HEADER ================= */}
+      {/* =================================================
+          HEADER
+      ================================================= */}
 
-      <div className="mb-8">
+      <div className="mb-7">
         <div className="flex items-center gap-3">
-
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-            <Boxes size={25} />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+            <Boxes size={23} />
           </div>
 
           <div>
@@ -308,51 +371,51 @@ export default function InventoryPage() {
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              Manage your stock, locations and inventory operations
+              Manage your stock, locations and inventory
+              operations
             </p>
           </div>
-
         </div>
       </div>
 
-      {/* ================= SUMMARY CARDS ================= */}
+      {/* =================================================
+          SUMMARY
+      ================================================= */}
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
         {summaryCards.map((card) => {
           const Icon = card.icon;
 
           return (
             <div
               key={card.title}
-              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+              className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
             >
               <div className="flex items-center justify-between">
-
                 <div>
-                  <p className="text-sm font-medium text-slate-500">
+                  <p className="text-sm text-slate-500">
                     {card.title}
                   </p>
 
-                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                  <p className="mt-1.5 text-2xl font-bold text-slate-900">
                     {card.value}
                   </p>
                 </div>
 
                 <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg ${card.iconBg} ${card.iconColor}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg ${card.iconBg} ${card.iconColor}`}
                 >
-                  <Icon size={21} />
+                  <Icon size={20} />
                 </div>
-
               </div>
             </div>
           );
         })}
-
       </div>
 
-      {/* ================= INVENTORY OPERATIONS ================= */}
+      {/* =================================================
+          INVENTORY OPERATIONS
+      ================================================= */}
 
       <div className="mb-8">
 
@@ -366,58 +429,104 @@ export default function InventoryPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* =================================================
+            PRIMARY 3 CARDS
+        ================================================= */}
 
-          {inventoryActions.map((action) => {
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+          {primaryActions.map((action) => {
             const Icon = action.icon;
 
             return (
               <Link
                 key={action.title}
                 href={action.href}
-                className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-blue-200 hover:shadow-md"
+                className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
               >
-
-                <div
-                  className={`mb-5 flex h-12 w-12 items-center justify-center rounded-xl ${action.iconBg} ${action.iconColor}`}
-                >
-                  <Icon size={23} />
-                </div>
-
-                <h3 className="font-semibold text-slate-900">
-                  {action.title}
-                </h3>
-
-                <p className="mt-2 text-sm leading-5 text-slate-500">
-                  {action.description}
-                </p>
-
-                <div className="mt-4 flex items-center text-sm font-medium text-blue-600">
-                  Open
+                <div className="flex items-start justify-between">
+                  <div
+                    className={`flex h-11 w-11 items-center justify-center rounded-lg ${action.iconBg} ${action.iconColor}`}
+                  >
+                    <Icon size={22} />
+                  </div>
 
                   <ChevronRight
-                    size={16}
-                    className="ml-1 transition-transform group-hover:translate-x-1"
+                    size={18}
+                    className="text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-blue-500"
                   />
                 </div>
 
+                <h3 className="mt-5 text-base font-semibold text-slate-900">
+                  {action.title}
+                </h3>
+
+                <p className="mt-1.5 text-sm text-slate-500">
+                  {action.description}
+                </p>
+
+                <div
+                  className={`mt-4 text-sm font-medium ${action.buttonColor}`}
+                >
+                  Open →
+                </div>
               </Link>
             );
           })}
+        </div>
 
+        {/* =================================================
+            SECONDARY 6 CARDS
+        ================================================= */}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {secondaryActions.map((action) => {
+            const Icon = action.icon;
+
+            return (
+              <Link
+                key={action.title}
+                href={action.href}
+                className="group flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition-all duration-200 hover:border-blue-200 hover:shadow-md"
+              >
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${action.iconBg} ${action.iconColor}`}
+                >
+                  <Icon size={19} />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm font-semibold text-slate-900">
+                    {action.title}
+                  </h3>
+
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {action.description}
+                  </p>
+                </div>
+
+                <ChevronRight
+                  size={16}
+                  className="shrink-0 text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-blue-500"
+                />
+              </Link>
+            );
+          })}
         </div>
       </div>
 
-      {/* ================= LOWER SECTION ================= */}
+      {/* =================================================
+          LOWER SECTION
+      ================================================= */}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
 
-        {/* ================= RECENT MOVEMENTS ================= */}
+        {/* =================================================
+            RECENT MOVEMENTS
+        ================================================= */}
 
-        <div className="xl:col-span-2 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm xl:col-span-2">
 
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-
             <div>
               <h2 className="font-semibold text-slate-900">
                 Recent Stock Movements
@@ -434,16 +543,13 @@ export default function InventoryPage() {
             >
               View All
             </Link>
-
           </div>
 
           <div className="overflow-x-auto">
-
-            <table className="w-full min-w-[650px] text-sm">
+            <table className="w-full min-w-[620px] text-sm">
 
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-
                   <th className="px-5 py-3 font-medium">
                     Product
                   </th>
@@ -463,14 +569,12 @@ export default function InventoryPage() {
                   <th className="px-5 py-3 font-medium">
                     Date
                   </th>
-
                 </tr>
               </thead>
 
               <tbody>
-
-                {dashboard.recentMovements.length === 0 ? (
-
+                {dashboard.recentMovements.length ===
+                  0 ? (
                   <tr>
                     <td
                       colSpan={5}
@@ -479,9 +583,7 @@ export default function InventoryPage() {
                       No stock movements found.
                     </td>
                   </tr>
-
                 ) : (
-
                   dashboard.recentMovements.map(
                     (movement) => {
                       const type =
@@ -494,37 +596,36 @@ export default function InventoryPage() {
                           key={movement.id}
                           className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
                         >
-
                           <td className="px-5 py-4 font-medium text-slate-800">
-                            {movement.product.productName}
+                            {
+                              movement.product
+                                .productName
+                            }
                           </td>
 
                           <td className="px-5 py-4">
-
                             <span
                               className={`rounded-full px-2.5 py-1 text-xs font-medium ${type.className}`}
                             >
                               {type.label}
                             </span>
-
                           </td>
 
                           <td
-                            className={`px-5 py-4 font-semibold ${
-                              movement.movementType ===
-                              "IN"
+                            className={`px-5 py-4 font-semibold ${movement.movementType ===
+                                "IN"
                                 ? "text-emerald-600"
                                 : movement.movementType ===
-                                    "OUT"
+                                  "OUT"
                                   ? "text-orange-600"
                                   : "text-purple-600"
-                            }`}
+                              }`}
                           >
                             {movement.movementType ===
-                            "IN"
+                              "IN"
                               ? `+${movement.quantity}`
                               : movement.movementType ===
-                                  "OUT"
+                                "OUT"
                                 ? `-${movement.quantity}`
                                 : movement.quantity}
                           </td>
@@ -534,36 +635,27 @@ export default function InventoryPage() {
                           </td>
 
                           <td className="px-5 py-4 text-slate-500">
-                            {new Date(
+                            {formatDate(
                               movement.createdAt,
-                            ).toLocaleDateString(
-                              "en-GB",
-                              {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              },
                             )}
                           </td>
-
                         </tr>
                       );
                     },
                   )
                 )}
-
               </tbody>
-
             </table>
-
           </div>
-
         </div>
 
-        {/* ================= LOW STOCK ================= */}
+        {/* =================================================
+    LOW STOCK PRODUCTS
+================================================= */}
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
 
+          {/* HEADER */}
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
 
             <div>
@@ -576,17 +668,19 @@ export default function InventoryPage() {
               </p>
             </div>
 
-            <AlertTriangle
-              size={19}
-              className="text-orange-500"
-            />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50">
+              <AlertTriangle
+                size={17}
+                className="text-orange-500"
+              />
+            </div>
 
           </div>
 
+          {/* PRODUCTS */}
           <div className="divide-y divide-slate-100">
 
-            {dashboard.lowStockProducts.length ===
-            0 ? (
+            {dashboard.lowStockProducts.length === 0 ? (
 
               <div className="px-5 py-8 text-center">
 
@@ -602,25 +696,54 @@ export default function InventoryPage() {
                 </p>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  No products are below the reorder level.
+                  No products are below reorder level.
                 </p>
 
               </div>
 
             ) : (
 
-              dashboard.lowStockProducts.map(
-                (product) => (
+              dashboard.lowStockProducts.map((product) => {
+
+                const productImage =
+                  product.imageUrl || product.image;
+
+                return (
                   <div
                     key={product.id}
-                    className="px-5 py-4"
+                    className="px-5 py-4 transition hover:bg-slate-50"
                   >
 
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
 
-                      <div className="min-w-0">
+                      {/* BOOK IMAGE */}
+                      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
 
-                        <p className="truncate text-sm font-medium text-slate-800">
+                        {productImage ? (
+
+                          <img
+                            src={productImage}
+                            alt={product.productName}
+                            className="h-full w-full object-cover"
+                          />
+
+                        ) : (
+
+                          <div className="flex h-full w-full items-center justify-center">
+                            <Package
+                              size={20}
+                              className="text-slate-400"
+                            />
+                          </div>
+
+                        )}
+
+                      </div>
+
+                      {/* PRODUCT DETAILS */}
+                      <div className="min-w-0 flex-1">
+
+                        <p className="truncate text-sm font-semibold text-slate-800">
                           {product.productName}
                         </p>
 
@@ -631,19 +754,26 @@ export default function InventoryPage() {
 
                       </div>
 
-                      <span className="shrink-0 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
-                        {product.stockQuantity} left
-                      </span>
+                      {/* STOCK */}
+                      <div className="text-right">
+
+                        <span className="inline-flex rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                          {product.stockQuantity} left
+                        </span>
+
+                      </div>
 
                     </div>
 
                   </div>
-                ),
-              )
+                );
+              })
+
             )}
 
           </div>
 
+          {/* FOOTER */}
           <div className="border-t border-slate-100 p-4">
 
             <Link
@@ -661,7 +791,6 @@ export default function InventoryPage() {
           </div>
 
         </div>
-
       </div>
     </div>
   );

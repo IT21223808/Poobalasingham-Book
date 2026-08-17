@@ -1,21 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  ArrowDownToLine,
-  Package,
-  MapPin,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
-
-import {
-  getLocations,
-  getLocationStock,
-  stockIn,
-  Location,
-  InventoryStock,
-} from "@/services/inventory.service";
+import {ArrowDownToLine,Package,ArrowLeft,CheckCircle2,AlertCircle} from "lucide-react";
+import {getLocations,getLocationStock,stockIn,Location,InventoryStock} from "@/services/inventory.service";
 import Link from "next/link";
 import { getProducts, Product } from "@/services/product.service";
 
@@ -482,7 +469,15 @@ export default function StockInPage() {
 
             </div>
           </form>
-
+<div className="mt-5">
+        <Link
+          href="/dashboard/inventory"
+          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600"
+        >
+          <ArrowLeft size={16} />
+          Back to Inventory
+        </Link>
+      </div>
         </div>
 
         {/* ================================= */}

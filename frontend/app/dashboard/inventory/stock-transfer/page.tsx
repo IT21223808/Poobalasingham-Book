@@ -7,16 +7,17 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
-   ArrowLeft
+  ArrowLeft,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+
 import {
   getLocations,
   getLocationStock,
   stockTransfer,
   Location,
   InventoryStock,
+  StockTransferResponse,
 } from "@/services/inventory.service";
 
 import {
@@ -25,41 +26,42 @@ import {
 } from "@/services/product.service";
 
 export default function StockTransferPage() {
+  // ======================================================
+  // STATE
+  // ======================================================
+
   const [products, setProducts] = useState<Product[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [fromStock, setFromStock] = useState<
-    InventoryStock[]
-  >([]);
+  const [fromStock, setFromStock] = useState<InventoryStock[]>([]);
 
   const [productId, setProductId] = useState("");
-  const [fromLocationId, setFromLocationId] =
-    useState("");
-  const [toLocationId, setToLocationId] =
-    useState("");
+  const [fromLocationId, setFromLocationId] = useState("");
+  const [toLocationId, setToLocationId] = useState("");
   const [quantity, setQuantity] = useState("");
 
-  const [loadingData, setLoadingData] =
-    useState(true);
+  const [loadingData, setLoadingData] = useState(true);
   const [loading, setLoading] = useState(false);
 
-  const [successMessage, setSuccessMessage] =
-    useState("");
-  const [errorMessage, setErrorMessage] =
-    useState("");
-const router = useRouter();
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
+  // Backend transfer response
+  const [transferResult, setTransferResult] =
+    useState<StockTransferResponse | null>(null);
+
+  // ======================================================
   // LOAD PRODUCTS + LOCATIONS
-  
+  // ======================================================
+
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoadingData(true);
 
-        const [productData, locationData] =
-          await Promise.all([
-            getProducts(),
-            getLocations(),
-          ]);
+        const [productData, locationData] = await Promise.all([
+          getProducts(),
+          getLocations(),
+        ]);
 
         setProducts(productData);
         setLocations(locationData);
@@ -77,9 +79,9 @@ const router = useRouter();
     loadData();
   }, []);
 
-  // ========================================
+  // ======================================================
   // LOAD SOURCE LOCATION STOCK
-  // ========================================
+  // ======================================================
 
   useEffect(() => {
     if (!fromLocationId) {
@@ -89,10 +91,9 @@ const router = useRouter();
 
     const loadStock = async () => {
       try {
-        const data =
-          await getLocationStock(
-            fromLocationId,
-          );
+        const data = await getLocationStock(
+          fromLocationId,
+        );
 
         setFromStock(data);
       } catch (error) {
@@ -104,27 +105,23 @@ const router = useRouter();
     loadStock();
   }, [fromLocationId]);
 
-  // ========================================
+  // ======================================================
   // SELECTED PRODUCT
-  // ========================================
+  // ======================================================
 
   const selectedProduct = products.find(
     (product) => product.id === productId,
   );
 
-  const sourceStockItem =
-    fromStock.find(
-      (item) =>
-        item.product.id === productId,
-    );
+  const sourceStockItem = fromStock.find(
+    (item) => item.product.id === productId,
+  );
 
   const availableStock = Number(
     sourceStockItem?.quantity ?? 0,
   );
 
-  const transferQuantity = Number(
-    quantity || 0,
-  );
+  const transferQuantity = Number(quantity || 0);
 
   const remainingSourceStock =
     availableStock - transferQuantity;
@@ -132,9 +129,9 @@ const router = useRouter();
   const insufficientStock =
     transferQuantity > availableStock;
 
-  // ========================================
+  // ======================================================
   // TRANSFER
-  // ========================================
+  // ======================================================
 
   const handleSubmit = async (
     e: React.FormEvent,
@@ -143,6 +140,11 @@ const router = useRouter();
 
     setSuccessMessage("");
     setErrorMessage("");
+    setTransferResult(null);
+
+    // -----------------------------
+    // VALIDATION
+    // -----------------------------
 
     if (!productId) {
       setErrorMessage(
@@ -165,9 +167,7 @@ const router = useRouter();
       return;
     }
 
-    if (
-      fromLocationId === toLocationId
-    ) {
+    if (fromLocationId === toLocationId) {
       setErrorMessage(
         "Source and destination locations must be different.",
       );
@@ -181,30 +181,42 @@ const router = useRouter();
       return;
     }
 
-    if (
-      transferQuantity > availableStock
-    ) {
+    if (transferQuantity > availableStock) {
       setErrorMessage(
         `Insufficient stock. Available stock: ${availableStock}`,
       );
       return;
     }
 
+    // -----------------------------
+    // API REQUEST
+    // -----------------------------
+
     try {
       setLoading(true);
 
-      await stockTransfer({
-        productId,
-        fromLocationId,
-        toLocationId,
-        quantity: transferQuantity,
-      });
+      const result: StockTransferResponse =
+        await stockTransfer({
+          productId,
+          fromLocationId,
+          toLocationId,
+          quantity: transferQuantity,
+        });
+
+      // Store complete backend response
+      setTransferResult(result);
 
       setSuccessMessage(
-        "Stock transferred successfully.",
+        result.message ||
+          "Stock transferred successfully.",
       );
 
+      // Clear quantity
       setQuantity("");
+
+      // -----------------------------
+      // REFRESH SOURCE STOCK
+      // -----------------------------
 
       const updatedStock =
         await getLocationStock(
@@ -212,6 +224,10 @@ const router = useRouter();
         );
 
       setFromStock(updatedStock);
+
+      // -----------------------------
+      // REFRESH PRODUCTS
+      // -----------------------------
 
       const updatedProducts =
         await getProducts();
@@ -229,42 +245,79 @@ const router = useRouter();
     }
   };
 
+  // ======================================================
+  // LOCATION NAMES
+  // ======================================================
+
+  const fromLocationName =
+    transferResult?.data.fromLocation.name ||
+    locations.find(
+      (location) =>
+        location.id === fromLocationId,
+    )?.name ||
+    "—";
+
+  const toLocationName =
+    transferResult?.data.toLocation.name ||
+    locations.find(
+      (location) =>
+        location.id === toLocationId,
+    )?.name ||
+    "—";
+
+  // ======================================================
+  // RENDER
+  // ======================================================
+
   return (
     <div className="min-h-screen bg-slate-50 p-6">
 
+      {/* ================================================== */}
       {/* HEADER */}
+      {/* ================================================== */}
+
       <div className="mb-6">
-  {/* Breadcrumb */}
-  <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
 
-    <Link
-      href="/dashboard/inventory"
-      className="hover:text-blue-600 transition-colors"
-    >
-      Inventory
-    </Link>
+        {/* Breadcrumb */}
 
-    <span>/</span>
+        <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
 
-    <span className="font-medium text-slate-900">
-      Stock Transfer
-    </span>
-  </div>
+          <Link
+            href="/dashboard/inventory"
+            className="transition-colors hover:text-blue-600"
+          >
+            Inventory
+          </Link>
 
-  {/* Page Title */}
-  <h1 className="text-3xl font-bold text-slate-900">
-    Stock Transfer
-  </h1>
+          <span>/</span>
 
-  <p className="mt-1 text-sm text-slate-500">
-    Transfer inventory between locations.
-  </p>
-</div>
+          <span className="font-medium text-slate-900">
+            Stock Transfer
+          </span>
+
+        </div>
+
+        {/* Page Title */}
+
+        <h1 className="text-3xl font-bold text-slate-900">
+          Stock Transfer
+        </h1>
+
+        <p className="mt-1 text-sm text-slate-500">
+          Transfer inventory between locations.
+        </p>
+
+      </div>
+
+      {/* ================================================== */}
       {/* MAIN */}
+      {/* ================================================== */}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
+        {/* ================================================== */}
         {/* FORM */}
+        {/* ================================================== */}
 
         <div className="xl:col-span-2">
 
@@ -278,9 +331,7 @@ const router = useRouter();
             <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
 
               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
-                <ArrowRightLeft
-                  size={22}
-                />
+                <ArrowRightLeft size={22} />
               </div>
 
               <div>
@@ -290,15 +341,14 @@ const router = useRouter();
                 </h2>
 
                 <p className="text-xs text-slate-500">
-                  Move products from one
-                  location to another
+                  Move products from one location to another
                 </p>
 
               </div>
 
             </div>
 
-            {/* BODY */}
+            {/* FORM BODY */}
 
             <div className="space-y-5 p-6">
 
@@ -306,10 +356,11 @@ const router = useRouter();
 
               {successMessage && (
                 <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  <CheckCircle2
-                    size={18}
-                  />
+
+                  <CheckCircle2 size={18} />
+
                   {successMessage}
+
                 </div>
               )}
 
@@ -317,10 +368,11 @@ const router = useRouter();
 
               {errorMessage && (
                 <div className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-                  <AlertCircle
-                    size={18}
-                  />
+
+                  <AlertCircle size={18} />
+
                   {errorMessage}
+
                 </div>
               )}
 
@@ -334,11 +386,12 @@ const router = useRouter();
 
                 <select
                   value={productId}
-                  onChange={(e) =>
-                    setProductId(
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => {
+                    setProductId(e.target.value);
+                    setTransferResult(null);
+                    setSuccessMessage("");
+                    setErrorMessage("");
+                  }}
                   disabled={loadingData}
                   className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
@@ -353,13 +406,8 @@ const router = useRouter();
                         key={product.id}
                         value={product.id}
                       >
-                        {
-                          product.productName
-                        }{" "}
-                        —{" "}
-                        {
-                          product.productCode
-                        }
+                        {product.productName} —{" "}
+                        {product.productCode}
                       </option>
                     ),
                   )}
@@ -372,7 +420,7 @@ const router = useRouter();
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
-                {/* FROM */}
+                {/* FROM LOCATION */}
 
                 <div>
 
@@ -381,14 +429,16 @@ const router = useRouter();
                   </label>
 
                   <select
-                    value={
-                      fromLocationId
-                    }
-                    onChange={(e) =>
+                    value={fromLocationId}
+                    onChange={(e) => {
                       setFromLocationId(
                         e.target.value,
-                      )
-                    }
+                      );
+
+                      setTransferResult(null);
+                      setSuccessMessage("");
+                      setErrorMessage("");
+                    }}
                     disabled={loadingData}
                     className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                   >
@@ -405,16 +455,10 @@ const router = useRouter();
                       .map(
                         (location) => (
                           <option
-                            key={
-                              location.id
-                            }
-                            value={
-                              location.id
-                            }
+                            key={location.id}
+                            value={location.id}
                           >
-                            {
-                              location.name
-                            }
+                            {location.name}
                           </option>
                         ),
                       )}
@@ -423,7 +467,7 @@ const router = useRouter();
 
                 </div>
 
-                {/* TO */}
+                {/* TO LOCATION */}
 
                 <div>
 
@@ -432,14 +476,16 @@ const router = useRouter();
                   </label>
 
                   <select
-                    value={
-                      toLocationId
-                    }
-                    onChange={(e) =>
+                    value={toLocationId}
+                    onChange={(e) => {
                       setToLocationId(
                         e.target.value,
-                      )
-                    }
+                      );
+
+                      setTransferResult(null);
+                      setSuccessMessage("");
+                      setErrorMessage("");
+                    }}
                     disabled={loadingData}
                     className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
                   >
@@ -458,16 +504,10 @@ const router = useRouter();
                       .map(
                         (location) => (
                           <option
-                            key={
-                              location.id
-                            }
-                            value={
-                              location.id
-                            }
+                            key={location.id}
+                            value={location.id}
                           >
-                            {
-                              location.name
-                            }
+                            {location.name}
                           </option>
                         ),
                       )}
@@ -485,8 +525,7 @@ const router = useRouter();
                   <div className="rounded-lg border border-purple-100 bg-purple-50 p-4">
 
                     <p className="text-xs text-purple-600">
-                      Available stock at
-                      source location
+                      Available stock at source location
                     </p>
 
                     <p className="mt-1 text-2xl font-bold text-purple-800">
@@ -523,8 +562,7 @@ const router = useRouter();
 
                 {insufficientStock && (
                   <p className="mt-1.5 text-xs text-red-600">
-                    Quantity cannot exceed
-                    available stock.
+                    Quantity cannot exceed available stock.
                   </p>
                 )}
 
@@ -538,23 +576,17 @@ const router = useRouter();
                   <div className="flex items-center gap-3">
 
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-purple-600 shadow-sm">
-                      <Package
-                        size={19}
-                      />
+                      <Package size={19} />
                     </div>
 
                     <div>
 
                       <p className="font-semibold text-slate-800">
-                        {
-                          selectedProduct.productName
-                        }
+                        {selectedProduct.productName}
                       </p>
 
                       <p className="text-xs text-slate-500">
-                        {
-                          selectedProduct.productCode
-                        }
+                        {selectedProduct.productCode}
                       </p>
 
                     </div>
@@ -570,14 +602,13 @@ const router = useRouter();
                 type="submit"
                 disabled={
                   loading ||
+                  loadingData ||
                   insufficientStock
                 }
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
 
-                <ArrowRightLeft
-                  size={18}
-                />
+                <ArrowRightLeft size={18} />
 
                 {loading
                   ? "Transferring..."
@@ -589,11 +620,25 @@ const router = useRouter();
 
           </form>
 
+          {/* BACK */}
+
+          <div className="mt-5">
+
+            <Link
+              href="/dashboard/inventory"
+              className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600"
+            >
+              <ArrowLeft size={16} />
+              Back to Inventory
+            </Link>
+
+          </div>
+
         </div>
 
-        {/* ================================= */}
-        {/* PREVIEW */}
-        {/* ================================= */}
+        {/* ================================================== */}
+        {/* TRANSFER PREVIEW */}
+        {/* ================================================== */}
 
         <div className="rounded-xl border border-slate-200 bg-white p-6">
 
@@ -602,87 +647,280 @@ const router = useRouter();
           </h2>
 
           <p className="mt-1 text-xs text-slate-500">
-            Review the transfer before
-            submitting
+            Review the transfer before submitting
           </p>
 
           <div className="mt-6 space-y-5">
 
-            {/* FROM */}
+            {/* ================================================== */}
+            {/* FROM LOCATION */}
+            {/* ================================================== */}
 
-            <div className="rounded-lg bg-slate-50 p-4">
+            <div className="rounded-lg border border-red-100 bg-red-50 p-4">
 
-              <p className="text-xs text-slate-400">
+              <p className="text-xs font-medium text-red-600">
                 From
               </p>
 
               <p className="mt-1 font-semibold text-slate-800">
-                {locations.find(
-                  (location) =>
-                    location.id ===
-                    fromLocationId,
-                )?.name || "—"}
+                {fromLocationName}
               </p>
 
-            </div>
+              <div className="mt-4 flex items-center justify-between gap-3">
 
-            <div className="flex justify-center">
+                {/* BEFORE */}
 
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-50 text-purple-600">
-                <ArrowRight size={18} />
+                <div>
+
+                  <p className="text-xs text-slate-500">
+                    Before Stock
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-slate-800">
+                    {transferResult
+                      ? transferResult.data
+                          .fromLocation
+                          .previousStock
+                      : fromLocationId
+                      ? availableStock
+                      : "—"}
+                  </p>
+
+                </div>
+
+                {/* ARROW */}
+
+                <ArrowRight
+                  size={20}
+                  className="text-red-500"
+                />
+
+                {/* AFTER */}
+
+                <div className="text-right">
+
+                  <p className="text-xs text-slate-500">
+                    After Stock
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-red-600">
+                    {transferResult
+                      ? transferResult.data
+                          .fromLocation
+                          .newStock
+                      : fromLocationId &&
+                        quantity
+                      ? remainingSourceStock
+                      : "—"}
+                  </p>
+
+                </div>
+
+              </div>
+
+              {/* DECREASE */}
+
+              <div className="mt-3 text-center">
+
+                <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-600">
+                  -
+                  {transferResult
+                    ? transferResult.data
+                        .quantityTransferred
+                    : transferQuantity > 0
+                    ? transferQuantity
+                    : 0}
+                </span>
+
               </div>
 
             </div>
 
-            {/* TO */}
+            {/* ================================================== */}
+            {/* TRANSFER ARROW */}
+            {/* ================================================== */}
 
-            <div className="rounded-lg bg-slate-50 p-4">
+            <div className="flex justify-center">
 
-              <p className="text-xs text-slate-400">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-50 text-purple-600">
+
+                <ArrowRight size={18} />
+
+              </div>
+
+            </div>
+
+            {/* ================================================== */}
+            {/* TO LOCATION */}
+            {/* ================================================== */}
+
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+
+              <p className="text-xs font-medium text-emerald-600">
                 To
               </p>
 
               <p className="mt-1 font-semibold text-slate-800">
-                {locations.find(
-                  (location) =>
-                    location.id ===
-                    toLocationId,
-                )?.name || "—"}
+                {toLocationName}
               </p>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+
+                {/* BEFORE */}
+
+                <div>
+
+                  <p className="text-xs text-slate-500">
+                    Before Stock
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-slate-800">
+                    {transferResult
+                      ? transferResult.data
+                          .toLocation
+                          .previousStock
+                      : "—"}
+                  </p>
+
+                </div>
+
+                {/* ARROW */}
+
+                <ArrowRight
+                  size={20}
+                  className="text-emerald-500"
+                />
+
+                {/* AFTER */}
+
+                <div className="text-right">
+
+                  <p className="text-xs text-slate-500">
+                    After Stock
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-emerald-600">
+                    {transferResult
+                      ? transferResult.data
+                          .toLocation
+                          .newStock
+                      : "—"}
+                  </p>
+
+                </div>
+
+              </div>
+
+              {/* INCREASE */}
+
+              <div className="mt-3 text-center">
+
+                <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-600">
+                  +
+                  {transferResult
+                    ? transferResult.data
+                        .quantityTransferred
+                    : transferQuantity > 0
+                    ? transferQuantity
+                    : 0}
+                </span>
+
+              </div>
 
             </div>
 
+            {/* ================================================== */}
             {/* QUANTITY */}
+            {/* ================================================== */}
 
             <div className="border-t border-slate-200 pt-5">
 
               <p className="text-xs text-slate-500">
-                Quantity
+                Quantity Transferred
               </p>
 
               <p className="mt-1 text-3xl font-bold text-purple-600">
-                {transferQuantity > 0
+                {transferResult
+                  ? transferResult.data
+                      .quantityTransferred
+                  : transferQuantity > 0
                   ? transferQuantity
                   : "—"}
               </p>
 
             </div>
 
-            {/* REMAINING */}
+            {/* ================================================== */}
+            {/* PRODUCT TOTAL STOCK */}
+            {/* ================================================== */}
 
-            <div className="rounded-lg bg-purple-50 p-4">
+            {transferResult && (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
 
-              <p className="text-xs font-medium text-purple-700">
-                Remaining Source Stock
-              </p>
+                <p className="text-xs font-medium text-blue-700">
+                  Product Total Stock
+                </p>
 
-              <p className="mt-1 text-lg font-bold text-purple-800">
-                {fromLocationId
-                  ? remainingSourceStock
-                  : "—"}
-              </p>
+                <p className="mt-1 text-2xl font-bold text-blue-800">
+                  {transferResult.data.productTotalStock}
+                </p>
 
-            </div>
+              </div>
+            )}
+
+            {/* ================================================== */}
+            {/* TRANSFER SUMMARY */}
+            {/* ================================================== */}
+
+            {transferResult && (
+              <div className="rounded-lg bg-slate-50 p-4">
+
+                <p className="text-xs font-medium text-slate-500">
+                  Transfer Summary
+                </p>
+
+                <div className="mt-3 space-y-2 text-sm">
+
+                  <div className="flex justify-between">
+
+                    <span className="text-slate-500">
+                      Product
+                    </span>
+
+                    <span className="font-medium text-slate-800">
+                      {transferResult.data.productName}
+                    </span>
+
+                  </div>
+
+                  <div className="flex justify-between">
+
+                    <span className="text-slate-500">
+                      Quantity
+                    </span>
+
+                    <span className="font-semibold text-slate-800">
+                      {transferResult.data.quantityTransferred}
+                    </span>
+
+                  </div>
+
+                  <div className="flex justify-between">
+
+                    <span className="text-slate-500">
+                      Status
+                    </span>
+
+                    <span className="font-semibold text-emerald-600">
+                      Completed
+                    </span>
+
+                  </div>
+
+                </div>
+
+              </div>
+            )}
 
           </div>
 
