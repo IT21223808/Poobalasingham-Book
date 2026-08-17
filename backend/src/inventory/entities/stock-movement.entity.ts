@@ -6,7 +6,9 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+
 import { Product } from '../../products/entities/product.entity';
+import { Location } from './location.entity';
 
 export enum MovementType {
   IN = 'IN',
@@ -14,7 +16,6 @@ export enum MovementType {
   TRANSFER_IN = 'TRANSFER_IN',
   TRANSFER_OUT = 'TRANSFER_OUT',
 
-  // Day 8
   ADJUSTMENT_IN = 'ADJUSTMENT_IN',
   ADJUSTMENT_OUT = 'ADJUSTMENT_OUT',
   PHYSICAL_COUNT = 'PHYSICAL_COUNT',
@@ -33,6 +34,24 @@ export class StockMovement {
   })
   @JoinColumn({ name: 'product_id' })
   product!: Product;
+
+  // FROM LOCATION
+  @ManyToOne(() => Location, {
+    nullable: true,
+    eager: false,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'from_location_id' })
+  fromLocation!: Location | null;
+
+  // TO LOCATION
+  @ManyToOne(() => Location, {
+    nullable: true,
+    eager: false,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'to_location_id' })
+  toLocation!: Location | null;
 
   @Column({
     name: 'movement_type',

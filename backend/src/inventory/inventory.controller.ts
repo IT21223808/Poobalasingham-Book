@@ -181,19 +181,23 @@ async physicalStockCount(
   }
 
   @Post('stock-transfer')
-  @UseGuards(AuthGuard('jwt'))
-  async stockTransfer(
-    @Body() dto: StockTransferDto,
-    @Req() req: Request,
-  ) {
-    const userId =
-      (req.user as any)?.sub;
+@UseGuards(AuthGuard('jwt'))
+async stockTransfer(
+  @Body() dto: StockTransferDto,
+  @Req() req: Request,
+) {
+  const user = req.user as {
+    sub?: string | number;
+    id?: string | number;
+  };
 
-    return this.inventoryService.stockTransfer(
-      dto,
-      userId,
-    );
-  }
+  const userId = user?.sub ?? user?.id;
+
+  return this.inventoryService.stockTransfer(
+    dto,
+    userId ? String(userId) : undefined,
+  );
+}
 
   // DAMAGED / LOST ITEMS
 
