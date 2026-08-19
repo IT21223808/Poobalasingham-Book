@@ -18,5 +18,6 @@ import { InventoryStock } from './entities/inventory-stock.entity';
   ],
   controllers: [InventoryController],
   providers: [InventoryService],
+  exports: [InventoryService],
 })
 export class InventoryModule {}
