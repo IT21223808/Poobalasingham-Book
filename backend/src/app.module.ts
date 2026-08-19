@@ -11,6 +11,7 @@ import { ProductsModule } from './products/products.module';
 import { CategoriesModule } from './categories/categories.module';
 import { SubcategoriesModule } from './subcategories/subcategories.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { PurchasingModule } from './purchasing/purchasing.module';
 
 @Module({
   imports: [
@@ -34,14 +35,11 @@ import { InventoryModule } from './inventory/inventory.module';
         synchronize: true,
       }),
     }),
-
     ProductsModule,
-
     CategoriesModule,
-
     SubcategoriesModule,
-
     InventoryModule,
+    PurchasingModule,
   ],
 
   controllers: [AppController],
