@@ -1,9 +1,10 @@
 import {
-  ArrayMinSize,
   IsArray,
+  IsDateString,
   IsInt,
-  IsNotEmpty,
   IsNumber,
+  IsOptional,
+  IsPositive,
   Min,
   IsUUID,
   ValidateNested,
@@ -11,42 +12,76 @@ import {
 
 import { Type } from 'class-transformer';
 
-class PurchaseInvoiceItemDto {
-  @IsNotEmpty()
+export class CreatePurchaseInvoiceItemDto {
   @IsUUID()
-  productId!: string;
+  productId!: number | string;
 
-  @IsNotEmpty()
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @IsPositive()
   quantity!: number;
 
-  @IsNotEmpty()
   @IsNumber()
-  @Min(0.01)
+  @IsPositive()
   unitPrice!: number;
 }
 
 export class CreatePurchaseInvoiceDto {
-  @IsNotEmpty()
+  // =========================================================
+  // SUPPLIER
+  // =========================================================
+
   @IsInt()
+  @IsPositive()
+  supplierId!: number;
+
+  // =========================================================
+  // REFERENCES
+  // =========================================================
+
+  @IsInt()
+  @IsPositive()
   purchaseOrderId!: number;
 
-  @IsNotEmpty()
   @IsInt()
+  @IsPositive()
   grnId!: number;
 
+  // =========================================================
+  // DATES
+  // =========================================================
+
+  @IsOptional()
+  @IsDateString()
+  invoiceDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
+
+  // =========================================================
+  // DISCOUNT
+  // =========================================================
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
+  // =========================================================
+  // TAX
+  // =========================================================
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxAmount?: number;
+
+  // =========================================================
+  // ITEMS
+  // =========================================================
+
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => PurchaseInvoiceItemDto)
-  items!: PurchaseInvoiceItemDto[];
-
-  @IsNumber()
-  @Min(0)
-  taxAmount!: number;
-
-  @IsNumber()
-  @Min(0)
-  discountAmount!: number;
+  @Type(() => CreatePurchaseInvoiceItemDto)
+  items!: CreatePurchaseInvoiceItemDto[];
 }

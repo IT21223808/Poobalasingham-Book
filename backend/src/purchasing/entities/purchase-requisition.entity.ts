@@ -5,7 +5,7 @@ export enum PurchaseRequisitionStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
-  CONVERTED = 'CONVERTED',
+   CANCELLED = 'CANCELLED',
 }
 
 @Entity('purchase_requisitions')

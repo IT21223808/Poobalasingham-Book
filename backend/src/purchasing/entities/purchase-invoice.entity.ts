@@ -4,13 +4,15 @@ import {
   Entity,
   OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 
 import { PurchaseInvoiceItem } from './purchase-invoice-item.entity';
 
 export enum PurchaseInvoiceStatus {
   DRAFT = 'DRAFT',
-  POSTED = 'POSTED',
+  UNPAID = 'UNPAID',
+  PARTIALLY_PAID = 'PARTIALLY_PAID',
   PAID = 'PAID',
   CANCELLED = 'CANCELLED',
 }
@@ -20,21 +22,62 @@ export class PurchaseInvoice {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  // =========================================================
+  // INVOICE NUMBER
+  // =========================================================
+
   @Column({ unique: true })
   invoiceNumber!: string;
+
+  // =========================================================
+  // REFERENCES
+  // =========================================================
+
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
+  supplierId!: number | null;
 
   @Column()
   purchaseOrderId!: number;
 
-  @Column({ nullable: true })
-  grnId!: number;
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
+  grnId!: number | null;
+
+  // =========================================================
+  // DATES
+  // =========================================================
+
+  @Column({
+    type: 'date',
+    default: () => 'CURRENT_DATE',
+  })
+  invoiceDate!: string;
+
+  @Column({
+    type: 'date',
+    nullable: true,
+  })
+  dueDate!: string | null;
+
+  // =========================================================
+  // PAYMENT STATUS
+  // =========================================================
 
   @Column({
     type: 'enum',
     enum: PurchaseInvoiceStatus,
     default: PurchaseInvoiceStatus.DRAFT,
   })
-  status!: PurchaseInvoiceStatus;
+  paymentStatus!: PurchaseInvoiceStatus;
+
+  // =========================================================
+  // AMOUNTS
+  // =========================================================
 
   @Column({
     type: 'decimal',
@@ -50,7 +93,7 @@ export class PurchaseInvoice {
     scale: 2,
     default: 0,
   })
-  taxAmount!: number;
+  discount!: number;
 
   @Column({
     type: 'decimal',
@@ -58,7 +101,7 @@ export class PurchaseInvoice {
     scale: 2,
     default: 0,
   })
-  discountAmount!: number;
+  tax!: number;
 
   @Column({
     type: 'decimal',
@@ -66,15 +109,28 @@ export class PurchaseInvoice {
     scale: 2,
     default: 0,
   })
-  totalAmount!: number;
+  grandTotal!: number;
+
+  // =========================================================
+  // ITEMS
+  // =========================================================
 
   @OneToMany(
     () => PurchaseInvoiceItem,
     (item) => item.invoice,
-    { cascade: true },
+    {
+      cascade: true,
+    },
   )
   items!: PurchaseInvoiceItem[];
 
+  // =========================================================
+  // TIMESTAMPS
+  // =========================================================
+
   @CreateDateColumn()
   createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
 }

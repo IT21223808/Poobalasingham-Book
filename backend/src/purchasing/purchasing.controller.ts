@@ -1,120 +1,315 @@
-import {Body,Controller,Get,Param,ParseIntPipe,Post} from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+} from '@nestjs/common';
+
 import { PurchasingService } from './purchasing.service';
+
+import { PurchaseRequisitionService } from './services/purchase-requisition.service';
+import { PurchaseOrderService } from './services/purchase-order.service';
+import { GoodsReceiptService } from './services/goods-receipt.service';
+import { PurchaseInvoiceService } from './services/purchase-invoice.service';
+import { PurchaseReturnService } from './services/purchase-return.service';
+
 import { CreatePurchaseRequisitionDto } from './dto/create-purchase-requisition.dto';
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
-import { CreateGrnDto } from './dto/create-grn.dto';
-import { CreatePurchaseInvoiceDto } from './dto/create-purchase-invoice.dto';
-import { CreatePurchaseReturnDto } from './dto/create-purchase-return.dto';
+import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
 
+import { CreateGrnDto } from './dto/create-grn.dto';
+
+import { CreatePurchaseInvoiceDto } from './dto/create-purchase-invoice.dto';
+import { UpdatePurchaseInvoiceDto } from './dto/update-purchase-invoice.dto';
+import { CreatePurchasePaymentDto } from './dto/create-purchase-payment.dto';
+import { CreatePurchaseReturnDto } from './dto/create-purchase-return.dto';
+import { PurchasePaymentService } from './services/purchase-payment.service';
 
 @Controller('purchasing')
 export class PurchasingController {
   constructor(
     private readonly purchasingService: PurchasingService,
+
+    private readonly purchaseRequisitionService: PurchaseRequisitionService,
+
+    private readonly purchaseOrderService: PurchaseOrderService,
+
+    private readonly goodsReceiptService: GoodsReceiptService,
+
+    private readonly purchaseInvoiceService: PurchaseInvoiceService,
+
+    private readonly purchaseReturnService: PurchaseReturnService,
+  
+    private readonly purchasePaymentService: PurchasePaymentService,
+  
   ) {}
 
+  // =========================================================
   // PURCHASE REQUISITIONS
+  // =========================================================
 
   @Post('requisitions')
   createRequisition(
     @Body() dto: CreatePurchaseRequisitionDto,
   ) {
-    return this.purchasingService.create(dto);
+    return this.purchaseRequisitionService.create(
+      dto,
+    );
   }
 
   @Get('requisitions')
   findAllRequisitions() {
-    return this.purchasingService.findAll();
+    return this.purchaseRequisitionService.findAll();
   }
 
   @Get('requisitions/:id')
   findOneRequisition(
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.purchasingService.findOne(id);
+    return this.purchaseRequisitionService.findOne(
+      id,
+    );
   }
 
+  // =========================================================
   // PURCHASE ORDERS
+  // =========================================================
 
   @Post('orders')
   createPurchaseOrder(
     @Body() dto: CreatePurchaseOrderDto,
   ) {
-    return this.purchasingService.createPurchaseOrder(dto);
+    return this.purchaseOrderService.createPurchaseOrder(
+      dto,
+    );
   }
 
   @Get('orders')
   findAllPurchaseOrders() {
-    return this.purchasingService.findAllPurchaseOrders();
+    return this.purchaseOrderService.findAllPurchaseOrders();
   }
 
   @Get('orders/:id')
   findPurchaseOrder(
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.purchasingService.findPurchaseOrder(id);
+    return this.purchaseOrderService.findPurchaseOrder(
+      id,
+    );
   }
 
+  @Put('orders/:id')
+  updatePurchaseOrder(
+    @Param('id', ParseIntPipe) id: number,
+
+    @Body() dto: UpdatePurchaseOrderDto,
+  ) {
+    return this.purchaseOrderService.updatePurchaseOrder(
+      id,
+      dto,
+    );
+  }
+
+  @Patch('orders/:id/approve')
+  approvePurchaseOrder(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.purchaseOrderService.approvePurchaseOrder(
+      id,
+    );
+  }
+
+  @Patch('orders/:id/cancel')
+  cancelPurchaseOrder(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.purchaseOrderService.cancelPurchaseOrder(
+      id,
+    );
+  }
+
+  @Delete('orders/:id')
+  deletePurchaseOrder(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.purchaseOrderService.deletePurchaseOrder(
+      id,
+    );
+  }
+
+  // =========================================================
+  // GRN
+  // =========================================================
+
   @Post('grn')
-createGrn(
-  @Body() dto: CreateGrnDto,
+  createGrn(
+    @Body() dto: CreateGrnDto,
+  ) {
+    return this.goodsReceiptService.createGrn(
+      dto,
+    );
+  }
+
+  @Get('grn')
+  findAllGrns() {
+    return this.goodsReceiptService.findAllGrns();
+  }
+
+  @Get('grn/:id')
+  findGrn(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goodsReceiptService.findGrn(id);
+  }
+
+  @Put('grn/:id')
+  updateGrn(
+    @Param('id', ParseIntPipe) id: number,
+
+    @Body() dto: CreateGrnDto,
+  ) {
+    return this.goodsReceiptService.updateGrn(
+      id,
+      dto,
+    );
+  }
+
+  @Delete('grn/:id')
+  deleteGrn(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goodsReceiptService.deleteGrn(id);
+  }
+
+  // =========================================================
+  // PURCHASE INVOICES
+  // =========================================================
+
+  // CREATE
+  @Post('invoices')
+  createPurchaseInvoice(
+    @Body() dto: CreatePurchaseInvoiceDto,
+  ) {
+    return this.purchaseInvoiceService.createPurchaseInvoice(
+      dto,
+    );
+  }
+
+  // LIST
+  @Get('invoices')
+  findAllPurchaseInvoices() {
+    return this.purchaseInvoiceService.findAllPurchaseInvoices();
+  }
+
+  // VIEW
+  @Get('invoices/:id')
+  findPurchaseInvoice(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.purchaseInvoiceService.findPurchaseInvoice(
+      id,
+    );
+  }
+
+  // UPDATE
+  @Put('invoices/:id')
+  updatePurchaseInvoice(
+    @Param('id', ParseIntPipe) id: number,
+
+    @Body() dto: UpdatePurchaseInvoiceDto,
+  ) {
+    return this.purchaseInvoiceService.updatePurchaseInvoice(
+      id,
+      dto,
+    );
+  }
+
+  // CANCEL
+  @Patch('invoices/:id/cancel')
+  cancelPurchaseInvoice(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.purchaseInvoiceService.cancelPurchaseInvoice(
+      id,
+    );
+  }
+
+  // =========================================================
+  // PURCHASE RETURNS
+  // =========================================================
+
+  @Post('returns')
+  createPurchaseReturn(
+    @Body() dto: CreatePurchaseReturnDto,
+  ) {
+    return this.purchaseReturnService.createPurchaseReturn(
+      dto,
+    );
+  }
+
+  @Get('returns')
+  findAllPurchaseReturns() {
+    return this.purchaseReturnService.findAllPurchaseReturns();
+  }
+
+  @Get('returns/:id')
+  findPurchaseReturn(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.purchaseReturnService.findPurchaseReturn(
+      id,
+    );
+  }
+
+  // =========================================================
+  // PURCHASING DASHBOARD
+  // =========================================================
+
+  @Get('dashboard')
+  getDashboard() {
+    return this.purchasingService.getDashboard();
+  }
+
+// =========================================================
+// PURCHASE PAYMENTS
+// =========================================================
+
+// CREATE PAYMENT
+@Post('invoices/:invoiceId/payments')
+createPurchasePayment(
+  @Param('invoiceId', ParseIntPipe) invoiceId: number,
+  @Body() dto: CreatePurchasePaymentDto,
 ) {
-  return this.purchasingService.createGrn(dto);
+  return this.purchasePaymentService.createPayment(
+    invoiceId,
+    dto,
+  );
 }
 
-@Get('grn')
-findAllGrns() {
-  return this.purchasingService.findAllGrns();
-}
-
-@Get('grn/:id')
-findGrn(
-  @Param('id', ParseIntPipe) id: number,
+// PAYMENT HISTORY
+@Get('invoices/:invoiceId/payments')
+findPurchaseInvoicePayments(
+  @Param('invoiceId', ParseIntPipe) invoiceId: number,
 ) {
-  return this.purchasingService.findGrn(id);
+  return this.purchasePaymentService.findPaymentsByInvoice(
+    invoiceId,
+  );
 }
 
-@Post('invoices')
-createPurchaseInvoice(
-  @Body() dto: CreatePurchaseInvoiceDto,
+// DELETE PAYMENT
+@Delete('invoices/:invoiceId/payments/:paymentId')
+deletePurchasePayment(
+  @Param('invoiceId', ParseIntPipe) invoiceId: number,
+  @Param('paymentId', ParseIntPipe) paymentId: number,
 ) {
-  return this.purchasingService
-    .createPurchaseInvoice(dto);
-}
-
-@Get('invoices')
-findAllPurchaseInvoices() {
-  return this.purchasingService
-    .findAllPurchaseInvoices();
-}
-
-@Get('invoices/:id')
-findPurchaseInvoice(
-  @Param('id', ParseIntPipe) id: number,
-) {
-  return this.purchasingService
-    .findPurchaseInvoice(id);
-}
-
-@Post('returns')
-createPurchaseReturn(
-  @Body() dto: CreatePurchaseReturnDto,
-) {
-  return this.purchasingService
-    .createPurchaseReturn(dto);
-}
-
-@Get('returns')
-findAllPurchaseReturns() {
-  return this.purchasingService
-    .findAllPurchaseReturns();
-}
-
-@Get('returns/:id')
-findPurchaseReturn(
-  @Param('id', ParseIntPipe) id: number,
-) {
-  return this.purchasingService
-    .findPurchaseReturn(id);
+  return this.purchasePaymentService.deletePayment(
+    invoiceId,
+    paymentId,
+  );
 }
 }

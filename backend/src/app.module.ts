@@ -12,6 +12,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { SubcategoriesModule } from './subcategories/subcategories.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PurchasingModule } from './purchasing/purchasing.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PurchasingModule } from './purchasing/purchasing.module';
     SubcategoriesModule,
     InventoryModule,
     PurchasingModule,
+    SuppliersModule,
   ],
 
   controllers: [AppController],
