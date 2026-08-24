@@ -47,10 +47,10 @@ const menuItems = [
     icon: Boxes,
   },
   {
-  title: "Locations",
-  href: "/dashboard/inventory/locations",
-  icon: MapPin,
-},
+    title: "Locations",
+    href: "/dashboard/inventory/locations",
+    icon: MapPin,
+  },
   {
     title: "Purchasing",
     href: "/dashboard/purchasing",
@@ -90,19 +90,55 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
 
+  /* =========================
+     LOGOUT
+  ========================= */
+
   const handleLogout = () => {
+    // Remove authentication tokens
     localStorage.removeItem("token");
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("access_token");
+
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("access_token");
+
+    // Clear remaining session data
     sessionStorage.clear();
 
+    // Redirect to login
     router.push("/login");
+  };
+
+  /* =========================
+     ACTIVE MENU
+  ========================= */
+
+  const isActive = (href: string) => {
+    // Dashboard should only be active on exact dashboard page
+    if (href === "/dashboard") {
+      return pathname === "/dashboard";
+    }
+
+    // Inventory main menu should only be active on inventory dashboard
+    if (href === "/dashboard/inventory") {
+      return pathname === "/dashboard/inventory";
+    }
+
+    // Other menu items remain active for their child routes
+    return (
+      pathname === href ||
+      pathname.startsWith(`${href}/`)
+    );
   };
 
   return (
     <aside
-      className={`flex h-screen shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-300 ${collapsed ? "w-20" : "w-72"
-        }`}
+      className={`flex h-screen shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-300 ${
+        collapsed ? "w-20" : "w-72"
+      }`}
     >
-
       {/* ================= LOGO ================= */}
 
       <button
@@ -113,10 +149,7 @@ export default function Sidebar({
             ? "Expand sidebar"
             : "Collapse sidebar"
         }
-        className={`border-b border-gray-200 px-4 py-5 transition hover:bg-slate-50 ${collapsed
-            ? "flex w-full justify-center"
-            : "flex w-full justify-center"
-          }`}
+        className="flex w-full justify-center border-b border-gray-200 px-4 py-5 transition hover:bg-slate-50"
       >
         {collapsed ? (
           <Image
@@ -142,7 +175,6 @@ export default function Sidebar({
       {/* ================= MENU ================= */}
 
       <nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-6">
-
         {!collapsed && (
           <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
             Main Menu
@@ -150,18 +182,10 @@ export default function Sidebar({
         )}
 
         <div className="space-y-1">
-
           {menuItems.map((item) => {
             const Icon = item.icon;
+            const active = isActive(item.href);
 
-           const active =
-  item.href === "/dashboard"
-    ? pathname === "/dashboard"
-    : item.href === "/dashboard/inventory"
-      ? pathname === "/dashboard/inventory"
-      : pathname === item.href ||
-        pathname.startsWith(item.href + "/");
-        
             return (
               <Link
                 key={item.title}
@@ -171,14 +195,17 @@ export default function Sidebar({
                     ? item.title
                     : undefined
                 }
-                className={`group relative flex items-center rounded-lg py-3 transition-all duration-200 ${collapsed
+                className={`group relative flex items-center rounded-lg py-3 transition-all duration-200 ${
+                  collapsed
                     ? "justify-center px-2"
                     : "gap-3 px-4"
-                  } ${active
+                } ${
+                  active
                     ? "bg-blue-50 font-semibold text-blue-700"
                     : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
-                  }`}
+                }`}
               >
+                {/* Active indicator */}
 
                 {active && (
                   <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full bg-blue-700" />
@@ -186,20 +213,19 @@ export default function Sidebar({
 
                 <Icon
                   size={20}
-                  className={`shrink-0 ${active
+                  className={`shrink-0 ${
+                    active
                       ? "text-blue-700"
                       : "text-gray-500 group-hover:text-gray-700"
-                    }`}
+                  }`}
                 />
 
                 {!collapsed && (
                   <span>{item.title}</span>
                 )}
-
               </Link>
             );
           })}
-
         </div>
 
         {/* ================= GENERAL ================= */}
@@ -211,8 +237,7 @@ export default function Sidebar({
         )}
 
         <div className="mt-2 space-y-1">
-
-          {/* Settings */}
+          {/* ================= SETTINGS ================= */}
 
           <Link
             href="/dashboard/settings"
@@ -221,13 +246,15 @@ export default function Sidebar({
                 ? "Settings"
                 : undefined
             }
-            className={`group flex items-center rounded-lg py-3 transition ${collapsed
+            className={`group flex items-center rounded-lg py-3 transition ${
+              collapsed
                 ? "justify-center px-2"
                 : "gap-3 px-4"
-              } ${pathname === "/dashboard/settings"
+            } ${
+              pathname === "/dashboard/settings"
                 ? "bg-blue-50 font-semibold text-blue-600"
                 : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
-              }`}
+            }`}
           >
             <Settings
               size={20}
@@ -243,19 +270,21 @@ export default function Sidebar({
             )}
           </Link>
 
-          {/* Logout */}
+          {/* ================= LOGOUT ================= */}
 
           <button
+            type="button"
             onClick={handleLogout}
             title={
               collapsed
                 ? "Logout"
                 : undefined
             }
-            className={`group flex w-full items-center rounded-lg py-3 text-gray-700 transition hover:bg-red-50 hover:text-red-600 ${collapsed
+            className={`group flex w-full items-center rounded-lg py-3 text-gray-700 transition hover:bg-red-50 hover:text-red-600 ${
+              collapsed
                 ? "justify-center px-2"
                 : "gap-3 px-4"
-              }`}
+            }`}
           >
             <LogOut
               size={20}
@@ -266,22 +295,19 @@ export default function Sidebar({
               <span>Logout</span>
             )}
           </button>
-
         </div>
-
       </nav>
 
       {/* ================= USER ================= */}
 
       <div className="border-t border-gray-200 p-4">
-
         <div
-          className={`flex items-center rounded-xl bg-gray-50 p-3 ${collapsed
+          className={`flex items-center rounded-xl bg-gray-50 p-3 ${
+            collapsed
               ? "justify-center"
               : "gap-3"
-            }`}
+          }`}
         >
-
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
             A
           </div>
@@ -297,11 +323,8 @@ export default function Sidebar({
               </p>
             </div>
           )}
-
         </div>
-
       </div>
-
     </aside>
   );
 }
