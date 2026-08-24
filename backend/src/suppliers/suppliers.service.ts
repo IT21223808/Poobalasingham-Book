@@ -3,14 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
 import { Supplier } from './entities/supplier.entity';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { PurchaseOrder } from '../purchasing/entities/purchase-order.entity';
 import { GoodsReceivedNote } from '../purchasing/entities/grn.entity';
+import { PurchaseInvoice } from '../purchasing/entities/purchase-invoice.entity';
+import { PurchaseReturn } from '../purchasing/entities/purchase-return.entity';
 
 
 @Injectable()
@@ -18,18 +20,21 @@ export class SuppliersService {
   constructor(
     @InjectRepository(Supplier)
     private readonly supplierRepository: Repository<Supplier>,
-
+    
     @InjectRepository(PurchaseOrder)
     private readonly purchaseOrderRepository: Repository<PurchaseOrder>,
+    
+    @InjectRepository(GoodsReceivedNote)
+    private readonly grnRepository: Repository<GoodsReceivedNote>,
+    
+    @InjectRepository(PurchaseInvoice)
+    private readonly purchaseInvoiceRepository: Repository<PurchaseInvoice>,
 
-  @InjectRepository(GoodsReceivedNote)
-  private readonly grnRepository:Repository<GoodsReceivedNote>,
-
+    @InjectRepository(PurchaseReturn)
+    private readonly purchaseReturnRepository: Repository<PurchaseReturn>,
   ) {}
 
-  // =========================================================
   // CREATE
-  // =========================================================
 
   async create(
     dto: CreateSupplierDto,
@@ -80,7 +85,9 @@ export class SuppliersService {
   ): Promise<Supplier> {
     const supplier =
       await this.supplierRepository.findOne({
-        where: { id },
+        where: {
+          id,
+        },
       });
 
     if (!supplier) {
@@ -126,7 +133,10 @@ export class SuppliersService {
       }
     }
 
-    Object.assign(supplier, dto);
+    Object.assign(
+      supplier,
+      dto,
+    );
 
     return this.supplierRepository.save(
       supplier,
@@ -171,89 +181,185 @@ export class SuppliersService {
   // PURCHASE HISTORY
   // =========================================================
 
- async getPurchaseHistory(id: number) {
-  const supplier = await this.supplierRepository.findOne({
-    where: { id },
-  });
+  async getPurchaseHistory(
+    id: number,
+  ) {
+    // =======================================================
+    // FIND SUPPLIER
+    // =======================================================
 
-  if (!supplier) {
-    throw new NotFoundException(
-      `Supplier with ID ${id} not found`,
-    );
-  }
+    const supplier =
+      await this.supplierRepository.findOne({
+        where: {
+          id,
+        },
+      });
 
-    // -------------------------------------------------------
-    // Purchase Orders
-    // -------------------------------------------------------
+    if (!supplier) {
+      throw new NotFoundException(
+        `Supplier with ID ${id} not found`,
+      );
+    }
+
+    // =======================================================
+    // PURCHASE ORDERS
+    // =======================================================
 
     const purchaseOrders =
-    await this.purchaseOrderRepository.find({
-      where: {
-        supplierId: id,
-      },
-      relations: {
-        items: {
-          product: true,
+      await this.purchaseOrderRepository.find({
+        where: {
+          supplierId: id,
         },
-      },
-      order: {
-        createdAt: 'DESC',
-      },
-    });
 
-  const purchaseOrderIds =
-    purchaseOrders.map((po) => po.id);
-
-  let grns: GoodsReceivedNote[] = [];
-
-  if (purchaseOrderIds.length > 0) {
-    grns = await this.grnRepository
-      .createQueryBuilder('grn')
-      .leftJoinAndSelect(
-        'grn.items',
-        'items',
-      )
-      .leftJoinAndSelect(
-        'items.product',
-        'product',
-      )
-      .where(
-        'grn.purchaseOrderId IN (:...ids)',
-        {
-          ids: purchaseOrderIds,
+        relations: {
+          items: {
+            product: true,
+          },
         },
-      )
-      .orderBy(
-        'grn.createdAt',
-        'DESC',
-      )
-      .getMany();
+
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+
+    // =======================================================
+    // PURCHASE ORDER IDS
+    // =======================================================
+
+    const purchaseOrderIds =
+      purchaseOrders.map(
+        (po) => po.id,
+      );
+
+    // =======================================================
+    // GRNs
+    // =======================================================
+
+    let grns: GoodsReceivedNote[] = [];
+
+    // =======================================================
+    // INVOICES
+    // =======================================================
+
+    let invoices: PurchaseInvoice[] = [];
+
+    // =======================================================
+    // RETURNS
+    // =======================================================
+
+    let returns: PurchaseReturn[] = [];
+
+    // =======================================================
+    // IF PURCHASE ORDERS EXIST
+    // =======================================================
+
+    if (
+      purchaseOrderIds.length > 0
+    ) {
+      // -----------------------------------------------------
+      // GRNs
+      // -----------------------------------------------------
+
+      grns =
+        await this.grnRepository
+          .createQueryBuilder('grn')
+
+          .leftJoinAndSelect(
+            'grn.items',
+            'items',
+          )
+
+          .leftJoinAndSelect(
+            'items.product',
+            'product',
+          )
+
+          .where(
+            'grn.purchaseOrderId IN (:...ids)',
+            {
+              ids: purchaseOrderIds,
+            },
+          )
+
+          .orderBy(
+            'grn.createdAt',
+            'DESC',
+          )
+
+          .getMany();
+
+      // -----------------------------------------------------
+      // PURCHASE INVOICES
+      // -----------------------------------------------------
+
+      invoices =
+        await this.purchaseInvoiceRepository.find({
+          where: {
+            purchaseOrderId:
+              In(purchaseOrderIds),
+          },
+
+          relations: {
+            items: {
+              product: true,
+            },
+          },
+
+          order: {
+            createdAt: 'DESC',
+          },
+        });
+
+      // -----------------------------------------------------
+      // PURCHASE RETURNS
+      // -----------------------------------------------------
+
+      returns =
+        await this.purchaseReturnRepository.find({
+          where: {
+            purchaseOrderId:
+              In(purchaseOrderIds),
+          },
+
+          relations: {
+            items: {
+              product: true,
+            },
+          },
+
+          order: {
+            createdAt: 'DESC',
+          },
+        });
+    }
+
+    // =======================================================
+    // RESPONSE
+    // =======================================================
+
+    return {
+      success: true,
+
+      supplier: {
+        id:
+          supplier.id,
+
+        supplierCode:
+          supplier.supplierCode,
+
+        supplierName:
+          supplier.supplierName,
+      },
+      summary: {
+        totalPurchaseOrders:purchaseOrders.length,
+        totalGRNs:grns.length,
+        totalInvoices:invoices.length,
+        totalReturns: returns.length,
+      },
+      purchaseOrders,
+      grns,
+      invoices,
+      returns,
+    };
   }
-
-  return {
-    success: true,
-
-    supplier: {
-      id: supplier.id,
-      supplierCode:
-        supplier.supplierCode,
-      supplierName:
-        supplier.supplierName,
-    },
-
-    summary: {
-      totalPurchaseOrders:
-        purchaseOrders.length,
-
-      totalGRNs:
-        grns.length,
-
-      totalInvoices: 0,
-
-      totalReturns: 0,
-    },
-    purchaseOrders,
-    grns,
-  };
-}
 }
