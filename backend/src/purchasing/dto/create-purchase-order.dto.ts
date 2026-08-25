@@ -5,12 +5,15 @@ import {
   IsNumber,
   IsUUID,
   Min,
+  IsString,
+  IsOptional,
   ValidateNested,
 } from 'class-validator';
 
 import { Type } from 'class-transformer';
 
 export class CreatePurchaseOrderItemDto {
+
   @IsUUID()
   productId!: string;
 
@@ -24,33 +27,33 @@ export class CreatePurchaseOrderItemDto {
 }
 
 export class CreatePurchaseOrderDto {
-  // Purchase Requisition
+
   @IsInt()
   @Min(1)
   requisitionId!: number;
 
-@IsInt()
+  @IsInt()
+  @Min(1)
   supplierId!: number;
-  
-  // PO Date
+
   @IsDateString()
   poDate!: string;
 
-  // Expected Delivery Date
   @IsDateString()
   expectedDeliveryDate!: string;
 
-  // Discount
   @IsNumber()
   @Min(0)
   discountAmount!: number;
 
-  // Tax
   @IsNumber()
   @Min(0)
   taxAmount!: number;
 
-  // PO Items
+  @IsOptional()
+@IsString()
+notes?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreatePurchaseOrderItemDto)

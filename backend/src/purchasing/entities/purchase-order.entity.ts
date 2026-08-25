@@ -2,17 +2,25 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
 import { PurchaseOrderItem } from './purchase-order-item.entity';
 
+import { Supplier } from '../../suppliers/entities/supplier.entity';
+
 export enum PurchaseOrderStatus {
   DRAFT = 'DRAFT',
+
   PENDING = 'PENDING',
+
   APPROVED = 'APPROVED',
+
   RECEIVED = 'RECEIVED',
+
   CANCELLED = 'CANCELLED',
 }
 
@@ -21,29 +29,61 @@ export class PurchaseOrder {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  // PO Number
+  // =========================================================
+  // PO NUMBER
+  // =========================================================
+
   @Column({ unique: true })
   poNumber!: string;
 
-  // Purchase Requisition Reference
+  // =========================================================
+  // PURCHASE REQUISITION REFERENCE
+  // =========================================================
+
   @Column()
   requisitionId!: number;
 
-  @Column({ type: 'integer', nullable: true })
-supplierId!: number | null;
+  // =========================================================
+  // SUPPLIER
+  // =========================================================
 
-  // PO Date
   @Column({
-  type: 'date',
-  default: () => 'CURRENT_DATE',
-})
-poDate!: Date;
+    type: 'int',
+  })
+  supplierId!: number;
 
-  // Expected Delivery Date
-  @Column({ type: 'date', nullable: true })
+  @ManyToOne(
+    () => Supplier,
+    {
+      nullable: false,
+      onDelete: 'RESTRICT',
+    },
+  )
+  @JoinColumn({
+    name: 'supplierId',
+  })
+  supplier!: Supplier;
+
+  // =========================================================
+  // PO DATE
+  // =========================================================
+
+  @Column({
+    type: 'date',
+    default: () => 'CURRENT_DATE',
+  })
+  poDate!: Date;
+
+  @Column({
+    type: 'date',
+    nullable: true,
+  })
   expectedDeliveryDate!: Date | null;
 
-  // Discount Amount
+  // =========================================================
+  // DISCOUNT
+  // =========================================================
+
   @Column({
     type: 'decimal',
     precision: 12,
@@ -52,7 +92,6 @@ poDate!: Date;
   })
   discountAmount!: number;
 
-  // Tax Amount
   @Column({
     type: 'decimal',
     precision: 12,
@@ -61,7 +100,6 @@ poDate!: Date;
   })
   taxAmount!: number;
 
-  // Final Total Amount
   @Column({
     type: 'decimal',
     precision: 12,
@@ -70,7 +108,6 @@ poDate!: Date;
   })
   totalAmount!: number;
 
-  // Status
   @Column({
     type: 'enum',
     enum: PurchaseOrderStatus,
@@ -78,7 +115,12 @@ poDate!: Date;
   })
   status!: PurchaseOrderStatus;
 
-  // Purchase Order Items
+  @Column({
+  type: 'text',
+  nullable: true,
+})
+notes!: string | null;
+
   @OneToMany(
     () => PurchaseOrderItem,
     (item) => item.purchaseOrder,
@@ -88,7 +130,6 @@ poDate!: Date;
   )
   items!: PurchaseOrderItem[];
 
-  // Created Date
   @CreateDateColumn()
   createdAt!: Date;
 }

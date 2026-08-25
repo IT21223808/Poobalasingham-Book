@@ -21,17 +21,13 @@ import { PurchaseOrderItem } from './entities/purchase-order-item.entity';
 
 import { GoodsReceivedNote } from './entities/grn.entity';
 import { GrnItem } from './entities/grn-item.entity';
-
 import { PurchaseInvoice } from './entities/purchase-invoice.entity';
 import { PurchaseInvoiceItem } from './entities/purchase-invoice-item.entity';
-
 import { PurchaseReturn } from './entities/purchase-return.entity';
 import { PurchaseReturnItem } from './entities/purchase-return-item.entity';
-
 import { PurchasePayment } from './entities/purchase-payment.entity';
-
 import { Product } from '../products/entities/product.entity';
-
+import { Supplier } from '../suppliers/entities/supplier.entity';
 import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
@@ -41,27 +37,22 @@ import { InventoryModule } from '../inventory/inventory.module';
       PurchaseRequisition,
       PurchaseRequisitionItem,
 
-      // Purchase Order
       PurchaseOrder,
       PurchaseOrderItem,
 
-      // GRN
       GoodsReceivedNote,
       GrnItem,
 
-      // Purchase Invoice
       PurchaseInvoice,
       PurchaseInvoiceItem,
 
-      // Purchase Return
       PurchaseReturn,
       PurchaseReturnItem,
 
-      // Purchase Payment
       PurchasePayment,
 
-      // Product
       Product,
+      Supplier,
     ]),
 
     InventoryModule,
