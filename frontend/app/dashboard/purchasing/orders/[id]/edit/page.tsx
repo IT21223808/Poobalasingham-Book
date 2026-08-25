@@ -233,6 +233,9 @@ export default function EditPurchaseOrderPage({
   const [tax, setTax] =
     useState(0);
 
+    const [notes, setNotes] =
+  useState("");
+
   const [items, setItems] =
     useState<OrderItem[]>([]);
 
@@ -397,8 +400,11 @@ export default function EditPurchaseOrderPage({
         toNumber(
           loadedOrder.taxAmount
         )
+ 
       );
-
+       setNotes(
+  loadedOrder.notes || ""
+);
       /* ---------------------------------------------------
          ITEMS
       --------------------------------------------------- */
@@ -863,6 +869,9 @@ export default function EditPurchaseOrderPage({
           taxAmount
         ),
 
+  notes:
+    notes.trim() || null,
+
       items: items.map(
         (item) => ({
           productId:
@@ -900,7 +909,7 @@ export default function EditPurchaseOrderPage({
         await fetch(
           `${ORDERS_API}/${orderId}`,
           {
-            method: "PATCH",
+            method: "PUT",
 
             headers: {
               "Content-Type":
@@ -1846,27 +1855,29 @@ export default function EditPurchaseOrderPage({
             {/* ADDITIONAL INFORMATION */}
 
             <div className="rounded-xl border border-gray-200 bg-white p-6 lg:col-span-2">
+  <h2 className="font-semibold text-gray-900">
+    Additional Information
+  </h2>
 
-              <h2 className="font-semibold text-gray-900">
-                Additional Information
-              </h2>
+  <p className="mt-1 text-sm text-gray-500">
+    Add or update notes for this purchase order.
+  </p>
 
-              <p className="mt-1 text-sm text-gray-500">
-                Notes are currently kept for UI reference only.
-              </p>
+  <textarea
+    rows={7}
+    value={notes}
+    onChange={(event) =>
+      setNotes(event.target.value)
+    }
+    disabled={!canEdit}
+    placeholder="Enter notes..."
+    className="mt-5 w-full resize-none rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
+  />
 
-              <textarea
-                rows={7}
-                placeholder="Enter notes..."
-                disabled
-                className="mt-5 w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-400 outline-none"
-              />
-
-              <p className="mt-2 text-xs text-gray-400">
-                Notes are not sent because the current backend DTO does not support a notes field.
-              </p>
-
-            </div>
+  <p className="mt-2 text-xs text-gray-400">
+    Notes will be saved with this purchase order.
+  </p>
+</div>
 
             {/* SUMMARY */}
 

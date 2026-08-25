@@ -442,13 +442,23 @@ export default function EditPurchaseRequisitionPage() {
         .catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message ||
-                "Failed to update requisition"
-        );
-      }
+  let errorMessage = "Failed to update requisition";
+
+  if (Array.isArray(data?.message)) {
+    errorMessage = data.message.join(", ");
+  } else if (typeof data?.message === "string") {
+    errorMessage = data.message;
+  } else if (
+    data?.message &&
+    typeof data.message === "object"
+  ) {
+    errorMessage =
+      data.message.message ||
+      JSON.stringify(data.message);
+  }
+
+  throw new Error(errorMessage);
+}
 
       window.location.href =
         `/dashboard/purchasing/requisitions/${id}`;

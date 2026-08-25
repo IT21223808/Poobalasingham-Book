@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  StickyNote,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -46,13 +47,31 @@ interface PurchaseOrder {
   id: number;
   poNumber: string;
   requisitionId?: number | null;
+
   supplierId?: number | string | null;
+
   supplier?: Supplier | null;
-  status: string;
+
+  poDate?: string | null;
+
+  expectedDeliveryDate?: string | null;
+
+  discountAmount?: string | number;
+
+  taxAmount?: string | number;
+
   totalAmount: string | number;
+
+  notes?: string | null;
+
+  status: string;
+
   items: PurchaseOrderItem[];
+
   createdAt: string;
+
   updatedAt?: string;
+
   orderDate?: string;
 }
 
@@ -60,7 +79,8 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000/api";
 
-const ORDERS_API = `${API_URL}/purchasing/orders`;
+const ORDERS_API =
+  `${API_URL}/purchasing/orders`;
 
 export default function PurchaseOrderDetailsPage() {
   const params = useParams();
@@ -76,11 +96,13 @@ export default function PurchaseOrderDetailsPage() {
   const [error, setError] =
     useState<string | null>(null);
 
-  /* =========================================================
-     LOAD PURCHASE ORDER
-  ========================================================= */
+  // =========================================================
+  // LOAD PURCHASE ORDER
+  // =========================================================
 
   const loadOrder = useCallback(async () => {
+    if (!id) return;
+
     try {
       setLoading(true);
       setError(null);
@@ -94,21 +116,27 @@ export default function PurchaseOrderDetailsPage() {
         `${ORDERS_API}/${id}`,
         {
           method: "GET",
+
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
+
             ...(token
               ? {
-                  Authorization: `Bearer ${token}`,
+                  Authorization:
+                    `Bearer ${token}`,
                 }
               : {}),
           },
+
           cache: "no-store",
         }
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      const data =
+        await response
+          .json()
+          .catch(() => null);
 
       if (!response.ok) {
         throw new Error(
@@ -145,9 +173,9 @@ export default function PurchaseOrderDetailsPage() {
     }
   }, [id, loadOrder]);
 
-  /* =========================================================
-     LOADING
-  ========================================================= */
+  // =========================================================
+  // LOADING
+  // =========================================================
 
   if (loading) {
     return (
@@ -165,9 +193,9 @@ export default function PurchaseOrderDetailsPage() {
     );
   }
 
-  /* =========================================================
-     ERROR
-  ========================================================= */
+  // =========================================================
+  // ERROR
+  // =========================================================
 
   if (error || !order) {
     return (
@@ -202,9 +230,9 @@ export default function PurchaseOrderDetailsPage() {
     );
   }
 
-  /* =========================================================
-     ORDER CALCULATIONS
-  ========================================================= */
+  // =========================================================
+  // CALCULATIONS
+  // =========================================================
 
   const normalizedStatus =
     order.status?.toUpperCase();
@@ -217,13 +245,34 @@ export default function PurchaseOrderDetailsPage() {
   const totalQuantity =
     order.items?.reduce(
       (total, item) =>
-        total + Number(item.quantity || 0),
+        total +
+        Number(item.quantity || 0),
       0
     ) || 0;
 
-  /* =========================================================
-     RENDER
-  ========================================================= */
+  const subtotal =
+    order.items?.reduce(
+      (total, item) =>
+        total +
+        Number(item.subtotal || 0),
+      0
+    ) || 0;
+
+  const discountAmount =
+    Number(
+      order.discountAmount || 0
+    );
+
+  const taxAmount =
+    Number(order.taxAmount || 0);
+
+  const totalAmount =
+    Number(order.totalAmount || 0);
+
+  const poDate =
+    order.poDate ||
+    order.orderDate ||
+    order.createdAt;
 
   return (
     <div className="min-h-full bg-gray-50 p-6">
@@ -238,6 +287,7 @@ export default function PurchaseOrderDetailsPage() {
           {/* BREADCRUMB */}
 
           <div className="flex items-center gap-2 text-sm">
+
             <Link
               href="/dashboard/purchasing"
               className="text-gray-500 hover:text-blue-600"
@@ -263,13 +313,12 @@ export default function PurchaseOrderDetailsPage() {
             <span className="font-medium text-gray-900">
               {order.poNumber}
             </span>
+
           </div>
 
           {/* TITLE + ACTIONS */}
 
           <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-            {/* TITLE */}
 
             <div className="flex items-center gap-3">
 
@@ -292,7 +341,7 @@ export default function PurchaseOrderDetailsPage() {
 
             </div>
 
-            {/* TOP RIGHT ACTIONS */}
+            {/* ACTIONS */}
 
             <div className="flex flex-wrap gap-3">
 
@@ -318,6 +367,7 @@ export default function PurchaseOrderDetailsPage() {
             </div>
 
           </div>
+
         </div>
 
         {/* =====================================================
@@ -343,10 +393,7 @@ export default function PurchaseOrderDetailsPage() {
 
           <InfoCard
             title="Order Date"
-            value={formatDate(
-              order.orderDate ||
-                order.createdAt
-            )}
+            value={formatDate(poDate)}
             icon={CalendarDays}
           />
 
@@ -355,6 +402,7 @@ export default function PurchaseOrderDetailsPage() {
             <div className="flex items-start justify-between">
 
               <div>
+
                 <p className="text-sm text-gray-500">
                   Status
                 </p>
@@ -364,6 +412,7 @@ export default function PurchaseOrderDetailsPage() {
                     status={normalizedStatus}
                   />
                 </div>
+
               </div>
 
               <div className="rounded-lg bg-green-50 p-2.5">
@@ -440,6 +489,7 @@ export default function PurchaseOrderDetailsPage() {
               />
 
             </div>
+
           </div>
 
           {/* ===================================================
@@ -478,10 +528,18 @@ export default function PurchaseOrderDetailsPage() {
               />
 
               <DetailRow
-                label="Order Date"
+                label="PO Date"
                 value={formatDate(
-                  order.orderDate ||
+                  order.poDate ||
+                    order.orderDate ||
                     order.createdAt
+                )}
+              />
+
+              <DetailRow
+                label="Expected Delivery"
+                value={formatDate(
+                  order.expectedDeliveryDate
                 )}
               />
 
@@ -502,6 +560,7 @@ export default function PurchaseOrderDetailsPage() {
               )}
 
             </div>
+
           </div>
 
           {/* ===================================================
@@ -516,7 +575,7 @@ export default function PurchaseOrderDetailsPage() {
               </h2>
             </div>
 
-            <div className="space-y-5 p-6">
+            <div className="space-y-4 p-6">
 
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-500">
@@ -538,7 +597,44 @@ export default function PurchaseOrderDetailsPage() {
                 </span>
               </div>
 
-              <div className="border-t border-gray-100 pt-5">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  Subtotal
+                </span>
+
+                <span className="font-medium text-gray-900">
+                  Rs.{" "}
+                  {formatAmount(subtotal)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  Discount
+                </span>
+
+                <span className="font-medium text-gray-900">
+                  Rs.{" "}
+                  {formatAmount(
+                    discountAmount
+                  )}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  Tax
+                </span>
+
+                <span className="font-medium text-gray-900">
+                  Rs.{" "}
+                  {formatAmount(
+                    taxAmount
+                  )}
+                </span>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
 
                 <div className="flex items-center justify-between">
 
@@ -548,14 +644,8 @@ export default function PurchaseOrderDetailsPage() {
 
                   <span className="text-xl font-bold text-gray-900">
                     Rs.{" "}
-                    {Number(
-                      order.totalAmount || 0
-                    ).toLocaleString(
-                      "en-LK",
-                      {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      }
+                    {formatAmount(
+                      totalAmount
                     )}
                   </span>
 
@@ -564,6 +654,63 @@ export default function PurchaseOrderDetailsPage() {
               </div>
 
             </div>
+
+          </div>
+
+        </div>
+
+        {/* =====================================================
+            ADDITIONAL INFORMATION
+        ===================================================== */}
+
+        <div className="rounded-xl border border-gray-200 bg-white">
+
+          <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4">
+
+            <div className="rounded-lg bg-amber-50 p-2">
+              <StickyNote
+                size={19}
+                className="text-amber-600"
+              />
+            </div>
+
+            <div>
+              <h2 className="font-semibold text-gray-900">
+                Additional Information
+              </h2>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Notes and additional information for this purchase order.
+              </p>
+            </div>
+
+          </div>
+
+          <div className="p-6">
+
+            {order.notes?.trim() ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+
+                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-700">
+                  {order.notes}
+                </p>
+
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+
+                <StickyNote
+                  size={28}
+                  className="mx-auto text-gray-300"
+                />
+
+                <p className="mt-2 text-sm text-gray-500">
+                  No additional information provided.
+                </p>
+
+              </div>
+            )}
+
           </div>
 
         </div>
@@ -647,13 +794,9 @@ export default function PurchaseOrderDetailsPage() {
                         className="hover:bg-gray-50"
                       >
 
-                        {/* NUMBER */}
-
                         <td className="px-6 py-4 text-gray-500">
                           {index + 1}
                         </td>
-
-                        {/* PRODUCT */}
 
                         <td className="px-6 py-4">
 
@@ -677,15 +820,11 @@ export default function PurchaseOrderDetailsPage() {
 
                         </td>
 
-                        {/* PRODUCT CODE */}
-
                         <td className="px-6 py-4 text-gray-500">
                           {item.product
                             ?.productCode ||
                             "—"}
                         </td>
-
-                        {/* QUANTITY */}
 
                         <td className="px-6 py-4 text-right font-medium text-gray-900">
                           {Number(
@@ -693,33 +832,21 @@ export default function PurchaseOrderDetailsPage() {
                           )}
                         </td>
 
-                        {/* UNIT PRICE */}
-
                         <td className="px-6 py-4 text-right text-gray-700">
                           Rs.{" "}
-                          {Number(
-                            item.unitPrice || 0
-                          ).toLocaleString(
-                            "en-LK",
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }
+                          {formatAmount(
+                            Number(
+                              item.unitPrice || 0
+                            )
                           )}
                         </td>
 
-                        {/* SUBTOTAL */}
-
                         <td className="px-6 py-4 text-right font-semibold text-gray-900">
                           Rs.{" "}
-                          {Number(
-                            item.subtotal || 0
-                          ).toLocaleString(
-                            "en-LK",
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }
+                          {formatAmount(
+                            Number(
+                              item.subtotal || 0
+                            )
                           )}
                         </td>
 
@@ -766,14 +893,8 @@ export default function PurchaseOrderDetailsPage() {
 
                   <td className="px-6 py-4 text-right text-lg font-bold text-gray-900">
                     Rs.{" "}
-                    {Number(
-                      order.totalAmount || 0
-                    ).toLocaleString(
-                      "en-LK",
-                      {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      }
+                    {formatAmount(
+                      totalAmount
                     )}
                   </td>
 
@@ -872,7 +993,10 @@ function StatusBadge({
 }: {
   status: string;
 }) {
-  const styles: Record<string, string> = {
+  const styles: Record<
+    string,
+    string
+  > = {
     DRAFT:
       "bg-gray-50 text-gray-700 border-gray-200",
 
@@ -898,11 +1022,15 @@ function StatusBadge({
       "bg-red-50 text-red-700 border-red-200",
   };
 
-  const labels: Record<string, string> = {
+  const labels: Record<
+    string,
+    string
+  > = {
     DRAFT: "Draft",
     PENDING: "Pending",
     APPROVED: "Approved",
-    PARTIALLY_RECEIVED: "Partially Received",
+    PARTIALLY_RECEIVED:
+      "Partially Received",
     RECEIVED: "Received",
     COMPLETED: "Completed",
     CANCELLED: "Cancelled",
@@ -927,12 +1055,19 @@ function StatusBadge({
    DATE FORMAT
 ========================================================= */
 
-function formatDate(date?: string) {
+function formatDate(
+  date?: string | null
+) {
   if (!date) return "—";
 
-  const parsedDate = new Date(date);
+  const parsedDate =
+    new Date(date);
 
-  if (Number.isNaN(parsedDate.getTime())) {
+  if (
+    Number.isNaN(
+      parsedDate.getTime()
+    )
+  ) {
     return "—";
   }
 
@@ -942,6 +1077,22 @@ function formatDate(date?: string) {
       day: "2-digit",
       month: "short",
       year: "numeric",
+    }
+  );
+}
+
+/* =========================================================
+   AMOUNT FORMAT
+========================================================= */
+
+function formatAmount(
+  amount: number
+) {
+  return amount.toLocaleString(
+    "en-LK",
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }
   );
 }

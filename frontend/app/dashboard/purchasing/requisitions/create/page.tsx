@@ -46,9 +46,13 @@ const PRODUCTS_API =
 ========================================================= */
 
 export default function CreatePurchaseRequisitionPage() {
-  const [products, setProducts] = useState<Product[]>(
-    []
-  );
+  const [products, setProducts] = useState<Product[]>([]);
+
+  /* =======================================================
+     REQUISITION INFORMATION
+  ======================================================= */
+
+  const [requestedBy, setRequestedBy] = useState("");
 
   const [requestedDate, setRequestedDate] =
     useState("");
@@ -58,14 +62,20 @@ export default function CreatePurchaseRequisitionPage() {
 
   const [notes, setNotes] = useState("");
 
-  const [items, setItems] = useState<
-    RequisitionItem[]
-  >([
+  /* =======================================================
+     ITEMS
+  ======================================================= */
+
+  const [items, setItems] = useState<RequisitionItem[]>([
     {
       productId: "",
       quantity: 1,
     },
   ]);
+
+  /* =======================================================
+     STATES
+  ======================================================= */
 
   const [loadingProducts, setLoadingProducts] =
     useState(true);
@@ -76,9 +86,9 @@ export default function CreatePurchaseRequisitionPage() {
   const [error, setError] =
     useState<string | null>(null);
 
-  /* =======================================================
+  /* =========================================================
      LOAD PRODUCTS
-  ======================================================= */
+  ========================================================= */
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -130,9 +140,9 @@ export default function CreatePurchaseRequisitionPage() {
     loadProducts();
   }, []);
 
-  /* =======================================================
+  /* =========================================================
      ADD ITEM
-  ======================================================= */
+  ========================================================= */
 
   const addItem = () => {
     setItems((current) => [
@@ -144,9 +154,9 @@ export default function CreatePurchaseRequisitionPage() {
     ]);
   };
 
-  /* =======================================================
+  /* =========================================================
      REMOVE ITEM
-  ======================================================= */
+  ========================================================= */
 
   const removeItem = (index: number) => {
     if (items.length === 1) return;
@@ -159,9 +169,9 @@ export default function CreatePurchaseRequisitionPage() {
     );
   };
 
-  /* =======================================================
+  /* =========================================================
      UPDATE PRODUCT
-  ======================================================= */
+  ========================================================= */
 
   const updateProduct = (
     index: number,
@@ -179,9 +189,9 @@ export default function CreatePurchaseRequisitionPage() {
     );
   };
 
-  /* =======================================================
+  /* =========================================================
      UPDATE QUANTITY
-  ======================================================= */
+  ========================================================= */
 
   const updateQuantity = (
     index: number,
@@ -202,9 +212,9 @@ export default function CreatePurchaseRequisitionPage() {
     );
   };
 
-  /* =======================================================
+  /* =========================================================
      SUBMIT
-  ======================================================= */
+  ========================================================= */
 
   const handleSubmit = async (
     event: React.FormEvent
@@ -213,7 +223,20 @@ export default function CreatePurchaseRequisitionPage() {
 
     setError(null);
 
-    /* Validation */
+    /* -------------------------------------------------------
+       VALIDATE REQUESTED BY
+    ------------------------------------------------------- */
+
+    if (!requestedBy.trim()) {
+      setError(
+        "Please enter the requested by name."
+      );
+      return;
+    }
+
+    /* -------------------------------------------------------
+       VALIDATE REQUESTED DATE
+    ------------------------------------------------------- */
 
     if (!requestedDate) {
       setError(
@@ -222,6 +245,10 @@ export default function CreatePurchaseRequisitionPage() {
       return;
     }
 
+    /* -------------------------------------------------------
+       VALIDATE REQUIRED DATE
+    ------------------------------------------------------- */
+
     if (!requiredDate) {
       setError(
         "Please select the required date."
@@ -229,12 +256,20 @@ export default function CreatePurchaseRequisitionPage() {
       return;
     }
 
+    /* -------------------------------------------------------
+       VALIDATE DATE RANGE
+    ------------------------------------------------------- */
+
     if (requiredDate < requestedDate) {
       setError(
         "Required date cannot be earlier than requested date."
       );
       return;
     }
+
+    /* -------------------------------------------------------
+       VALIDATE ITEMS
+    ------------------------------------------------------- */
 
     if (items.length === 0) {
       setError(
@@ -256,7 +291,9 @@ export default function CreatePurchaseRequisitionPage() {
       return;
     }
 
-    /* Duplicate product validation */
+    /* -------------------------------------------------------
+       DUPLICATE PRODUCT VALIDATION
+    ------------------------------------------------------- */
 
     const productIds = items.map(
       (item) => item.productId
@@ -273,53 +310,141 @@ export default function CreatePurchaseRequisitionPage() {
       return;
     }
 
+    /* =======================================================
+       CREATE
+    ======================================================= */
+
     try {
       setSubmitting(true);
 
+      /* -----------------------------------------------------
+         REQUEST PAYLOAD
+      ----------------------------------------------------- */
+
       const payload = {
+        requestedBy: requestedBy.trim(),
+
         requestedDate,
+
         requiredDate,
-        notes: notes.trim() || null,
+
+        notes:
+          notes.trim() || null,
+
         items: items.map((item) => ({
           productId: item.productId,
           quantity: Number(item.quantity),
         })),
       };
 
+      console.log(
+        "Create requisition payload:",
+        payload
+      );
+
+      /* -----------------------------------------------------
+         POST REQUEST
+      ----------------------------------------------------- */
+
       const response = await fetch(
         REQUISITION_API,
         {
           method: "POST",
+
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
-          body: JSON.stringify(payload),
+
+          body:
+            JSON.stringify(payload),
         }
       );
 
+      /* -----------------------------------------------------
+         READ RESPONSE
+      ----------------------------------------------------- */
+
+      const responseText =
+        await response.text();
+
+      let data: any = null;
+
+      try {
+        data =
+          responseText
+            ? JSON.parse(responseText)
+            : null;
+      } catch {
+        data = null;
+      }
+
+      /* -----------------------------------------------------
+         ERROR RESPONSE
+      ----------------------------------------------------- */
+
       if (!response.ok) {
+        console.error(
+          "Create requisition backend response:",
+          {
+            status: response.status,
+            statusText:
+              response.statusText,
+            data,
+            rawResponse:
+              responseText,
+          }
+        );
+
         let message =
           "Failed to create requisition.";
 
-        try {
-          const data =
-            await response.json();
-
-          if (Array.isArray(data?.message)) {
-            message =
-              data.message.join(", ");
-          } else if (data?.message) {
-            message = data.message;
-          }
-        } catch {
-          // Ignore invalid JSON response
+        if (
+          Array.isArray(
+            data?.message
+          )
+        ) {
+          message =
+            data.message.join(
+              ", "
+            );
+        } else if (
+          typeof data?.message ===
+          "string"
+        ) {
+          message =
+            data.message;
+        } else if (
+          data?.error &&
+          typeof data.error ===
+            "string"
+        ) {
+          message =
+            data.error;
+        } else if (
+          responseText
+        ) {
+          message =
+            responseText;
         }
 
-        throw new Error(message);
+        throw new Error(
+          message
+        );
       }
+
+      /* -----------------------------------------------------
+         SUCCESS
+      ----------------------------------------------------- */
+
+      console.log(
+        "Purchase requisition created:",
+        data
+      );
 
       window.location.href =
         "/dashboard/purchasing/requisitions";
+
     } catch (err) {
       console.error(
         "Create requisition error:",
@@ -331,28 +456,33 @@ export default function CreatePurchaseRequisitionPage() {
           ? err.message
           : "Failed to create requisition."
       );
+
     } finally {
       setSubmitting(false);
     }
   };
 
-  /* =======================================================
+  /* =========================================================
      TOTAL QUANTITY
-  ======================================================= */
+  ========================================================= */
 
-  const totalQuantity = items.reduce(
-    (total, item) =>
-      total + Number(item.quantity || 0),
-    0
-  );
+  const totalQuantity =
+    items.reduce(
+      (total, item) =>
+        total +
+        Number(
+          item.quantity || 0
+        ),
+      0
+    );
 
-  /* =======================================================
+  /* =========================================================
      RENDER
-  ======================================================= */
+  ========================================================= */
 
   return (
     <div className="min-h-full bg-gray-50 p-6">
-      <div className=" w-full ">
+      <div className="w-full">
 
         {/* =================================================
             BREADCRUMB
@@ -399,10 +529,13 @@ export default function CreatePurchaseRequisitionPage() {
           <div className="flex items-center gap-3">
 
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-              <ClipboardList size={22} />
+              <ClipboardList
+                size={22}
+              />
             </div>
 
             <div>
+
               <h1 className="text-2xl font-semibold text-gray-900">
                 Create Purchase Requisition
               </h1>
@@ -410,6 +543,7 @@ export default function CreatePurchaseRequisitionPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Create a new request for purchasing products.
               </p>
+
             </div>
 
           </div>
@@ -418,7 +552,10 @@ export default function CreatePurchaseRequisitionPage() {
             href="/dashboard/purchasing/requisitions"
             className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-gray-900"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft
+              size={16}
+            />
+
             Back to Requisitions
           </Link>
 
@@ -450,6 +587,7 @@ export default function CreatePurchaseRequisitionPage() {
           <div className="rounded-xl border border-gray-200 bg-white">
 
             <div className="border-b border-gray-100 px-6 py-4">
+
               <h2 className="font-semibold text-gray-900">
                 Requisition Information
               </h2>
@@ -457,13 +595,48 @@ export default function CreatePurchaseRequisitionPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Enter the basic requisition details.
               </p>
+
             </div>
 
             <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
 
-              {/* Requested Date */}
+              {/* =================================================
+                  REQUESTED BY
+              ================================================= */}
 
               <div>
+
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Requested By
+                  <span className="text-red-500">
+                    {" "}*
+                  </span>
+                </label>
+
+                <input
+                  type="text"
+                  value={
+                    requestedBy
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setRequestedBy(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Enter requester name"
+                  className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+
+              </div>
+
+              {/* =================================================
+                  REQUESTED DATE
+              ================================================= */}
+
+              <div>
+
                 <label className="mb-2 block text-sm font-medium text-gray-700">
                   Requested Date
                   <span className="text-red-500">
@@ -473,19 +646,27 @@ export default function CreatePurchaseRequisitionPage() {
 
                 <input
                   type="date"
-                  value={requestedDate}
-                  onChange={(event) =>
+                  value={
+                    requestedDate
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setRequestedDate(
                       event.target.value
                     )
                   }
                   className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
+
               </div>
 
-              {/* Required Date */}
+              {/* =================================================
+                  REQUIRED DATE
+              ================================================= */}
 
               <div>
+
                 <label className="mb-2 block text-sm font-medium text-gray-700">
                   Required Date
                   <span className="text-red-500">
@@ -495,18 +676,28 @@ export default function CreatePurchaseRequisitionPage() {
 
                 <input
                   type="date"
-                  min={requestedDate || undefined}
-                  value={requiredDate}
-                  onChange={(event) =>
+                  min={
+                    requestedDate ||
+                    undefined
+                  }
+                  value={
+                    requiredDate
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setRequiredDate(
                       event.target.value
                     )
                   }
                   className="h-11 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
+
               </div>
 
-              {/* Notes */}
+              {/* =================================================
+                  NOTES
+              ================================================= */}
 
               <div className="md:col-span-2">
 
@@ -516,7 +707,9 @@ export default function CreatePurchaseRequisitionPage() {
 
                 <textarea
                   value={notes}
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setNotes(
                       event.target.value
                     )
@@ -529,6 +722,7 @@ export default function CreatePurchaseRequisitionPage() {
               </div>
 
             </div>
+
           </div>
 
           {/* =================================================
@@ -553,10 +747,15 @@ export default function CreatePurchaseRequisitionPage() {
 
               <button
                 type="button"
-                onClick={addItem}
+                onClick={
+                  addItem
+                }
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-100"
               >
-                <Plus size={16} />
+                <Plus
+                  size={16}
+                />
+
                 Add Product
               </button>
 
@@ -564,24 +763,46 @@ export default function CreatePurchaseRequisitionPage() {
 
             <div className="p-6">
 
-              {/* Table Header */}
+              {/* =================================================
+                  TABLE HEADER
+              ================================================= */}
 
               <div className="mb-3 hidden grid-cols-[1fr_180px_80px] gap-4 px-3 text-xs font-medium uppercase tracking-wide text-gray-500 md:grid">
-                <span>Product</span>
-                <span>Quantity</span>
+
+                <span>
+                  Product
+                </span>
+
+                <span>
+                  Quantity
+                </span>
+
                 <span></span>
+
               </div>
+
+              {/* =================================================
+                  ITEMS
+              ================================================= */}
 
               <div className="space-y-3">
 
                 {items.map(
-                  (item, index) => (
+                  (
+                    item,
+                    index
+                  ) => (
+
                     <div
-                      key={index}
+                      key={
+                        index
+                      }
                       className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:grid-cols-[1fr_180px_80px] md:items-center md:bg-white"
                     >
 
-                      {/* Product */}
+                      {/* =================================================
+                          PRODUCT
+                      ================================================= */}
 
                       <div>
 
@@ -600,10 +821,14 @@ export default function CreatePurchaseRequisitionPage() {
                             value={
                               item.productId
                             }
-                            onChange={(event) =>
+                            onChange={(
+                              event
+                            ) =>
                               updateProduct(
                                 index,
-                                event.target.value
+                                event
+                                  .target
+                                  .value
                               )
                             }
                             disabled={
@@ -619,7 +844,10 @@ export default function CreatePurchaseRequisitionPage() {
                             </option>
 
                             {products.map(
-                              (product) => (
+                              (
+                                product
+                              ) => (
+
                                 <option
                                   key={
                                     product.id
@@ -631,19 +859,24 @@ export default function CreatePurchaseRequisitionPage() {
                                   {product.productCode
                                     ? `${product.productCode} - `
                                     : ""}
+
                                   {
                                     product.productName
                                   }
                                 </option>
+
                               )
                             )}
 
                           </select>
 
                         </div>
+
                       </div>
 
-                      {/* Quantity */}
+                      {/* =================================================
+                          QUANTITY
+                      ================================================= */}
 
                       <div>
 
@@ -657,11 +890,15 @@ export default function CreatePurchaseRequisitionPage() {
                           value={
                             item.quantity
                           }
-                          onChange={(event) =>
+                          onChange={(
+                            event
+                          ) =>
                             updateQuantity(
                               index,
                               Number(
-                                event.target.value
+                                event
+                                  .target
+                                  .value
                               )
                             )
                           }
@@ -670,33 +907,43 @@ export default function CreatePurchaseRequisitionPage() {
 
                       </div>
 
-                      {/* Remove */}
+                      {/* =================================================
+                          REMOVE
+                      ================================================= */}
 
                       <div className="flex justify-end">
 
                         <button
                           type="button"
                           onClick={() =>
-                            removeItem(index)
+                            removeItem(
+                              index
+                            )
                           }
                           disabled={
-                            items.length === 1
+                            items.length ===
+                            1
                           }
                           title="Remove product"
                           className="rounded-lg p-2.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
                         >
-                          <Trash2 size={18} />
+                          <Trash2
+                            size={18}
+                          />
                         </button>
 
                       </div>
 
                     </div>
+
                   )
                 )}
 
               </div>
 
-              {/* Summary */}
+              {/* =================================================
+                  SUMMARY
+              ================================================= */}
 
               <div className="mt-5 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
 
@@ -705,12 +952,15 @@ export default function CreatePurchaseRequisitionPage() {
                 </span>
 
                 <span className="text-lg font-semibold text-gray-900">
-                  {totalQuantity}
+                  {
+                    totalQuantity
+                  }
                 </span>
 
               </div>
 
             </div>
+
           </div>
 
           {/* =================================================
@@ -728,9 +978,12 @@ export default function CreatePurchaseRequisitionPage() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={
+                submitting
+              }
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
+
               {submitting ? (
                 <>
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -738,15 +991,19 @@ export default function CreatePurchaseRequisitionPage() {
                 </>
               ) : (
                 <>
-                  <Save size={17} />
+                  <Save
+                    size={17}
+                  />
                   Create Requisition
                 </>
               )}
+
             </button>
 
           </div>
 
         </form>
+
       </div>
     </div>
   );
