@@ -4,12 +4,14 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Unique
 } from 'typeorm';
 
 import { GoodsReceivedNote } from './grn.entity';
 import { Product } from '../../products/entities/product.entity';
 
 @Entity('grn_items')
+@Unique(['grnId','productId'])
 export class GrnItem {
   @PrimaryGeneratedColumn()
   id!: number;

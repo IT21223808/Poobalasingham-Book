@@ -2,12 +2,17 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 import { PurchaseInvoiceItem } from './purchase-invoice-item.entity';
+import { Supplier } from '../../suppliers/entities/supplier.entity';
+import { PurchaseOrder } from './purchase-order.entity';
+import { GoodsReceivedNote } from './grn.entity';
 
 export enum PurchaseInvoiceStatus {
   DRAFT = 'DRAFT',
@@ -22,16 +27,8 @@ export class PurchaseInvoice {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  // =========================================================
-  // INVOICE NUMBER
-  // =========================================================
-
   @Column({ unique: true })
   invoiceNumber!: string;
-
-  // =========================================================
-  // REFERENCES
-  // =========================================================
 
   @Column({
     type: 'int',
@@ -39,8 +36,32 @@ export class PurchaseInvoice {
   })
   supplierId!: number | null;
 
+  @ManyToOne(
+    () => Supplier,
+    {
+      nullable: true,
+      onDelete: 'SET NULL',
+    },
+  )
+  @JoinColumn({
+    name: 'supplierId',
+  })
+  supplier!: Supplier | null;
+
   @Column()
   purchaseOrderId!: number;
+
+  @ManyToOne(
+    () => PurchaseOrder,
+    {
+      nullable: false,
+      onDelete: 'RESTRICT',
+    },
+  )
+  @JoinColumn({
+    name: 'purchaseOrderId',
+  })
+  purchaseOrder!: PurchaseOrder;
 
   @Column({
     type: 'int',
@@ -48,9 +69,17 @@ export class PurchaseInvoice {
   })
   grnId!: number | null;
 
-  // =========================================================
-  // DATES
-  // =========================================================
+  @ManyToOne(
+    () => GoodsReceivedNote,
+    {
+      nullable: true,
+      onDelete: 'SET NULL',
+    },
+  )
+  @JoinColumn({
+    name: 'grnId',
+  })
+  grn!: GoodsReceivedNote | null;
 
   @Column({
     type: 'date',
@@ -64,20 +93,12 @@ export class PurchaseInvoice {
   })
   dueDate!: string | null;
 
-  // =========================================================
-  // PAYMENT STATUS
-  // =========================================================
-
   @Column({
     type: 'enum',
     enum: PurchaseInvoiceStatus,
     default: PurchaseInvoiceStatus.DRAFT,
   })
   paymentStatus!: PurchaseInvoiceStatus;
-
-  // =========================================================
-  // AMOUNTS
-  // =========================================================
 
   @Column({
     type: 'decimal',
@@ -111,10 +132,6 @@ export class PurchaseInvoice {
   })
   grandTotal!: number;
 
-  // =========================================================
-  // ITEMS
-  // =========================================================
-
   @OneToMany(
     () => PurchaseInvoiceItem,
     (item) => item.invoice,
@@ -123,10 +140,6 @@ export class PurchaseInvoice {
     },
   )
   items!: PurchaseInvoiceItem[];
-
-  // =========================================================
-  // TIMESTAMPS
-  // =========================================================
 
   @CreateDateColumn()
   createdAt!: Date;

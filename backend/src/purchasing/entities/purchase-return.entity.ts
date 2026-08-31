@@ -5,6 +5,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
 import { PurchaseReturnItem } from './purchase-return-item.entity';
 
 export enum PurchaseReturnStatus {
@@ -21,26 +22,36 @@ export class PurchaseReturn {
   @Column({ unique: true })
   returnNumber!: string;
 
-  @Column()
+  @Column({
+    type: 'int',
+  })
   purchaseOrderId!: number;
 
-  @Column({ nullable: true })
-  invoiceId!: number;
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
+  invoiceId!: number | null;
 
   @Column({
-    type: 'enum',
-    enum: PurchaseReturnStatus,
-    default: PurchaseReturnStatus.COMPLETED,
-  })
-  status!: PurchaseReturnStatus;
+  type: 'enum',
+  enum: PurchaseReturnStatus,
+  default: PurchaseReturnStatus.PENDING,
+})
+status!: PurchaseReturnStatus;
 
-  @Column({ nullable: true })
-  reason!: string;
+  @Column({
+    type: 'text',
+    nullable: true,
+  })
+  reason!: string | null;
 
   @OneToMany(
     () => PurchaseReturnItem,
     (item) => item.purchaseReturn,
-    { cascade: true },
+    {
+      cascade: true,
+    },
   )
   items!: PurchaseReturnItem[];
 

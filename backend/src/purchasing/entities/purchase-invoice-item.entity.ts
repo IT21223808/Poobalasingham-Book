@@ -17,7 +17,9 @@ export class PurchaseInvoiceItem {
   @Column()
   invoiceId!: number;
 
-  @Column()
+  @Column({
+    type: 'uuid',
+  })
   productId!: string;
 
   @Column({
@@ -39,10 +41,6 @@ export class PurchaseInvoiceItem {
   })
   subtotal!: number;
 
-  // =========================================================
-  // INVOICE RELATION
-  // =========================================================
-
   @ManyToOne(
     () => PurchaseInvoice,
     (invoice) => invoice.items,
@@ -55,11 +53,12 @@ export class PurchaseInvoiceItem {
   })
   invoice!: PurchaseInvoice;
 
-  // =========================================================
-  // PRODUCT RELATION
-  // =========================================================
-
-  @ManyToOne(() => Product)
+  @ManyToOne(
+    () => Product,
+    {
+      onDelete: 'RESTRICT',
+    },
+  )
   @JoinColumn({
     name: 'productId',
   })

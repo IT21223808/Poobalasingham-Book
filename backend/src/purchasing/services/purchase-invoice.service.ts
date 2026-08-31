@@ -39,9 +39,6 @@ export class PurchaseInvoiceService {
     @InjectRepository(PurchaseInvoice)
     private readonly purchaseInvoiceRepository: Repository<PurchaseInvoice>,
 
-    @InjectRepository(PurchaseInvoiceItem)
-    private readonly purchaseInvoiceItemRepository: Repository<PurchaseInvoiceItem>,
-
     private readonly dataSource: DataSource,
   ) {}
 
@@ -59,6 +56,37 @@ export class PurchaseInvoiceService {
     await queryRunner.startTransaction();
 
     try {
+      // =====================================================
+      // BASIC VALIDATION
+      // =====================================================
+
+      if (!dto.supplierId) {
+        throw new BadRequestException(
+          'Supplier is required',
+        );
+      }
+
+      if (!dto.purchaseOrderId) {
+        throw new BadRequestException(
+          'Purchase order is required',
+        );
+      }
+
+      if (!dto.grnId) {
+        throw new BadRequestException(
+          'GRN is required',
+        );
+      }
+
+      if (
+        !dto.items ||
+        dto.items.length === 0
+      ) {
+        throw new BadRequestException(
+          'At least one invoice item is required',
+        );
+      }
+
       // =====================================================
       // TAX / DISCOUNT
       // =====================================================
@@ -90,16 +118,6 @@ export class PurchaseInvoiceService {
       }
 
       // =====================================================
-      // SUPPLIER
-      // =====================================================
-
-      if (!dto.supplierId) {
-        throw new BadRequestException(
-          'Supplier is required',
-        );
-      }
-
-      // =====================================================
       // PURCHASE ORDER
       // =====================================================
 
@@ -110,6 +128,7 @@ export class PurchaseInvoiceService {
             where: {
               id: dto.purchaseOrderId,
             },
+
             relations: {
               items: true,
             },
@@ -142,6 +161,7 @@ export class PurchaseInvoiceService {
             where: {
               id: dto.grnId,
             },
+
             relations: {
               items: true,
             },
@@ -164,17 +184,9 @@ export class PurchaseInvoiceService {
       }
 
       // =====================================================
-      // ITEMS VALIDATION
+      // PRODUCT IDS
+      // Product.id = UUID
       // =====================================================
-
-      if (
-        !dto.items ||
-        dto.items.length === 0
-      ) {
-        throw new BadRequestException(
-          'At least one invoice item is required',
-        );
-      }
 
       const productIds =
         dto.items.map((item) =>
@@ -233,14 +245,15 @@ export class PurchaseInvoiceService {
             Number(item.unitPrice);
 
           // -------------------------------------------------
-          // CHECK GRN ITEM
+          // CHECK PRODUCT EXISTS IN GRN
           // -------------------------------------------------
 
           const grnItem =
             grn.items.find(
-              (item) =>
-                String(item.productId) ===
-                productId,
+              (grnItem) =>
+                String(
+                  grnItem.productId,
+                ) === productId,
             );
 
           if (!grnItem) {
@@ -291,7 +304,11 @@ export class PurchaseInvoiceService {
           // -------------------------------------------------
 
           const itemSubtotal =
-            quantity * unitPrice;
+            Number(
+              (
+                quantity * unitPrice
+              ).toFixed(2),
+            );
 
           subtotal += itemSubtotal;
 
@@ -304,22 +321,22 @@ export class PurchaseInvoiceService {
         });
 
       // =====================================================
-      // CALCULATE TOTALS
+      // CALCULATE TOTAL
       // =====================================================
 
       const calculatedSubtotal =
-        Number(subtotal);
-
-      const calculatedDiscount =
-        Number(discount);
-
-      const calculatedTax =
-        Number(tax);
+        Number(
+          subtotal.toFixed(2),
+        );
 
       const calculatedGrandTotal =
-        calculatedSubtotal -
-        calculatedDiscount +
-        calculatedTax;
+        Number(
+          (
+            calculatedSubtotal -
+            discount +
+            tax
+          ).toFixed(2),
+        );
 
       if (
         calculatedGrandTotal < 0
@@ -379,10 +396,14 @@ export class PurchaseInvoiceService {
               calculatedSubtotal,
 
             discount:
-              calculatedDiscount,
+              Number(
+                discount.toFixed(2),
+              ),
 
             tax:
-              calculatedTax,
+              Number(
+                tax.toFixed(2),
+              ),
 
             grandTotal:
               calculatedGrandTotal,
@@ -409,16 +430,24 @@ export class PurchaseInvoiceService {
                   savedInvoice.id,
 
                 productId:
-                  String(item.productId),
+                  String(
+                    item.productId,
+                  ),
 
                 quantity:
-                  Number(item.quantity),
+                  Number(
+                    item.quantity,
+                  ),
 
                 unitPrice:
-                  Number(item.unitPrice),
+                  Number(
+                    item.unitPrice,
+                  ),
 
                 subtotal:
-                  Number(item.subtotal),
+                  Number(
+                    item.subtotal,
+                  ),
               },
             ),
         );
@@ -487,6 +516,16 @@ export class PurchaseInvoiceService {
           },
 
           relations: {
+           
+            supplier: true,
+
+            // Load PO relation
+            purchaseOrder: true,
+
+            // Load GRN relation
+            grn: true,
+
+            // Load invoice items + product
             items: {
               product: true,
             },
@@ -511,6 +550,17 @@ export class PurchaseInvoiceService {
     return this.purchaseInvoiceRepository.find(
       {
         relations: {
+          // IMPORTANT:
+          // Supplier name/code
+          supplier: true,
+
+          // PO number
+          purchaseOrder: true,
+
+          // GRN number
+          grn: true,
+
+          // Product information
           items: {
             product: true,
           },
@@ -671,6 +721,43 @@ export class PurchaseInvoiceService {
       }
 
       // =====================================================
+      // VALIDATE EXISTING GRN WHEN PO CHANGES
+      // =====================================================
+
+      if (
+        dto.purchaseOrderId !==
+          undefined &&
+        dto.grnId === undefined &&
+        invoice.grnId
+      ) {
+        const existingGrn =
+          await queryRunner.manager.findOne(
+            GoodsReceivedNote,
+            {
+              where: {
+                id:
+                  invoice.grnId,
+              },
+            },
+          );
+
+        if (!existingGrn) {
+          throw new NotFoundException(
+            'Existing GRN not found',
+          );
+        }
+
+        if (
+          existingGrn.purchaseOrderId !==
+          invoice.purchaseOrderId
+        ) {
+          throw new BadRequestException(
+            'Existing GRN does not belong to the new purchase order',
+          );
+        }
+      }
+
+      // =====================================================
       // INVOICE DATE
       // =====================================================
 
@@ -709,10 +796,16 @@ export class PurchaseInvoiceService {
           );
         }
 
+        // ---------------------------------------------------
+        // PRODUCT IDS
+        // ---------------------------------------------------
+
         const productIds =
           dto.items.map(
             (item) =>
-              String(item.productId),
+              String(
+                item.productId,
+              ),
           );
 
         const uniqueProductIds = [
@@ -782,8 +875,17 @@ export class PurchaseInvoiceService {
           );
         }
 
+        if (
+          grn.purchaseOrderId !==
+          invoice.purchaseOrderId
+        ) {
+          throw new BadRequestException(
+            'GRN does not belong to this purchase order',
+          );
+        }
+
         // ---------------------------------------------------
-        // CALCULATE ITEMS
+        // CALCULATE NEW ITEMS
         // ---------------------------------------------------
 
         let subtotal = 0;
@@ -792,13 +894,23 @@ export class PurchaseInvoiceService {
           dto.items.map(
             (item) => {
               const productId =
-                String(item.productId);
+                String(
+                  item.productId,
+                );
 
               const quantity =
-                Number(item.quantity);
+                Number(
+                  item.quantity,
+                );
 
               const unitPrice =
-                Number(item.unitPrice);
+                Number(
+                  item.unitPrice,
+                );
+
+              // ---------------------------------------------
+              // CHECK GRN ITEM
+              // ---------------------------------------------
 
               const grnItem =
                 grn.items.find(
@@ -813,6 +925,10 @@ export class PurchaseInvoiceService {
                   `Product ${productId} is not part of this GRN`,
                 );
               }
+
+              // ---------------------------------------------
+              // QUANTITY
+              // ---------------------------------------------
 
               if (
                 !Number.isFinite(
@@ -836,6 +952,10 @@ export class PurchaseInvoiceService {
                 );
               }
 
+              // ---------------------------------------------
+              // UNIT PRICE
+              // ---------------------------------------------
+
               if (
                 !Number.isFinite(
                   unitPrice,
@@ -847,9 +967,17 @@ export class PurchaseInvoiceService {
                 );
               }
 
+              // ---------------------------------------------
+              // SUBTOTAL
+              // ---------------------------------------------
+
               const itemSubtotal =
-                quantity *
-                unitPrice;
+                Number(
+                  (
+                    quantity *
+                    unitPrice
+                  ).toFixed(2),
+                );
 
               subtotal +=
                 itemSubtotal;
@@ -920,7 +1048,9 @@ export class PurchaseInvoiceService {
         // ---------------------------------------------------
 
         invoice.subtotal =
-          Number(subtotal);
+          Number(
+            subtotal.toFixed(2),
+          );
       }
 
       // =====================================================
@@ -946,7 +1076,9 @@ export class PurchaseInvoiceService {
         }
 
         invoice.tax =
-          tax;
+          Number(
+            tax.toFixed(2),
+          );
       }
 
       // =====================================================
@@ -974,7 +1106,9 @@ export class PurchaseInvoiceService {
         }
 
         invoice.discount =
-          discount;
+          Number(
+            discount.toFixed(2),
+          );
       }
 
       // =====================================================
@@ -982,18 +1116,28 @@ export class PurchaseInvoiceService {
       // =====================================================
 
       const finalSubtotal =
-        Number(invoice.subtotal || 0);
+        Number(
+          invoice.subtotal || 0,
+        );
 
       const finalDiscount =
-        Number(invoice.discount || 0);
+        Number(
+          invoice.discount || 0,
+        );
 
       const finalTax =
-        Number(invoice.tax || 0);
+        Number(
+          invoice.tax || 0,
+        );
 
       const finalGrandTotal =
-        finalSubtotal -
-        finalDiscount +
-        finalTax;
+        Number(
+          (
+            finalSubtotal -
+            finalDiscount +
+            finalTax
+          ).toFixed(2),
+        );
 
       if (
         finalGrandTotal < 0
@@ -1004,9 +1148,7 @@ export class PurchaseInvoiceService {
       }
 
       invoice.grandTotal =
-        Number(
-          finalGrandTotal.toFixed(2),
-        );
+        finalGrandTotal;
 
       // =====================================================
       // PAYMENT STATUS
@@ -1028,6 +1170,7 @@ export class PurchaseInvoiceService {
         invoice.paymentStatus =
           dto.paymentStatus;
       }
+
       // =====================================================
       // SAVE
       // =====================================================
@@ -1076,9 +1219,9 @@ export class PurchaseInvoiceService {
       );
     }
 
-    // -------------------------------------------------------
+    // =====================================================
     // ALREADY CANCELLED
-    // -------------------------------------------------------
+    // =====================================================
 
     if (
       invoice.paymentStatus ===
@@ -1089,9 +1232,9 @@ export class PurchaseInvoiceService {
       );
     }
 
-    // -------------------------------------------------------
+    // =====================================================
     // PAID
-    // -------------------------------------------------------
+    // =====================================================
 
     if (
       invoice.paymentStatus ===
@@ -1102,9 +1245,9 @@ export class PurchaseInvoiceService {
       );
     }
 
-    // -------------------------------------------------------
+    // =====================================================
     // CANCEL
-    // -------------------------------------------------------
+    // =====================================================
 
     invoice.paymentStatus =
       PurchaseInvoiceStatus.CANCELLED;

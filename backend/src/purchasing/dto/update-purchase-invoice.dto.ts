@@ -4,17 +4,18 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
+  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
+
 import { Type } from 'class-transformer';
 
-import {
-  PurchaseInvoiceStatus,
-} from '../entities/purchase-invoice.entity';
+import { PurchaseInvoiceStatus } from '../entities/purchase-invoice.entity';
+
 
 export class UpdatePurchaseInvoiceItemDto {
-  @IsInt()
+  @IsUUID()
   productId!: string;
 
   @IsInt()
@@ -25,11 +26,7 @@ export class UpdatePurchaseInvoiceItemDto {
   @Min(0.01)
   unitPrice!: number;
 }
-
 export class UpdatePurchaseInvoiceDto {
-  // ---------------------------------------------------------
-  // REFERENCES
-  // ---------------------------------------------------------
 
   @IsOptional()
   @IsInt()
@@ -46,10 +43,6 @@ export class UpdatePurchaseInvoiceDto {
   @Min(1)
   grnId?: number;
 
-  // ---------------------------------------------------------
-  // DATES
-  // ---------------------------------------------------------
-
   @IsOptional()
   @IsDateString()
   invoiceDate?: string;
@@ -58,18 +51,10 @@ export class UpdatePurchaseInvoiceDto {
   @IsDateString()
   dueDate?: string | null;
 
-  // ---------------------------------------------------------
-  // ITEMS
-  // ---------------------------------------------------------
-
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => UpdatePurchaseInvoiceItemDto)
   items?: UpdatePurchaseInvoiceItemDto[];
-
-  // ---------------------------------------------------------
-  // AMOUNTS
-  // ---------------------------------------------------------
 
   @IsOptional()
   @IsNumber()
@@ -80,10 +65,6 @@ export class UpdatePurchaseInvoiceDto {
   @IsNumber()
   @Min(0)
   taxAmount?: number;
-
-  // ---------------------------------------------------------
-  // PAYMENT STATUS
-  // ---------------------------------------------------------
 
   @IsOptional()
   @IsEnum(PurchaseInvoiceStatus)

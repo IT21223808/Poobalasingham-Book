@@ -43,6 +43,10 @@ import { CreatePurchaseReturnDto } from './dto/create-purchase-return.dto';
 @Injectable()
 export class PurchasingService {
   constructor(
+    // =======================================================
+    // SERVICES
+    // =======================================================
+
     private readonly requisitionService: PurchaseRequisitionService,
 
     private readonly purchaseOrderService: PurchaseOrderService,
@@ -52,6 +56,10 @@ export class PurchasingService {
     private readonly purchaseInvoiceService: PurchaseInvoiceService,
 
     private readonly purchaseReturnService: PurchaseReturnService,
+
+    // =======================================================
+    // REPOSITORIES
+    // =======================================================
 
     @InjectRepository(PurchaseRequisition)
     private readonly requisitionRepository: Repository<PurchaseRequisition>,
@@ -89,18 +97,12 @@ export class PurchasingService {
   // PURCHASE ORDER
   // =========================================================
 
-  createPurchaseOrder(
-    dto: CreatePurchaseOrderDto,
-  ) {
-    return this.purchaseOrderService.createPurchaseOrder(
-      dto,
-    );
+  createPurchaseOrder(dto: CreatePurchaseOrderDto) {
+    return this.purchaseOrderService.createPurchaseOrder(dto);
   }
 
   findPurchaseOrder(id: number) {
-    return this.purchaseOrderService.findPurchaseOrder(
-      id,
-    );
+    return this.purchaseOrderService.findPurchaseOrder(id);
   }
 
   findAllPurchaseOrders() {
@@ -118,21 +120,15 @@ export class PurchasingService {
   }
 
   approvePurchaseOrder(id: number) {
-    return this.purchaseOrderService.approvePurchaseOrder(
-      id,
-    );
+    return this.purchaseOrderService.approvePurchaseOrder(id);
   }
 
   cancelPurchaseOrder(id: number) {
-    return this.purchaseOrderService.cancelPurchaseOrder(
-      id,
-    );
+    return this.purchaseOrderService.cancelPurchaseOrder(id);
   }
 
   deletePurchaseOrder(id: number) {
-    return this.purchaseOrderService.deletePurchaseOrder(
-      id,
-    );
+    return this.purchaseOrderService.deletePurchaseOrder(id);
   }
 
   // =========================================================
@@ -165,6 +161,10 @@ export class PurchasingService {
     return this.goodsReceiptService.deleteGrn(id);
   }
 
+  cancelGrn(id: number) {
+    return this.goodsReceiptService.cancelGrn(id);
+  }
+
   // =========================================================
   // PURCHASE INVOICE
   // =========================================================
@@ -185,6 +185,22 @@ export class PurchasingService {
 
   findAllPurchaseInvoices() {
     return this.purchaseInvoiceService.findAllPurchaseInvoices();
+  }
+
+  updatePurchaseInvoice(
+    id: number,
+    dto: CreatePurchaseInvoiceDto,
+  ) {
+    return this.purchaseInvoiceService.updatePurchaseInvoice(
+      id,
+      dto,
+    );
+  }
+
+  cancelPurchaseInvoice(id: number) {
+    return this.purchaseInvoiceService.cancelPurchaseInvoice(
+      id,
+    );
   }
 
   // =========================================================
@@ -209,113 +225,238 @@ export class PurchasingService {
     return this.purchaseReturnService.findAllPurchaseReturns();
   }
 
+  completePurchaseReturn(id: number) {
+    return this.purchaseReturnService.completePurchaseReturn(
+      id,
+    );
+  }
+
+  cancelPurchaseReturn(id: number) {
+    return this.purchaseReturnService.cancelPurchaseReturn(
+      id,
+    );
+  }
+
   // =========================================================
   // PURCHASING DASHBOARD
   // =========================================================
 
   async getDashboard() {
-    // REQUISITIONS
+    // =======================================================
+    // 1. PURCHASE REQUISITIONS
+    // =======================================================
 
-    const totalRequisitions =
-      await this.requisitionRepository.count();
+    const [
+      totalRequisitions,
+      pendingRequisitions,
+    ] = await Promise.all([
+      this.requisitionRepository.count(),
 
-    const pendingRequisitions =
-      await this.requisitionRepository.count({
+      this.requisitionRepository.count({
         where: {
-          status:
-            PurchaseRequisitionStatus.PENDING,
+          status: PurchaseRequisitionStatus.PENDING,
         },
-      });
+      }),
+    ]);
 
-    // PURCHASE ORDERS
+    // =======================================================
+    // 2. PURCHASE ORDERS
+    // =======================================================
 
-    const totalPurchaseOrders =
-      await this.purchaseOrderRepository.count();
+    const [
+      totalPurchaseOrders,
+      pendingPurchaseOrders,
+      approvedPurchaseOrders,
+      receivedPurchaseOrders,
+      cancelledPurchaseOrders,
+    ] = await Promise.all([
+      this.purchaseOrderRepository.count(),
 
-    const pendingPurchaseOrders =
-      await this.purchaseOrderRepository.count({
+      this.purchaseOrderRepository.count({
         where: {
-          status:
-            PurchaseOrderStatus.PENDING,
+          status: PurchaseOrderStatus.PENDING,
         },
-      });
+      }),
 
-    const approvedPurchaseOrders =
-      await this.purchaseOrderRepository.count({
+      this.purchaseOrderRepository.count({
         where: {
-          status:
-            PurchaseOrderStatus.APPROVED,
+          status: PurchaseOrderStatus.APPROVED,
         },
-      });
+      }),
 
-    const receivedPurchaseOrders =
-      await this.purchaseOrderRepository.count({
+      this.purchaseOrderRepository.count({
         where: {
-          status:
-            PurchaseOrderStatus.RECEIVED,
+          status: PurchaseOrderStatus.RECEIVED,
         },
-      });
+      }),
 
-    const cancelledPurchaseOrders =
-      await this.purchaseOrderRepository.count({
+      this.purchaseOrderRepository.count({
         where: {
-          status:
-            PurchaseOrderStatus.CANCELLED,
+          status: PurchaseOrderStatus.CANCELLED,
         },
-      });
+      }),
+    ]);
 
-    // TOTAL PURCHASE AMOUNT
+    // =======================================================
+    // 3. TOTAL PURCHASE AMOUNT
+    // =======================================================
 
     const purchaseAmountResult =
       await this.purchaseOrderRepository
-        .createQueryBuilder(
-          'purchaseOrder',
-        )
+        .createQueryBuilder('purchaseOrder')
         .select(
           'COALESCE(SUM(purchaseOrder.totalAmount), 0)',
           'totalAmount',
         )
+        .where(
+          'purchaseOrder.status != :cancelled',
+          {
+            cancelled:
+              PurchaseOrderStatus.CANCELLED,
+          },
+        )
         .getRawOne();
 
-    const totalPurchaseAmount =
-      Number(
-        purchaseAmountResult?.totalAmount ?? 0,
-      );
+    const totalPurchaseAmount = Number(
+      purchaseAmountResult?.totalAmount ?? 0,
+    );
 
-    // GOODS RECEIVED
+    // =======================================================
+    // 4. GOODS RECEIVED / GRN
+    // =======================================================
 
-    const totalGoodsReceived =
-      await this.grnRepository.count({
+    const [
+      totalGoodsReceived,
+      pendingGoodsReceived,
+      partialGoodsReceived,
+      cancelledGoodsReceived,
+    ] = await Promise.all([
+      // RECEIVED
+      this.grnRepository.count({
         where: {
-          status:
-            GrnStatus.RECEIVED,
+          status: GrnStatus.RECEIVED,
         },
-      });
+      }),
 
-    // PURCHASE RETURNS
-
-    const totalPurchaseReturns =
-      await this.purchaseReturnRepository.count({
+      // DRAFT
+      this.grnRepository.count({
         where: {
-          status:
-            PurchaseReturnStatus.COMPLETED,
+          status: GrnStatus.DRAFT,
         },
-      });
+      }),
 
-    // PURCHASE INVOICES
+      // PARTIAL
+      this.grnRepository.count({
+        where: {
+          status: GrnStatus.PARTIAL,
+        },
+      }),
 
-    const totalPurchaseInvoices =
-      await this.purchaseInvoiceRepository.count();
+      // CANCELLED
+      this.grnRepository.count({
+        where: {
+          status: GrnStatus.CANCELLED,
+        },
+      }),
+    ]);
 
-    const postedPurchaseInvoices =
-      await this.purchaseInvoiceRepository.count({
+    // =======================================================
+    // 5. PURCHASE INVOICES
+    // =======================================================
+
+    const [
+      totalPurchaseInvoices,
+      draftPurchaseInvoices,
+      unpaidPurchaseInvoices,
+      partiallyPaidPurchaseInvoices,
+      paidPurchaseInvoices,
+      cancelledPurchaseInvoices,
+    ] = await Promise.all([
+      // TOTAL
+      this.purchaseInvoiceRepository.count(),
+
+      // DRAFT
+      this.purchaseInvoiceRepository.count({
         where: {
           paymentStatus:
             PurchaseInvoiceStatus.DRAFT,
         },
-      });
+      }),
 
-    // RECENT PURCHASE ORDERS
+      // UNPAID
+      this.purchaseInvoiceRepository.count({
+        where: {
+          paymentStatus:
+            PurchaseInvoiceStatus.UNPAID,
+        },
+      }),
+
+      // PARTIALLY PAID
+      this.purchaseInvoiceRepository.count({
+        where: {
+          paymentStatus:
+            PurchaseInvoiceStatus.PARTIALLY_PAID,
+        },
+      }),
+
+      // PAID
+      this.purchaseInvoiceRepository.count({
+        where: {
+          paymentStatus:
+            PurchaseInvoiceStatus.PAID,
+        },
+      }),
+
+      // CANCELLED
+      this.purchaseInvoiceRepository.count({
+        where: {
+          paymentStatus:
+            PurchaseInvoiceStatus.CANCELLED,
+        },
+      }),
+    ]);
+
+    // =======================================================
+    // 6. PURCHASE RETURNS
+    // =======================================================
+
+    const [
+      totalPurchaseReturns,
+      pendingPurchaseReturns,
+      completedPurchaseReturns,
+      cancelledPurchaseReturns,
+    ] = await Promise.all([
+      // TOTAL
+      this.purchaseReturnRepository.count(),
+
+      // PENDING
+      this.purchaseReturnRepository.count({
+        where: {
+          status:
+            PurchaseReturnStatus.PENDING,
+        },
+      }),
+
+      // COMPLETED
+      this.purchaseReturnRepository.count({
+        where: {
+          status:
+            PurchaseReturnStatus.COMPLETED,
+        },
+      }),
+
+      // CANCELLED
+      this.purchaseReturnRepository.count({
+        where: {
+          status:
+            PurchaseReturnStatus.CANCELLED,
+        },
+      }),
+    ]);
+
+    // =======================================================
+    // 7. RECENT PURCHASE ORDERS
+    // =======================================================
 
     const recentOrders =
       await this.purchaseOrderRepository.find({
@@ -324,13 +465,17 @@ export class PurchasingService {
             product: true,
           },
         },
+
         order: {
           createdAt: 'DESC',
         },
+
         take: 5,
       });
 
-    // RECENT GRNs
+    // =======================================================
+    // 8. RECENT GRNs
+    // =======================================================
 
     const recentGRNs =
       await this.grnRepository.find({
@@ -339,28 +484,17 @@ export class PurchasingService {
             product: true,
           },
         },
+
         order: {
           createdAt: 'DESC',
         },
+
         take: 5,
       });
 
-    // RECENT RETURNS
-
-    const recentReturns =
-      await this.purchaseReturnRepository.find({
-        relations: {
-          items: {
-            product: true,
-          },
-        },
-        order: {
-          createdAt: 'DESC',
-        },
-        take: 5,
-      });
-
-    // RECENT INVOICES
+    // =======================================================
+    // 9. RECENT PURCHASE INVOICES
+    // =======================================================
 
     const recentInvoices =
       await this.purchaseInvoiceRepository.find({
@@ -369,38 +503,101 @@ export class PurchasingService {
             product: true,
           },
         },
+
         order: {
           createdAt: 'DESC',
         },
+
         take: 5,
       });
 
+    // =======================================================
+    // 10. RECENT PURCHASE RETURNS
+    // =======================================================
+
+    const recentReturns =
+      await this.purchaseReturnRepository.find({
+        relations: {
+          items: {
+            product: true,
+          },
+        },
+
+        order: {
+          createdAt: 'DESC',
+        },
+
+        take: 5,
+      });
+
+    // =======================================================
+    // 11. FINAL DASHBOARD RESPONSE
+    // =======================================================
+
     return {
+      // =====================================================
+      // SUMMARY
+      // =====================================================
+
       summary: {
+        // REQUISITIONS
         totalRequisitions,
         pendingRequisitions,
+
+        // PURCHASE ORDERS
         totalPurchaseOrders,
         pendingPurchaseOrders,
-        totalGoodsReceived,
-        totalPurchaseReturns,
-        totalPurchaseInvoices,
-        postedPurchaseInvoices,
+        approvedPurchaseOrders,
+        receivedPurchaseOrders,
         cancelledPurchaseOrders,
+
+        // GRN
+        totalGoodsReceived,
+        pendingGoodsReceived,
+        partialGoodsReceived,
+        cancelledGoodsReceived,
+
+        // PURCHASE INVOICES
+        totalPurchaseInvoices,
+        draftPurchaseInvoices,
+        unpaidPurchaseInvoices,
+        partiallyPaidPurchaseInvoices,
+        paidPurchaseInvoices,
+        cancelledPurchaseInvoices,
+
+        // PURCHASE RETURNS
+        totalPurchaseReturns,
+        pendingPurchaseReturns,
+        completedPurchaseReturns,
+        cancelledPurchaseReturns,
       },
+
+      // =====================================================
+      // PURCHASE OVERVIEW
+      // =====================================================
 
       overview: {
         totalPurchaseAmount,
+
         orders:
           totalPurchaseOrders,
+
         received:
           receivedPurchaseOrders,
+
         pending:
           pendingPurchaseOrders,
+
         approved:
           approvedPurchaseOrders,
+
         cancelled:
           cancelledPurchaseOrders,
       },
+
+      // =====================================================
+      // PURCHASE ORDER STATUS
+      // =====================================================
 
       status: {
         pending:
@@ -413,10 +610,14 @@ export class PurchasingService {
           cancelledPurchaseOrders,
       },
 
+      // =====================================================
+      // RECENT DATA
+      // =====================================================
+
       recentOrders,
       recentGRNs,
-      recentReturns,
       recentInvoices,
+      recentReturns,
     };
   }
 }

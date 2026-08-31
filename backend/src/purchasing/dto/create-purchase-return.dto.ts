@@ -21,6 +21,10 @@ export class CreatePurchaseReturnDto {
   @IsInt()
   invoiceId?: number;
 
+  @IsNotEmpty()
+  @IsUUID()
+  locationId!: string;
+
   @IsOptional()
   @IsString()
   reason?: string;

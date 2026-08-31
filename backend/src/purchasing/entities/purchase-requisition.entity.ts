@@ -11,11 +11,8 @@ import { PurchaseRequisitionItem } from './purchase-requisition-item.entity';
 
 export enum PurchaseRequisitionStatus {
   PENDING = 'PENDING',
-
   APPROVED = 'APPROVED',
-
   REJECTED = 'REJECTED',
-
   CANCELLED = 'CANCELLED',
 }
 

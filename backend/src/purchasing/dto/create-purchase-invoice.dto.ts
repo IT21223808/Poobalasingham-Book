@@ -13,8 +13,9 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreatePurchaseInvoiceItemDto {
+  // Product.id is UUID
   @IsUUID()
-  productId!: number | string;
+  productId!: string;
 
   @IsNumber()
   @IsPositive()
@@ -26,17 +27,10 @@ export class CreatePurchaseInvoiceItemDto {
 }
 
 export class CreatePurchaseInvoiceDto {
-  // =========================================================
-  // SUPPLIER
-  // =========================================================
 
   @IsInt()
   @IsPositive()
   supplierId!: number;
-
-  // =========================================================
-  // REFERENCES
-  // =========================================================
 
   @IsInt()
   @IsPositive()
@@ -46,10 +40,6 @@ export class CreatePurchaseInvoiceDto {
   @IsPositive()
   grnId!: number;
 
-  // =========================================================
-  // DATES
-  // =========================================================
-
   @IsOptional()
   @IsDateString()
   invoiceDate?: string;
@@ -58,27 +48,15 @@ export class CreatePurchaseInvoiceDto {
   @IsDateString()
   dueDate?: string;
 
-  // =========================================================
-  // DISCOUNT
-  // =========================================================
-
   @IsOptional()
   @IsNumber()
   @Min(0)
   discountAmount?: number;
 
-  // =========================================================
-  // TAX
-  // =========================================================
-
   @IsOptional()
   @IsNumber()
   @Min(0)
   taxAmount?: number;
-
-  // =========================================================
-  // ITEMS
-  // =========================================================
 
   @IsArray()
   @ValidateNested({ each: true })

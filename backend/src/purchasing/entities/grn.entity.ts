@@ -5,6 +5,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
 import { GrnItem } from './grn-item.entity';
 
 export enum GrnStatus {
@@ -25,17 +26,22 @@ export class GoodsReceivedNote {
   @Column()
   purchaseOrderId!: number;
 
+  @Column({ type: 'uuid' })
+locationId!: string;
+
   @Column({
     type: 'enum',
     enum: GrnStatus,
-    default: GrnStatus.RECEIVED,
+    default: GrnStatus.DRAFT,
   })
   status!: GrnStatus;
 
   @OneToMany(
     () => GrnItem,
     (item) => item.grn,
-    { cascade: true },
+    {
+      cascade: true,
+    },
   )
   items!: GrnItem[];
 

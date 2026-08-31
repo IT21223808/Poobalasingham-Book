@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 
 import { PurchasingService } from './purchasing.service';
-
 import { PurchaseRequisitionService } from './services/purchase-requisition.service';
 import { PurchaseOrderService } from './services/purchase-order.service';
 import { GoodsReceiptService } from './services/goods-receipt.service';
@@ -104,7 +103,6 @@ export class PurchasingController {
   // PURCHASE ORDERS
   // =========================================================
 
-  // CREATE
   @Post('orders')
   createPurchaseOrder(
     @Body() dto: CreatePurchaseOrderDto,
@@ -114,13 +112,11 @@ export class PurchasingController {
     );
   }
 
-  // LIST
   @Get('orders')
   findAllPurchaseOrders() {
     return this.purchaseOrderService.findAllPurchaseOrders();
   }
 
-  // VIEW
   @Get('orders/:id')
   findPurchaseOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -130,7 +126,6 @@ export class PurchasingController {
     );
   }
 
-  // UPDATE
   @Put('orders/:id')
   updatePurchaseOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -142,7 +137,17 @@ export class PurchasingController {
     );
   }
 
-  // APPROVE
+  @Patch('orders/:id')
+  patchPurchaseOrder(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePurchaseOrderDto,
+  ) {
+    return this.purchaseOrderService.updatePurchaseOrder(
+      id,
+      dto,
+    );
+  }
+
   @Patch('orders/:id/approve')
   approvePurchaseOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -152,7 +157,6 @@ export class PurchasingController {
     );
   }
 
-  // CANCEL
   @Patch('orders/:id/cancel')
   cancelPurchaseOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -162,7 +166,6 @@ export class PurchasingController {
     );
   }
 
-  // DELETE
   @Delete('orders/:id')
   deletePurchaseOrder(
     @Param('id', ParseIntPipe) id: number,
@@ -173,7 +176,7 @@ export class PurchasingController {
   }
 
   // =========================================================
-  // GOODS RECEIPT NOTE
+  // GOODS RECEIVED NOTES / GRN
   // =========================================================
 
   @Post('grn')
@@ -206,11 +209,29 @@ export class PurchasingController {
     );
   }
 
+  @Patch('grn/:id')
+  patchGrn(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateGrnDto,
+  ) {
+    return this.goodsReceiptService.updateGrn(
+      id,
+      dto,
+    );
+  }
+
   @Delete('grn/:id')
   deleteGrn(
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.goodsReceiptService.deleteGrn(id);
+  }
+
+  @Patch('grn/:id/cancel')
+  cancelGrn(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.goodsReceiptService.cancelGrn(id);
   }
 
   // =========================================================
@@ -240,6 +261,10 @@ export class PurchasingController {
     );
   }
 
+  // ---------------------------------------------------------
+  // UPDATE INVOICE - PUT
+  // ---------------------------------------------------------
+
   @Put('invoices/:id')
   updatePurchaseInvoice(
     @Param('id', ParseIntPipe) id: number,
@@ -250,6 +275,28 @@ export class PurchasingController {
       dto,
     );
   }
+
+  // ---------------------------------------------------------
+  // UPDATE INVOICE - PATCH
+  //
+  // Frontend edit page uses:
+  // PATCH /api/purchasing/invoices/:id
+  // ---------------------------------------------------------
+
+  @Patch('invoices/:id')
+  patchPurchaseInvoice(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePurchaseInvoiceDto,
+  ) {
+    return this.purchaseInvoiceService.updatePurchaseInvoice(
+      id,
+      dto,
+    );
+  }
+
+  // ---------------------------------------------------------
+  // CANCEL INVOICE
+  // ---------------------------------------------------------
 
   @Patch('invoices/:id/cancel')
   cancelPurchaseInvoice(
@@ -298,36 +345,43 @@ export class PurchasingController {
   }
 
   // =========================================================
-  // PURCHASE RETURNS
-  // =========================================================
+// PURCHASE RETURNS
+// =========================================================
 
-  @Post('returns')
-  createPurchaseReturn(
-    @Body() dto: CreatePurchaseReturnDto,
-  ) {
-    return this.purchaseReturnService.createPurchaseReturn(
-      dto,
-    );
-  }
+@Post('returns')
+createPurchaseReturn(
+  @Body() dto: CreatePurchaseReturnDto,
+) {
+  return this.purchaseReturnService.createPurchaseReturn(dto);
+}
 
-  @Get('returns')
-  findAllPurchaseReturns() {
-    return this.purchaseReturnService.findAllPurchaseReturns();
-  }
+@Get('returns')
+findAllPurchaseReturns() {
+  return this.purchaseReturnService.findAllPurchaseReturns();
+}
 
-  @Get('returns/:id')
-  findPurchaseReturn(
-    @Param('id', ParseIntPipe) id: number,
-  ) {
-    return this.purchaseReturnService.findPurchaseReturn(
-      id,
-    );
-  }
+@Get('returns/:id')
+findPurchaseReturn(
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.purchaseReturnService.findPurchaseReturn(id);
+}
 
-  // =========================================================
-  // PURCHASING DASHBOARD
-  // =========================================================
+@Patch('returns/:id/complete')
+async completePurchaseReturn(
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.purchaseReturnService.completePurchaseReturn(id);
+}
 
+@Patch('returns/:id/cancel')
+async cancelPurchaseReturn(
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.purchaseReturnService.cancelPurchaseReturn(id);
+}
+
+  // DASHBOARD
   @Get('dashboard')
   getDashboard() {
     return this.purchasingService.getDashboard();

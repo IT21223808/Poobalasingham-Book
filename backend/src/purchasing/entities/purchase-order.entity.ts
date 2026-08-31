@@ -14,13 +14,10 @@ import { Supplier } from '../../suppliers/entities/supplier.entity';
 
 export enum PurchaseOrderStatus {
   DRAFT = 'DRAFT',
-
   PENDING = 'PENDING',
-
   APPROVED = 'APPROVED',
-
+  PARTIALLY_RECEIVED = 'PARTIALLY_RECEIVED',
   RECEIVED = 'RECEIVED',
-
   CANCELLED = 'CANCELLED',
 }
 

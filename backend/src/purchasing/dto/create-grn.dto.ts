@@ -2,18 +2,19 @@ import {
   IsArray,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsPositive,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class CreateGrnItemDto {
+export class CreateGRNItemDto {
   @IsNotEmpty()
   @IsUUID()
   productId!: string;
 
-  @IsInt()
+  @IsNumber()
   @IsPositive()
   receivedQuantity!: number;
 }
@@ -23,12 +24,12 @@ export class CreateGrnDto {
   @IsPositive()
   purchaseOrderId!: number;
 
- @IsNotEmpty()
-@IsUUID()
-locationId!: string;;
+  @IsNotEmpty()
+  @IsUUID()
+  locationId!: string;
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateGrnItemDto)
-  items!: CreateGrnItemDto[];
+  @Type(() => CreateGRNItemDto)
+  items!: CreateGRNItemDto[];
 }

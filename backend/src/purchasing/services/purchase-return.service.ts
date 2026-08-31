@@ -31,11 +31,8 @@ import {
 } from '../entities/grn.entity';
 
 import { GrnItem } from '../entities/grn-item.entity';
-
 import { Product } from '../../products/entities/product.entity';
-
 import { CreatePurchaseReturnDto } from '../dto/create-purchase-return.dto';
-
 import { InventoryService } from '../../inventory/inventory.service';
 
 type PurchaseReturnValidationItem = {
@@ -234,7 +231,7 @@ export class PurchaseReturnService {
             reason:
               dto.reason,
             status:
-              PurchaseReturnStatus.COMPLETED,
+              PurchaseReturnStatus.PENDING,
           },
         );
 
@@ -265,10 +262,9 @@ export class PurchaseReturnService {
 
       for (const item of returnItems) {
         await this.inventoryService.stockOut({
-          productId:
-            item.productId,
-          quantity:
-            item.quantity,
+          productId:item.productId,
+          quantity:item.quantity,
+            locationId: dto.locationId,
         });
       }
 
@@ -428,4 +424,95 @@ export class PurchaseReturnService {
       },
     });
   }
+  // =========================================================
+// COMPLETE PURCHASE RETURN
+// =========================================================
+
+async completePurchaseReturn(id: number) {
+  const purchaseReturn =
+    await this.purchaseReturnRepository.findOne({
+      where: {
+        id,
+      },
+    });
+
+  if (!purchaseReturn) {
+    throw new NotFoundException(
+      `Purchase return ${id} not found`,
+    );
+  }
+
+  if (
+    purchaseReturn.status ===
+    PurchaseReturnStatus.COMPLETED
+  ) {
+    throw new BadRequestException(
+      'Purchase return is already completed',
+    );
+  }
+
+  if (
+    purchaseReturn.status ===
+    PurchaseReturnStatus.CANCELLED
+  ) {
+    throw new BadRequestException(
+      'Cancelled purchase return cannot be completed',
+    );
+  }
+
+  purchaseReturn.status =
+    PurchaseReturnStatus.COMPLETED;
+
+  await this.purchaseReturnRepository.save(
+    purchaseReturn,
+  );
+
+  return this.findPurchaseReturn(id);
+}
+
+// =========================================================
+// CANCEL PURCHASE RETURN
+// =========================================================
+
+async cancelPurchaseReturn(id: number) {
+  const purchaseReturn =
+    await this.purchaseReturnRepository.findOne({
+      where: {
+        id,
+      },
+    });
+
+  if (!purchaseReturn) {
+    throw new NotFoundException(
+      `Purchase return ${id} not found`,
+    );
+  }
+
+  if (
+    purchaseReturn.status ===
+    PurchaseReturnStatus.COMPLETED
+  ) {
+    throw new BadRequestException(
+      'Completed purchase return cannot be cancelled',
+    );
+  }
+
+  if (
+    purchaseReturn.status ===
+    PurchaseReturnStatus.CANCELLED
+  ) {
+    throw new BadRequestException(
+      'Purchase return is already cancelled',
+    );
+  }
+
+  purchaseReturn.status =
+    PurchaseReturnStatus.CANCELLED;
+
+  await this.purchaseReturnRepository.save(
+    purchaseReturn,
+  );
+
+  return this.findPurchaseReturn(id);
+}
 }
