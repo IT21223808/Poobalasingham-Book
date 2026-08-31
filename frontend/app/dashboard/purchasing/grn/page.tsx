@@ -14,7 +14,6 @@ import {
   Clock3,
   CheckCircle2,
   XCircle,
-  FileText,
   CalendarDays,
 } from "lucide-react";
 
@@ -64,10 +63,13 @@ export default function GRNPage() {
   const [deleting, setDeleting] =
     useState<number | null>(null);
 
+  const [cancelling, setCancelling] =
+    useState<number | null>(null);
+
   const itemsPerPage = 10;
 
   // =========================================================
-  // LOAD GRNS
+  // LOAD GRNs
   // =========================================================
 
   const loadGRNs = useCallback(
@@ -121,7 +123,7 @@ export default function GRNPage() {
   }, [loadGRNs]);
 
   // =========================================================
-  // FILTER GRNS
+  // FILTER GRNs
   // =========================================================
 
   const filteredGRNs = useMemo(() => {
@@ -129,7 +131,10 @@ export default function GRNPage() {
       const normalizedStatus =
         grn.status?.toUpperCase();
 
-      // Search
+      // -------------------------------------------------------
+      // SEARCH
+      // -------------------------------------------------------
+
       const matchesSearch =
         !search ||
         grn.grnNumber
@@ -138,12 +143,18 @@ export default function GRNPage() {
             search.toLowerCase()
           );
 
-      // Status
+      // -------------------------------------------------------
+      // STATUS
+      // -------------------------------------------------------
+
       const matchesStatus =
         status === "ALL" ||
         normalizedStatus === status;
 
-      // Date
+      // -------------------------------------------------------
+      // DATE
+      // -------------------------------------------------------
+
       const dateValue =
         grn.createdAt;
 
@@ -208,7 +219,10 @@ export default function GRNPage() {
         itemsPerPage
     );
 
-  // Reset page when filters change
+  // =========================================================
+  // RESET PAGE WHEN FILTER CHANGES
+  // =========================================================
+
   useEffect(() => {
     setCurrentPage(1);
   }, [
@@ -222,32 +236,29 @@ export default function GRNPage() {
   // SUMMARY
   // =========================================================
 
-  const totalGRNs = grns.length;
+  const totalGRNs =
+    grns.length;
 
-  const draftGRNs = grns.filter(
-    (grn) =>
-      grn.status?.toUpperCase() ===
-      "DRAFT"
-  ).length;
+  const partialGRNs =
+    grns.filter(
+      (grn) =>
+        grn.status?.toUpperCase() ===
+        "PARTIAL"
+    ).length;
 
-  const partialGRNs = grns.filter(
-    (grn) =>
-      grn.status?.toUpperCase() ===
-      "PARTIAL"
-  ).length;
+  const receivedGRNs =
+    grns.filter(
+      (grn) =>
+        grn.status?.toUpperCase() ===
+        "RECEIVED"
+    ).length;
 
-  const receivedGRNs = grns.filter(
-    (grn) =>
-      ["RECEIVED", "COMPLETED"].includes(
-        grn.status?.toUpperCase()
-      )
-  ).length;
-
-  const cancelledGRNs = grns.filter(
-    (grn) =>
-      grn.status?.toUpperCase() ===
-      "CANCELLED"
-  ).length;
+  const cancelledGRNs =
+    grns.filter(
+      (grn) =>
+        grn.status?.toUpperCase() ===
+        "CANCELLED"
+    ).length;
 
   // =========================================================
   // CLEAR FILTERS
@@ -262,6 +273,75 @@ export default function GRNPage() {
   };
 
   // =========================================================
+  // CANCEL GRN
+  // =========================================================
+
+  const handleCancel = async (
+    grn: GRN
+  ) => {
+    const normalizedStatus =
+      grn.status?.toUpperCase();
+
+    if (
+      normalizedStatus ===
+      "CANCELLED"
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to cancel ${grn.grnNumber}?\n\nThis GRN will be marked as CANCELLED and the received stock will be reversed.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCancelling(grn.id);
+      setError(null);
+
+      await purchasingService.cancelGrn(
+        grn.id
+      );
+
+      setGrns((previous) =>
+        previous.map((item) =>
+          item.id === grn.id
+            ? {
+                ...item,
+                status:
+                  "CANCELLED",
+              }
+            : item
+        )
+      );
+
+      alert(
+        `${grn.grnNumber} cancelled successfully.`
+      );
+    } catch (err: any) {
+      console.error(
+        "Failed to cancel GRN:",
+        err
+      );
+
+      const message =
+        err?.response?.data?.message;
+
+      alert(
+        Array.isArray(message)
+          ? message.join(", ")
+          : message ||
+              "Failed to cancel GRN"
+      );
+    } finally {
+      setCancelling(null);
+    }
+  };
+
+  // =========================================================
   // DELETE GRN
   // =========================================================
 
@@ -270,7 +350,7 @@ export default function GRNPage() {
   ) => {
     const confirmed =
       window.confirm(
-        `Are you sure you want to delete ${grn.grnNumber}?\n\nThis action cannot be undone.`
+        `Are you sure you want to delete ${grn.grnNumber}?\n\nThis action cannot be undone and received stock will be reversed.`
       );
 
     if (!confirmed) {
@@ -386,7 +466,8 @@ export default function GRNPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
           <div>
-            {/* Breadcrumb */}
+
+            {/* BREADCRUMB */}
 
             <div className="flex items-center gap-2 text-sm">
               <Link
@@ -405,7 +486,7 @@ export default function GRNPage() {
               </span>
             </div>
 
-            {/* Title */}
+            {/* TITLE */}
 
             <div className="mt-3 flex items-center gap-3">
 
@@ -427,6 +508,7 @@ export default function GRNPage() {
               </div>
 
             </div>
+
           </div>
 
           {/* HEADER ACTIONS */}
@@ -453,36 +535,31 @@ export default function GRNPage() {
               Refresh
             </button>
 
+            {/* ONLY CREATE GRN BUTTON */}
+
             <Link
               href="/dashboard/purchasing/grn/create"
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
             >
               <Plus size={17} />
-
               Create GRN
             </Link>
 
           </div>
+
         </div>
 
         {/* =================================================
             SUMMARY CARDS
         ================================================= */}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
           <SummaryCard
             title="Total GRNs"
             value={totalGRNs}
             icon={PackageCheck}
             iconClass="bg-blue-50 text-blue-600"
-          />
-
-          <SummaryCard
-            title="Draft"
-            value={draftGRNs}
-            icon={FileText}
-            iconClass="bg-gray-100 text-gray-600"
           />
 
           <SummaryCard
@@ -544,6 +621,7 @@ export default function GRNPage() {
                 />
 
               </div>
+
             </div>
 
             {/* STATUS */}
@@ -568,20 +646,12 @@ export default function GRNPage() {
                   All Status
                 </option>
 
-                <option value="DRAFT">
-                  Draft
-                </option>
-
                 <option value="PARTIAL">
                   Partial
                 </option>
 
                 <option value="RECEIVED">
                   Received
-                </option>
-
-                <option value="COMPLETED">
-                  Completed
                 </option>
 
                 <option value="CANCELLED">
@@ -619,6 +689,7 @@ export default function GRNPage() {
                 />
 
               </div>
+
             </div>
 
             {/* TO DATE */}
@@ -648,6 +719,7 @@ export default function GRNPage() {
                 />
 
               </div>
+
             </div>
 
           </div>
@@ -665,7 +737,8 @@ export default function GRNPage() {
               </span>{" "}
 
               result
-              {filteredGRNs.length !== 1
+              {filteredGRNs.length !==
+              1
                 ? "s"
                 : ""}
 
@@ -691,10 +764,9 @@ export default function GRNPage() {
 
           {/* TABLE HEADER */}
 
-          <div className="flex flex-col gap-3 border-b border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="border-b border-gray-100 px-6 py-4">
 
             <div>
-
               <h2 className="font-semibold text-gray-900">
                 Goods Received Notes
               </h2>
@@ -702,16 +774,7 @@ export default function GRNPage() {
               <p className="mt-1 text-sm text-gray-500">
                 View and manage goods received against purchase orders.
               </p>
-
             </div>
-
-            <Link
-              href="/dashboard/purchasing/grn/create"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Plus size={16} />
-              Create GRN
-            </Link>
 
           </div>
 
@@ -719,7 +782,7 @@ export default function GRNPage() {
 
           <div className="overflow-x-auto">
 
-            <table className="w-full min-w-[1000px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-left text-sm">
 
               <thead className="bg-gray-50">
 
@@ -759,7 +822,8 @@ export default function GRNPage() {
 
               <tbody className="divide-y divide-gray-100">
 
-                {paginatedGRNs.length === 0 ? (
+                {paginatedGRNs.length ===
+                0 ? (
 
                   <tr>
 
@@ -811,7 +875,12 @@ export default function GRNPage() {
                       const normalizedStatus =
                         grn.status?.toUpperCase();
 
+                      const isCancelled =
+                        normalizedStatus ===
+                        "CANCELLED";
+
                       return (
+
                         <tr
                           key={grn.id}
                           className="transition hover:bg-gray-50"
@@ -844,13 +913,16 @@ export default function GRNPage() {
                               href={`/dashboard/purchasing/orders/${grn.purchaseOrderId}`}
                               className="font-medium text-blue-600 hover:underline"
                             >
+
                               PO-
+
                               {String(
                                 grn.purchaseOrderId
                               ).padStart(
                                 5,
                                 "0"
                               )}
+
                             </Link>
 
                           </td>
@@ -860,11 +932,14 @@ export default function GRNPage() {
                           <td className="px-6 py-4">
 
                             <p className="font-medium text-gray-900">
+
                               {itemCount}{" "}
+
                               {itemCount ===
                               1
                                 ? "item"
                                 : "items"}
+
                             </p>
 
                           </td>
@@ -930,12 +1005,55 @@ export default function GRNPage() {
                               <Link
                                 href={`/dashboard/purchasing/grn/${grn.id}/edit`}
                                 title="Edit GRN"
-                                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                className={`rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 ${
+                                  isCancelled
+                                    ? "pointer-events-none opacity-40"
+                                    : ""
+                                }`}
                               >
                                 <Pencil
                                   size={17}
                                 />
                               </Link>
+
+                              {/* CANCEL */}
+
+                              {!isCancelled && (
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleCancel(
+                                      grn
+                                    )
+                                  }
+                                  disabled={
+                                    cancelling ===
+                                    grn.id
+                                  }
+                                  title="Cancel GRN"
+                                  className="rounded-lg p-2 text-gray-500 hover:bg-orange-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+
+                                  {cancelling ===
+                                  grn.id ? (
+
+                                    <RefreshCw
+                                      size={17}
+                                      className="animate-spin"
+                                    />
+
+                                  ) : (
+
+                                    <XCircle
+                                      size={17}
+                                    />
+
+                                  )}
+
+                                </button>
+
+                              )}
 
                               {/* DELETE */}
 
@@ -953,9 +1071,23 @@ export default function GRNPage() {
                                 title="Delete GRN"
                                 className="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
                               >
-                                <Trash2
-                                  size={17}
-                                />
+
+                                {deleting ===
+                                grn.id ? (
+
+                                  <RefreshCw
+                                    size={17}
+                                    className="animate-spin"
+                                  />
+
+                                ) : (
+
+                                  <Trash2
+                                    size={17}
+                                  />
+
+                                )}
+
                               </button>
 
                             </div>
@@ -963,9 +1095,11 @@ export default function GRNPage() {
                           </td>
 
                         </tr>
+
                       );
                     }
                   )
+
                 )}
 
               </tbody>
@@ -974,12 +1108,11 @@ export default function GRNPage() {
 
           </div>
 
-          {/* =================================================
-              PAGINATION
-          ================================================= */}
+          {/* PAGINATION */}
 
           {filteredGRNs.length >
             0 && (
+
             <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
 
               <p className="text-sm text-gray-500">
@@ -1055,6 +1188,7 @@ export default function GRNPage() {
               </div>
 
             </div>
+
           )}
 
         </div>
@@ -1121,19 +1255,10 @@ function StatusBadge({
     string,
     string
   > = {
-    DRAFT:
-      "bg-gray-50 text-gray-700 border-gray-200",
-
     PARTIAL:
       "bg-yellow-50 text-yellow-700 border-yellow-200",
 
-    PARTIALLY_RECEIVED:
-      "bg-yellow-50 text-yellow-700 border-yellow-200",
-
     RECEIVED:
-      "bg-green-50 text-green-700 border-green-200",
-
-    COMPLETED:
       "bg-green-50 text-green-700 border-green-200",
 
     CANCELLED:
@@ -1144,16 +1269,9 @@ function StatusBadge({
     string,
     string
   > = {
-    DRAFT: "Draft",
-
     PARTIAL: "Partial",
 
-    PARTIALLY_RECEIVED:
-      "Partially Received",
-
     RECEIVED: "Received",
-
-    COMPLETED: "Completed",
 
     CANCELLED: "Cancelled",
   };
