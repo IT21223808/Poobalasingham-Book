@@ -13,6 +13,8 @@ import { SubcategoriesModule } from './subcategories/subcategories.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PurchasingModule } from './purchasing/purchasing.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
+import { CustomersModule } from './customers/customers.module';
+import { FinanceModule } from './finance/finance.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { SuppliersModule } from './suppliers/suppliers.module';
     InventoryModule,
     PurchasingModule,
     SuppliersModule,
+    CustomersModule,
+    FinanceModule,
   ],
 
   controllers: [AppController],
