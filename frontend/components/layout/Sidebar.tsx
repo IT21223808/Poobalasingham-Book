@@ -57,11 +57,6 @@ const menuItems = [
     icon: ShoppingCart,
   },
   {
-    title: "POS Billing",
-    href: "/dashboard/pos",
-    icon: CreditCard,
-  },
-  {
     title: "Customers",
     href: "/dashboard/customers",
     icon: Users,
@@ -80,6 +75,11 @@ const menuItems = [
     title: "Reports",
     href: "/dashboard/reports",
     icon: BarChart3,
+  },
+  {
+    title: "POS Billing",
+    href: "/pos",
+    icon: CreditCard,
   },
 ];
 
