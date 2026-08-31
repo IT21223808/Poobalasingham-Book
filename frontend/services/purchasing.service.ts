@@ -1,7 +1,29 @@
 import api from "./api";
 
 // =========================================================
-// TYPES
+// PRODUCT
+// =========================================================
+
+export interface Product {
+  id: string;
+  productName?: string;
+  name?: string;
+  productCode?: string;
+}
+
+// =========================================================
+// LOCATION
+// =========================================================
+
+export interface Location {
+  id: string;
+  name: string;
+  description?: string | null;
+  isActive?: boolean;
+}
+
+// =========================================================
+// PURCHASE REQUISITION
 // =========================================================
 
 export interface PurchaseRequisition {
@@ -18,6 +40,10 @@ export interface PurchaseRequisitionItem {
   quantity: number;
   product?: Product;
 }
+
+// =========================================================
+// PURCHASE ORDER
+// =========================================================
 
 export interface PurchaseOrder {
   id: number;
@@ -46,6 +72,7 @@ export interface GRN {
   id: number;
   grnNumber: string;
   purchaseOrderId: number;
+  locationId?: string;
   status: string;
   items: GRNItem[];
   createdAt: string;
@@ -69,11 +96,24 @@ export interface PurchaseInvoice {
   invoiceNumber: string;
   purchaseOrderId: number;
   grnId: number;
-  status: string;
+  supplierId?: number | null;
+
+  invoiceDate?: string;
+  dueDate?: string | null;
+
+  paymentStatus?: string;
+  status?: string;
+
   subtotal: number;
-  taxAmount: number;
-  discountAmount: number;
-  totalAmount: number;
+  tax?: number;
+  discount?: number;
+
+  taxAmount?: number;
+  discountAmount?: number;
+
+  grandTotal?: number;
+  totalAmount?: number;
+
   items: PurchaseInvoiceItem[];
   createdAt: string;
 }
@@ -94,32 +134,34 @@ export interface PurchaseInvoiceItem {
 
 export interface PurchaseReturn {
   id: number;
+
   returnNumber: string;
+
   purchaseOrderId: number;
-  invoiceId?: number;
-  reason?: string;
+
+  invoiceId?: number | null;
+
+  locationId?: string;
+
+  reason?: string | null;
+
   status: string;
+
   items: PurchaseReturnItem[];
+
   createdAt: string;
 }
 
 export interface PurchaseReturnItem {
   id?: number;
+
   returnId?: number;
+
   productId: string;
+
   quantity: number;
+
   product?: Product;
-}
-
-// =========================================================
-// PRODUCT
-// =========================================================
-
-export interface Product {
-  id: string;
-  productName?: string;
-  name?: string;
-  productCode?: string;
 }
 
 // =========================================================
@@ -130,12 +172,16 @@ export interface DashboardData {
   summary: {
     totalRequisitions: number;
     pendingRequisitions: number;
+
     totalPurchaseOrders: number;
     pendingPurchaseOrders: number;
+
     totalGoodsReceived: number;
     totalPurchaseReturns: number;
+
     totalPurchaseInvoices: number;
     postedPurchaseInvoices: number;
+
     cancelledPurchaseOrders: number;
   };
 
@@ -162,7 +208,7 @@ export interface DashboardData {
 }
 
 // =========================================================
-// DTO TYPES
+// REQUISITION PAYLOAD
 // =========================================================
 
 export interface CreateRequisitionPayload {
@@ -171,6 +217,10 @@ export interface CreateRequisitionPayload {
     quantity: number;
   }[];
 }
+
+// =========================================================
+// PURCHASE ORDER PAYLOAD
+// =========================================================
 
 export interface CreatePurchaseOrderPayload {
   requisitionId: number;
@@ -188,6 +238,7 @@ export interface CreatePurchaseOrderPayload {
 
 export interface CreateGRNPayload {
   purchaseOrderId: number;
+
   locationId: string;
 
   items: {
@@ -196,15 +247,27 @@ export interface CreateGRNPayload {
   }[];
 }
 
-// Edit GRN uses the same structure
-export type UpdateGRNPayload = CreateGRNPayload;
+export type UpdateGRNPayload =
+  CreateGRNPayload;
+
+// =========================================================
+// INVOICE PAYLOAD
+// =========================================================
 
 export interface CreateInvoicePayload {
+  supplierId: number;
+
   purchaseOrderId: number;
+
   grnId: number;
 
-  taxAmount: number;
-  discountAmount: number;
+  invoiceDate?: string;
+
+  dueDate?: string;
+
+  taxAmount?: number;
+
+  discountAmount?: number;
 
   items: {
     productId: string;
@@ -213,9 +276,17 @@ export interface CreateInvoicePayload {
   }[];
 }
 
+// =========================================================
+// PURCHASE RETURN PAYLOAD
+// =========================================================
+
 export interface CreateReturnPayload {
   purchaseOrderId: number;
+
   invoiceId?: number;
+
+  locationId: string;
+
   reason?: string;
 
   items: {
@@ -224,20 +295,46 @@ export interface CreateReturnPayload {
   }[];
 }
 
+export type UpdateReturnPayload =
+  CreateReturnPayload;
+
 // =========================================================
 // PURCHASING SERVICE
 // =========================================================
 
 export const purchasingService = {
   // =======================================================
-  // PURCHASE REQUISITIONS
+  // LOCATIONS
   // =======================================================
 
-  getRequisitions: async (): Promise<PurchaseRequisition[]> => {
-    const response = await api.get("/purchasing/requisitions");
+  getLocations: async (): Promise<Location[]> => {
+    const response = await api.get(
+      "/inventory/locations"
+    );
 
-    return response.data;
+    const result = response.data;
+
+    const locations = Array.isArray(result)
+      ? result
+      : Array.isArray(result?.data)
+      ? result.data
+      : [];
+
+    return locations;
   },
+
+  // =======================================================
+  // REQUISITIONS
+  // =======================================================
+
+  getRequisitions:
+    async (): Promise<PurchaseRequisition[]> => {
+      const response = await api.get(
+        "/purchasing/requisitions"
+      );
+
+      return response.data;
+    },
 
   getRequisition: async (
     id: number
@@ -264,11 +361,14 @@ export const purchasingService = {
   // PURCHASE ORDERS
   // =======================================================
 
-  getOrders: async (): Promise<PurchaseOrder[]> => {
-    const response = await api.get("/purchasing/orders");
+  getOrders:
+    async (): Promise<PurchaseOrder[]> => {
+      const response = await api.get(
+        "/purchasing/orders"
+      );
 
-    return response.data;
-  },
+      return response.data;
+    },
 
   getOrder: async (
     id: number
@@ -323,7 +423,9 @@ export const purchasingService = {
     return response.data;
   },
 
-  deleteOrder: async (id: number) => {
+  deleteOrder: async (
+    id: number
+  ) => {
     const response = await api.delete(
       `/purchasing/orders/${id}`
     );
@@ -332,10 +434,9 @@ export const purchasingService = {
   },
 
   // =======================================================
-  // GOODS RECEIVED NOTES / GRN
+  // GRN
   // =======================================================
 
-  // GET ALL GRNs
   getGRNs: async (): Promise<GRN[]> => {
     const response = await api.get(
       "/purchasing/grn"
@@ -344,7 +445,6 @@ export const purchasingService = {
     return response.data;
   },
 
-  // GET SINGLE GRN
   getGRN: async (
     id: number
   ): Promise<GRN> => {
@@ -355,7 +455,6 @@ export const purchasingService = {
     return response.data;
   },
 
-  // CREATE GRN
   createGRN: async (
     data: CreateGRNPayload
   ): Promise<GRN> => {
@@ -367,7 +466,6 @@ export const purchasingService = {
     return response.data;
   },
 
-  // UPDATE GRN
   updateGRN: async (
     id: number,
     data: UpdateGRNPayload
@@ -380,7 +478,6 @@ export const purchasingService = {
     return response.data;
   },
 
-  // DELETE GRN
   deleteGRN: async (
     id: number
   ) => {
@@ -391,20 +488,29 @@ export const purchasingService = {
     return response.data;
   },
 
-  // =======================================================
-  // PURCHASE INVOICES
-  // =======================================================
-
-  // GET ALL INVOICES
-  getInvoices: async (): Promise<PurchaseInvoice[]> => {
-    const response = await api.get(
-      "/purchasing/invoices"
+  cancelGrn: async (
+    id: number
+  ): Promise<GRN> => {
+    const response = await api.patch(
+      `/purchasing/grn/${id}/cancel`
     );
 
     return response.data;
   },
 
-  // GET SINGLE INVOICE
+  // =======================================================
+  // PURCHASE INVOICES
+  // =======================================================
+
+  getInvoices:
+    async (): Promise<PurchaseInvoice[]> => {
+      const response = await api.get(
+        "/purchasing/invoices"
+      );
+
+      return response.data;
+    },
+
   getInvoice: async (
     id: number
   ): Promise<PurchaseInvoice> => {
@@ -415,7 +521,6 @@ export const purchasingService = {
     return response.data;
   },
 
-  // CREATE INVOICE
   createInvoice: async (
     data: CreateInvoicePayload
   ): Promise<PurchaseInvoice> => {
@@ -427,20 +532,31 @@ export const purchasingService = {
     return response.data;
   },
 
+  updateInvoice: async (
+  id: number,
+  data: CreateInvoicePayload
+): Promise<PurchaseInvoice> => {
+  const response = await api.put(
+    `/purchasing/invoices/${id}`,
+    data
+  );
+
+  return response.data;
+},
+
   // =======================================================
   // PURCHASE RETURNS
   // =======================================================
 
-  // GET ALL RETURNS
-  getReturns: async (): Promise<PurchaseReturn[]> => {
-    const response = await api.get(
-      "/purchasing/returns"
-    );
+  getReturns:
+    async (): Promise<PurchaseReturn[]> => {
+      const response = await api.get(
+        "/purchasing/returns"
+      );
 
-    return response.data;
-  },
+      return response.data;
+    },
 
-  // GET SINGLE RETURN
   getReturn: async (
     id: number
   ): Promise<PurchaseReturn> => {
@@ -451,7 +567,6 @@ export const purchasingService = {
     return response.data;
   },
 
-  // CREATE RETURN
   createReturn: async (
     data: CreateReturnPayload
   ): Promise<PurchaseReturn> => {
@@ -463,15 +578,36 @@ export const purchasingService = {
     return response.data;
   },
 
-  // =======================================================
-  // PURCHASING DASHBOARD
-  // =======================================================
-
-  getDashboard: async (): Promise<DashboardData> => {
-    const response = await api.get(
-      "/purchasing/dashboard"
+  updateReturn: async (
+    id: number,
+    data: UpdateReturnPayload
+  ): Promise<PurchaseReturn> => {
+    const response = await api.put(
+      `/purchasing/returns/${id}`,
+      data
     );
 
     return response.data;
   },
+
+  cancelReturn: async (id: number) => {
+  const response = await api.patch(
+    `/purchasing/returns/${id}/cancel`,
+  );
+
+  return response.data;
+},
+
+  // =======================================================
+  // DASHBOARD
+  // =======================================================
+
+  getDashboard:
+    async (): Promise<DashboardData> => {
+      const response = await api.get(
+        "/purchasing/dashboard"
+      );
+
+      return response.data;
+    },
 };

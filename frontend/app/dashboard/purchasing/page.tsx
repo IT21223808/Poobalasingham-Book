@@ -9,6 +9,7 @@ import {
   RotateCcw,
   ArrowRight,
   TrendingUp,
+  RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -20,12 +21,29 @@ interface DashboardData {
   summary: {
     totalRequisitions: number;
     pendingRequisitions: number;
+
     totalPurchaseOrders: number;
     pendingPurchaseOrders: number;
+    approvedPurchaseOrders: number;
+    receivedPurchaseOrders: number;
+    cancelledPurchaseOrders: number;
+
     totalGoodsReceived: number;
+    pendingGoodsReceived: number;
+    partialGoodsReceived: number;
+    cancelledGoodsReceived: number;
+
+    totalPurchaseInvoices: number;
+    draftPurchaseInvoices: number;
+    unpaidPurchaseInvoices: number;
+    partiallyPaidPurchaseInvoices: number;
+    paidPurchaseInvoices: number;
+    cancelledPurchaseInvoices: number;
+
     totalPurchaseReturns: number;
-    totalPurchaseInvoices?: number;
-    pendingPurchaseInvoices?: number;
+    pendingPurchaseReturns: number;
+    completedPurchaseReturns: number;
+    cancelledPurchaseReturns: number;
   };
 
   overview: {
@@ -33,23 +51,28 @@ interface DashboardData {
     orders: number;
     received: number;
     pending: number;
+    approved: number;
+    cancelled: number;
   };
 
   status: {
     pending: number;
     approved: number;
     received: number;
+    cancelled: number;
   };
 
   recentOrders: PurchaseOrder[];
   recentGRNs: GRN[];
+  recentInvoices: PurchaseInvoice[];
   recentReturns: PurchaseReturn[];
 }
 
 interface Product {
   id: string;
-  productCode: string;
-  productName: string;
+  productCode?: string;
+  productName?: string;
+  name?: string;
 }
 
 interface PurchaseOrderItem {
@@ -57,9 +80,9 @@ interface PurchaseOrderItem {
   purchaseOrderId: number;
   productId: string;
   quantity: number;
-  unitPrice: string;
-  subtotal: string;
-  product: Product;
+  unitPrice: string | number;
+  subtotal: string | number;
+  product?: Product;
 }
 
 interface PurchaseOrder {
@@ -67,7 +90,7 @@ interface PurchaseOrder {
   poNumber: string;
   requisitionId: number;
   status: string;
-  totalAmount: string;
+  totalAmount: string | number;
   items: PurchaseOrderItem[];
   createdAt: string;
 }
@@ -78,7 +101,7 @@ interface GRNItem {
   productId: string;
   orderedQuantity: number;
   receivedQuantity: number;
-  product: Product;
+  product?: Product;
 }
 
 interface GRN {
@@ -90,12 +113,39 @@ interface GRN {
   createdAt: string;
 }
 
+interface PurchaseInvoiceItem {
+  id: number;
+  invoiceId: number;
+  productId: string;
+  quantity: number;
+  unitPrice: string | number;
+  subtotal: string | number;
+  product?: Product;
+}
+
+interface PurchaseInvoice {
+  id: number;
+  invoiceNumber: string;
+  purchaseOrderId: number;
+  supplierId?: number | null;
+  grnId?: number | null;
+  invoiceDate?: string;
+  dueDate?: string | null;
+  paymentStatus: string;
+  subtotal?: number | string;
+  discount?: number | string;
+  tax?: number | string;
+  grandTotal?: number | string;
+  items: PurchaseInvoiceItem[];
+  createdAt: string;
+}
+
 interface PurchaseReturnItem {
   id: number;
   returnId: number;
   productId: string;
   quantity: number;
-  product: Product;
+  product?: Product;
 }
 
 interface PurchaseReturn {
@@ -104,7 +154,7 @@ interface PurchaseReturn {
   purchaseOrderId: number;
   invoiceId: number | null;
   status: string;
-  reason: string;
+  reason: string | null;
   items: PurchaseReturnItem[];
   createdAt: string;
 }
@@ -128,6 +178,9 @@ export default function PurchasingDashboard() {
   const [loading, setLoading] =
     useState(true);
 
+  const [refreshing, setRefreshing] =
+    useState(false);
+
   const [error, setError] =
     useState<string | null>(null);
 
@@ -135,64 +188,77 @@ export default function PurchasingDashboard() {
      LOAD DASHBOARD
   ======================================================= */
 
-  const loadDashboard = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-
-      const response = await fetch(
-        `${API_URL}/purchasing/dashboard`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token
-              ? {
-                  Authorization: `Bearer ${token}`,
-                }
-              : {}),
-          },
-          cache: "no-store",
+  const loadDashboard = useCallback(
+    async (isRefresh = false) => {
+      try {
+        if (isRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
         }
-      );
 
-      if (!response.ok) {
-        const data = await response.json().catch(
-          () => null
+        setError(null);
+
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("accessToken")
+            : null;
+
+        const response = await fetch(
+          `${API_URL}/purchasing/dashboard`,
+          {
+            method: "GET",
+
+            headers: {
+              "Content-Type": "application/json",
+
+              ...(token
+                ? {
+                    Authorization: `Bearer ${token}`,
+                  }
+                : {}),
+            },
+
+            cache: "no-store",
+          }
         );
 
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message ||
-                `Failed to load purchasing dashboard (${response.status})`
+        if (!response.ok) {
+          const data =
+            await response.json().catch(
+              () => null
+            );
+
+          throw new Error(
+            Array.isArray(data?.message)
+              ? data.message.join(", ")
+              : data?.message ||
+                  `Failed to load purchasing dashboard (${response.status})`
+          );
+        }
+
+        const data: DashboardData =
+          await response.json();
+
+        setDashboard(data);
+      } catch (err) {
+        console.error(
+          "Purchasing dashboard error:",
+          err
         );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load purchasing dashboard"
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      const data: DashboardData =
-        await response.json();
-
-      setDashboard(data);
-    } catch (err) {
-      console.error(
-        "Purchasing dashboard error:",
-        err
-      );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load purchasing dashboard"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   /* =======================================================
      INITIAL LOAD
@@ -235,13 +301,17 @@ export default function PurchasingDashboard() {
           </p>
 
           <p className="mt-2 text-sm text-gray-500">
-            {error || "No dashboard data available"}
+            {error ||
+              "No dashboard data available"}
           </p>
 
           <button
-            onClick={loadDashboard}
-            className="mt-5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+            onClick={() =>
+              loadDashboard()
+            }
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
           >
+            <RefreshCw size={15} />
             Try Again
           </button>
         </div>
@@ -250,58 +320,78 @@ export default function PurchasingDashboard() {
   }
 
   /* =========================================================
-     MAIN MODULE CARDS
+     MODULE CARDS
   ========================================================= */
 
   const moduleCards = [
     {
       title: "Requisitions",
-      description: "Create and manage requests",
+      description:
+        "Create and manage purchase requests",
       href: "/dashboard/purchasing/requisitions",
       icon: ClipboardList,
-      count: dashboard.summary.totalRequisitions,
+      count:
+        dashboard.summary.totalRequisitions,
       countLabel: "Total",
+      pending:
+        dashboard.summary.pendingRequisitions,
+      pendingLabel: "Pending",
     },
 
     {
       title: "Purchase Orders",
-      description: "Manage supplier orders",
+      description:
+        "Manage supplier purchase orders",
       href: "/dashboard/purchasing/orders",
       icon: ShoppingCart,
       count:
         dashboard.summary.totalPurchaseOrders,
       countLabel: "Total",
+      pending:
+        dashboard.summary.pendingPurchaseOrders,
+      pendingLabel: "Pending",
     },
 
     {
       title: "Goods Received",
-      description: "Receive and verify goods",
+      description:
+        "Receive and verify supplier goods",
       href: "/dashboard/purchasing/grn",
       icon: PackageCheck,
       count:
         dashboard.summary.totalGoodsReceived,
-      countLabel: "Total",
+      countLabel: "Received",
+      pending:
+        dashboard.summary.partialGoodsReceived,
+      pendingLabel: "Partial",
     },
 
     {
       title: "Purchase Invoices",
-      description: "Manage supplier invoices",
+      description:
+        "Manage supplier invoices and payments",
       href: "/dashboard/purchasing/invoices",
       icon: Receipt,
       count:
-        dashboard.summary.totalPurchaseInvoices ??
-        0,
+        dashboard.summary.totalPurchaseInvoices,
       countLabel: "Total",
+      pending:
+        dashboard.summary.unpaidPurchaseInvoices,
+      pendingLabel: "Unpaid",
     },
 
     {
       title: "Purchase Returns",
-      description: "Return goods to suppliers",
+      description:
+        "Return goods to suppliers",
       href: "/dashboard/purchasing/returns",
       icon: RotateCcw,
       count:
         dashboard.summary.totalPurchaseReturns,
       countLabel: "Total",
+      pending:
+        dashboard.summary.pendingPurchaseReturns,
+      pendingLabel: "Pending",
     },
   ];
 
@@ -314,96 +404,129 @@ export default function PurchasingDashboard() {
       <div className="w-full space-y-6">
 
         {/* =================================================
-            PAGE HEADER
+            HEADER
         ================================================= */}
 
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-            Purchasing
-          </h1>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-          <p className="mt-1 max-w-2xl text-sm text-gray-500">
-            Manage requisitions, purchase orders,
-            goods received, invoices and returns.
-          </p>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+              Purchasing
+            </h1>
+
+            <p className="mt-1 max-w-2xl text-sm text-gray-500">
+              Manage requisitions, purchase orders,
+              goods received, invoices and returns.
+            </p>
+          </div>
+
+          <button
+            onClick={() =>
+              loadDashboard(true)
+            }
+            disabled={refreshing}
+            className="inline-flex w-fit items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw
+              size={15}
+              className={
+                refreshing
+                  ? "animate-spin"
+                  : ""
+              }
+            />
+
+            {refreshing
+              ? "Refreshing..."
+              : "Refresh"}
+          </button>
+
         </div>
 
         {/* =================================================
-            MAIN PURCHASING MODULES
+            MODULE CARDS
         ================================================= */}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
 
           {moduleCards.map((card) => {
-  const Icon = card.icon;
+            const Icon = card.icon;
 
-  return (
-    <Link
-      key={card.title}
-      href={card.href}
-      className="group flex min-h-[154px] flex-col rounded-lg border border-gray-200 bg-white p-4 transition hover:border-blue-200 hover:bg-blue-50 hover:shadow-sm"
-    >
-      {/* CARD HEADER */}
+            return (
+              <Link
+                key={card.title}
+                href={card.href}
+                className="group flex min-h-[175px] flex-col rounded-lg border border-gray-200 bg-white p-4 transition hover:border-blue-200 hover:bg-blue-50 hover:shadow-sm"
+              >
 
-      <div className="flex items-center justify-between gap-2">
+                {/* CARD HEADER */}
 
-        {/* ICON + TITLE */}
+                <div className="flex items-center justify-between gap-2">
 
-        <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
 
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
-            <Icon size={18} />
-          </div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
+                      <Icon size={18} />
+                    </div>
 
-          <h2 className="truncate text-sm font-semibold text-gray-900">
-            {card.title}
-          </h2>
+                    <h2 className="truncate text-sm font-semibold text-gray-900">
+                      {card.title}
+                    </h2>
 
-        </div>
+                  </div>
 
-        {/* ARROW */}
+                  <ArrowRight
+                    size={15}
+                    className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600"
+                  />
 
-        <ArrowRight
-          size={15}
-          className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600"
-        />
+                </div>
 
-      </div>
+                {/* DESCRIPTION */}
 
-      {/* DESCRIPTION */}
+                <p className="mt-3 min-h-[32px] text-xs leading-4 text-gray-500">
+                  {card.description}
+                </p>
 
-      <p className="mt-3 min-h-[32px] text-xs leading-4 text-gray-500">
-        {card.description}
-      </p>
+                {/* COUNTS */}
 
-      {/* COUNT */}
+                <div className="mt-auto grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
 
-      <div className="mt-auto border-t border-gray-100 pt-3">
+                  <div>
+                    <p className="text-xl font-semibold leading-none text-gray-900">
+                      {card.count}
+                    </p>
 
-        <p className="text-xl font-semibold leading-none text-gray-900">
-          {card.count}
-        </p>
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      {card.countLabel}
+                    </p>
+                  </div>
 
-        <p className="mt-1 text-[11px] text-gray-400">
-          {card.countLabel}
-        </p>
+                  <div className="border-l border-gray-100 pl-3">
+                    <p className="text-xl font-semibold leading-none text-gray-900">
+                      {card.pending}
+                    </p>
 
-      </div>
-    </Link>
-  );
-})}
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      {card.pendingLabel}
+                    </p>
+                  </div>
+
+                </div>
+
+              </Link>
+            );
+          })}
 
         </div>
 
         {/* =================================================
-            PURCHASE OVERVIEW + STATUS
+            QUICK STATUS SUMMARY
         ================================================= */}
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
 
-          {/* =================================================
-              PURCHASE OVERVIEW
-          ================================================= */}
+          {/* PURCHASE OVERVIEW */}
 
           <div className="rounded-xl border border-gray-200 bg-white p-5 lg:col-span-2">
 
@@ -441,22 +564,39 @@ export default function PurchasingDashboard() {
                 {Number(
                   dashboard.overview
                     .totalPurchaseAmount
-                ).toLocaleString("en-LK", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                ).toLocaleString(
+                  "en-LK",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}
               </p>
 
             </div>
 
-            {/* OVERVIEW COUNTS */}
+            {/* OVERVIEW */}
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
 
               <OverviewItem
                 label="Orders"
                 value={
                   dashboard.overview.orders
+                }
+              />
+
+              <OverviewItem
+                label="Pending"
+                value={
+                  dashboard.overview.pending
+                }
+              />
+
+              <OverviewItem
+                label="Approved"
+                value={
+                  dashboard.overview.approved
                 }
               />
 
@@ -468,9 +608,9 @@ export default function PurchasingDashboard() {
               />
 
               <OverviewItem
-                label="Pending"
+                label="Cancelled"
                 value={
-                  dashboard.overview.pending
+                  dashboard.overview.cancelled
                 }
               />
 
@@ -478,14 +618,12 @@ export default function PurchasingDashboard() {
 
           </div>
 
-          {/* =================================================
-              PURCHASE STATUS
-          ================================================= */}
+          {/* PURCHASE ORDER STATUS */}
 
           <div className="rounded-xl border border-gray-200 bg-white p-5">
 
             <h2 className="text-base font-semibold text-gray-900">
-              Purchase Status
+              Purchase Order Status
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
@@ -524,6 +662,162 @@ export default function PurchasingDashboard() {
                 }
               />
 
+              <StatusProgress
+                label="Cancelled"
+                value={
+                  dashboard.status.cancelled
+                }
+                total={
+                  dashboard.overview.orders
+                }
+              />
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* =================================================
+            INVOICE + RETURN STATUS
+        ================================================= */}
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+
+          {/* PURCHASE INVOICE STATUS */}
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+
+            <div className="flex items-start justify-between">
+
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">
+                  Purchase Invoice Status
+                </h2>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  Current supplier invoice payment status
+                </p>
+              </div>
+
+              <Receipt
+                size={20}
+                className="text-blue-600"
+              />
+
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+
+              <SummaryBox
+                label="Total"
+                value={
+                  dashboard.summary
+                    .totalPurchaseInvoices
+                }
+              />
+
+              <SummaryBox
+                label="Draft"
+                value={
+                  dashboard.summary
+                    .draftPurchaseInvoices
+                }
+              />
+
+              <SummaryBox
+                label="Unpaid"
+                value={
+                  dashboard.summary
+                    .unpaidPurchaseInvoices
+                }
+              />
+
+              <SummaryBox
+                label="Partially Paid"
+                value={
+                  dashboard.summary
+                    .partiallyPaidPurchaseInvoices
+                }
+              />
+
+              <SummaryBox
+                label="Paid"
+                value={
+                  dashboard.summary
+                    .paidPurchaseInvoices
+                }
+              />
+
+              <SummaryBox
+                label="Cancelled"
+                value={
+                  dashboard.summary
+                    .cancelledPurchaseInvoices
+                }
+              />
+
+            </div>
+
+          </div>
+
+          {/* PURCHASE RETURN STATUS */}
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+
+            <div className="flex items-start justify-between">
+
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">
+                  Purchase Return Status
+                </h2>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  Current supplier return status
+                </p>
+              </div>
+
+              <RotateCcw
+                size={20}
+                className="text-orange-600"
+              />
+
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+
+              <SummaryBox
+                label="Total"
+                value={
+                  dashboard.summary
+                    .totalPurchaseReturns
+                }
+              />
+
+              <SummaryBox
+                label="Pending"
+                value={
+                  dashboard.summary
+                    .pendingPurchaseReturns
+                }
+              />
+
+              <SummaryBox
+                label="Completed"
+                value={
+                  dashboard.summary
+                    .completedPurchaseReturns
+                }
+              />
+
+              <SummaryBox
+                label="Cancelled"
+                value={
+                  dashboard.summary
+                    .cancelledPurchaseReturns
+                }
+              />
+
             </div>
 
           </div>
@@ -535,8 +829,6 @@ export default function PurchasingDashboard() {
         ================================================= */}
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-
-          {/* TABLE HEADER */}
 
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
 
@@ -559,8 +851,6 @@ export default function PurchasingDashboard() {
             </Link>
 
           </div>
-
-          {/* TABLE */}
 
           <div className="overflow-x-auto">
 
@@ -598,7 +888,6 @@ export default function PurchasingDashboard() {
 
                 {dashboard.recentOrders.length ===
                 0 ? (
-
                   <tr>
                     <td
                       colSpan={5}
@@ -607,9 +896,7 @@ export default function PurchasingDashboard() {
                       No purchase orders found.
                     </td>
                   </tr>
-
                 ) : (
-
                   dashboard.recentOrders.map(
                     (order) => (
                       <tr
@@ -634,7 +921,9 @@ export default function PurchasingDashboard() {
                             ?.map(
                               (item) =>
                                 item.product
-                                  ?.productName
+                                  ?.productName ||
+                                item.product
+                                  ?.name
                             )
                             .filter(Boolean)
                             .join(", ") ||
@@ -647,10 +936,13 @@ export default function PurchasingDashboard() {
                           Rs.{" "}
                           {Number(
                             order.totalAmount
-                          ).toLocaleString("en-LK", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          ).toLocaleString(
+                            "en-LK",
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )}
 
                         </td>
 
@@ -675,7 +967,6 @@ export default function PurchasingDashboard() {
                       </tr>
                     )
                   )
-
                 )}
 
               </tbody>
@@ -687,14 +978,12 @@ export default function PurchasingDashboard() {
         </div>
 
         {/* =================================================
-            RECENT GRNS + RECENT RETURNS
+            RECENT GRNs + RETURNS
         ================================================= */}
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
 
-          {/* =================================================
-              RECENT GOODS RECEIVED
-          ================================================= */}
+          {/* RECENT GRNs */}
 
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
 
@@ -724,13 +1013,10 @@ export default function PurchasingDashboard() {
 
               {dashboard.recentGRNs.length ===
               0 ? (
-
                 <div className="px-5 py-10 text-center text-sm text-gray-500">
                   No GRNs found.
                 </div>
-
               ) : (
-
                 dashboard.recentGRNs.map(
                   (grn) => (
                     <Link
@@ -758,7 +1044,8 @@ export default function PurchasingDashboard() {
                             ?.map(
                               (item) =>
                                 item.product
-                                  ?.productName
+                                  ?.productName ||
+                                item.product?.name
                             )
                             .filter(Boolean)
                             .join(", ") ||
@@ -777,16 +1064,13 @@ export default function PurchasingDashboard() {
                     </Link>
                   )
                 )
-
               )}
 
             </div>
 
           </div>
 
-          {/* =================================================
-              RECENT PURCHASE RETURNS
-          ================================================= */}
+          {/* RECENT RETURNS */}
 
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
 
@@ -816,13 +1100,10 @@ export default function PurchasingDashboard() {
 
               {dashboard.recentReturns.length ===
               0 ? (
-
                 <div className="px-5 py-10 text-center text-sm text-gray-500">
                   No purchase returns found.
                 </div>
-
               ) : (
-
                 dashboard.recentReturns.map(
                   (item) => (
                     <Link
@@ -871,11 +1152,13 @@ export default function PurchasingDashboard() {
                         </p>
 
                         <div className="mt-1">
+
                           <StatusBadge
                             status={formatStatus(
                               item.status
                             )}
                           />
+
                         </div>
 
                       </div>
@@ -883,10 +1166,155 @@ export default function PurchasingDashboard() {
                     </Link>
                   )
                 )
-
               )}
 
             </div>
+
+          </div>
+
+        </div>
+
+        {/* =================================================
+            RECENT INVOICES
+        ================================================= */}
+
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+
+          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">
+                Recent Purchase Invoices
+              </h2>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Latest supplier invoices
+              </p>
+            </div>
+
+            <Link
+              href="/dashboard/purchasing/invoices"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+            >
+              View All
+              <ArrowRight size={15} />
+            </Link>
+
+          </div>
+
+          <div className="overflow-x-auto">
+
+            <table className="w-full min-w-[700px] text-left text-sm">
+
+              <thead className="bg-gray-50">
+
+                <tr>
+
+                  <th className="px-5 py-3 font-medium text-gray-600">
+                    Invoice Number
+                  </th>
+
+                  <th className="px-5 py-3 font-medium text-gray-600">
+                    PO
+                  </th>
+
+                  <th className="px-5 py-3 font-medium text-gray-600">
+                    Amount
+                  </th>
+
+                  <th className="px-5 py-3 font-medium text-gray-600">
+                    Payment Status
+                  </th>
+
+                  <th className="px-5 py-3 font-medium text-gray-600">
+                    Date
+                  </th>
+
+                </tr>
+
+              </thead>
+
+              <tbody className="divide-y divide-gray-100">
+
+                {dashboard.recentInvoices.length ===
+                0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-5 py-10 text-center text-sm text-gray-500"
+                    >
+                      No purchase invoices found.
+                    </td>
+                  </tr>
+                ) : (
+                  dashboard.recentInvoices.map(
+                    (invoice) => (
+                      <tr
+                        key={invoice.id}
+                        className="transition hover:bg-gray-50"
+                      >
+
+                        <td className="px-5 py-4">
+
+                          <Link
+                            href={`/dashboard/purchasing/invoices/${invoice.id}`}
+                            className="font-medium text-blue-600 hover:text-blue-700"
+                          >
+                            {invoice.invoiceNumber}
+                          </Link>
+
+                        </td>
+
+                        <td className="px-5 py-4 text-gray-600">
+
+                          PO-
+                          {String(
+                            invoice.purchaseOrderId
+                          ).padStart(5, "0")}
+
+                        </td>
+
+                        <td className="whitespace-nowrap px-5 py-4 font-medium text-gray-900">
+
+                          Rs.{" "}
+                          {Number(
+                            invoice.grandTotal ?? 0
+                          ).toLocaleString(
+                            "en-LK",
+                            {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }
+                          )}
+
+                        </td>
+
+                        <td className="px-5 py-4">
+
+                          <StatusBadge
+                            status={formatStatus(
+                              invoice.paymentStatus
+                            )}
+                          />
+
+                        </td>
+
+                        <td className="whitespace-nowrap px-5 py-4 text-gray-500">
+
+                          {formatDate(
+                            invoice.createdAt
+                          )}
+
+                        </td>
+
+                      </tr>
+                    )
+                  )
+                )}
+
+              </tbody>
+
+            </table>
 
           </div>
 
@@ -924,6 +1352,32 @@ function OverviewItem({
 }
 
 /* =========================================================
+   SUMMARY BOX
+========================================================= */
+
+function SummaryBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-lg bg-gray-50 px-4 py-3.5">
+
+      <p className="text-xs text-gray-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-xl font-semibold text-gray-900">
+        {value}
+      </p>
+
+    </div>
+  );
+}
+
+/* =========================================================
    STATUS PROGRESS
 ========================================================= */
 
@@ -938,7 +1392,12 @@ function StatusProgress({
 }) {
   const percentage =
     total > 0
-      ? Math.round((value / total) * 100)
+      ? Math.min(
+          100,
+          Math.round(
+            (value / total) * 100
+          )
+        )
       : 0;
 
   return (
@@ -984,7 +1443,10 @@ function StatusBadge({
 }: {
   status: string;
 }) {
-  const styles: Record<string, string> = {
+  const styles: Record<
+    string,
+    string
+  > = {
     Pending:
       "bg-yellow-50 text-yellow-700",
 
@@ -1006,6 +1468,15 @@ function StatusBadge({
     Draft:
       "bg-gray-50 text-gray-700",
 
+    Unpaid:
+      "bg-yellow-50 text-yellow-700",
+
+    "Partially Paid":
+      "bg-orange-50 text-orange-700",
+
+    Paid:
+      "bg-green-50 text-green-700",
+
     Partially_received:
       "bg-orange-50 text-orange-700",
 
@@ -1026,11 +1497,15 @@ function StatusBadge({
 }
 
 /* =========================================================
-   HELPERS
+   FORMAT STATUS
 ========================================================= */
 
-function formatStatus(status: string) {
-  if (!status) return "Unknown";
+function formatStatus(
+  status: string
+) {
+  if (!status) {
+    return "Unknown";
+  }
 
   return status
     .toLowerCase()
@@ -1040,12 +1515,25 @@ function formatStatus(status: string) {
     );
 }
 
-function formatDate(date: string) {
-  if (!date) return "—";
+/* =========================================================
+   FORMAT DATE
+========================================================= */
 
-  const parsedDate = new Date(date);
+function formatDate(
+  date: string
+) {
+  if (!date) {
+    return "—";
+  }
 
-  if (Number.isNaN(parsedDate.getTime())) {
+  const parsedDate =
+    new Date(date);
+
+  if (
+    Number.isNaN(
+      parsedDate.getTime()
+    )
+  ) {
     return "—";
   }
 
