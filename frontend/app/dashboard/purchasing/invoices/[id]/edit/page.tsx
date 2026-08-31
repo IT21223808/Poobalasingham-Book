@@ -2,73 +2,290 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import {
-  ArrowLeft,
   Plus,
   Trash2,
   Save,
   Loader2,
+  Receipt,
 } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+
+// =========================================================
+// TYPES
+// =========================================================
 
 interface Supplier {
   id: number | string;
+  supplierCode?: string;
   supplierName: string;
+  isActive?: boolean;
 }
 
 interface Product {
   id: string;
-  productName: string;
   productCode?: string;
+  productName: string;
+  name?: string;
+}
+
+interface PurchaseOrder {
+  id: number | string;
+  poNumber?: string;
+  supplierId?: number | string;
+  status?: string;
+}
+
+interface GRN {
+  id: number | string;
+  grnNumber?: string;
+  purchaseOrderId?: number | string;
+  status?: string;
 }
 
 interface InvoiceItem {
-  id?: number;
+  id?: number | string;
   productId: string;
+  productName: string;
   quantity: number;
   unitPrice: number;
-  discount: number;
-  tax: number;
 }
 
 interface PurchaseInvoice {
   id: number;
-  invoiceNumber: string;
+  invoiceNumber?: string;
 
-  supplierId?: number | string | null;
+  supplierId?: number | string;
+  purchaseOrderId?: number | string;
+  grnId?: number | string;
 
-  invoiceDate: string;
+  invoiceDate?: string;
+  dueDate?: string;
 
-  dueDate?: string | null;
+  discountAmount?: number;
+  taxAmount?: number;
 
-  subtotal: string | number;
-  discount: string | number;
-  tax: string | number;
-  grandTotal: string | number;
+  status?: string;
 
-  paymentStatus: string;
+  items?: Array<{
+    id?: number | string;
+    productId: string | number;
 
-  items: InvoiceItem[];
+    product?: {
+      id?: string | number;
+      productCode?: string;
+      productName?: string;
+      name?: string;
+    };
+
+    quantity: number | string;
+    unitPrice: number | string;
+  }>;
 }
+
+// =========================================================
+// API
+// =========================================================
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000/api";
 
+const INVOICE_API = `${API_URL}/purchasing/invoices`;
+const SUPPLIER_API = `${API_URL}/suppliers`;
+const PRODUCT_API = `${API_URL}/products`;
+const PO_API = `${API_URL}/purchasing/orders`;
+const GRN_API = `${API_URL}/purchasing/grn`;
+
+const INVOICE_LIST_PAGE =
+  "/dashboard/purchasing/invoices";
+
+// =========================================================
+// ERROR HELPER
+// =========================================================
+
+function getErrorMessage(
+  data: any,
+  fallback = "Something went wrong."
+): string {
+  if (!data) {
+    return fallback;
+  }
+
+  if (data instanceof Error) {
+    return data.message || fallback;
+  }
+
+  if (typeof data === "string") {
+    return data || fallback;
+  }
+
+  if (Array.isArray(data?.message)) {
+    return data.message
+      .map((item: any) => {
+        if (typeof item === "string") {
+          return item;
+        }
+
+        if (item?.message) {
+          if (Array.isArray(item.message)) {
+            return item.message.join(", ");
+          }
+
+          return String(item.message);
+        }
+
+        if (item?.error) {
+          return String(item.error);
+        }
+
+        try {
+          return JSON.stringify(item);
+        } catch {
+          return String(item);
+        }
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (typeof data?.message === "string") {
+    return data.message;
+  }
+
+  if (
+    data?.message &&
+    typeof data.message === "object"
+  ) {
+    if (Array.isArray(data.message.message)) {
+      return data.message.message
+        .map((item: any) => {
+          if (typeof item === "string") {
+            return item;
+          }
+
+          return (
+            item?.message ||
+            item?.error ||
+            JSON.stringify(item)
+          );
+        })
+        .join(", ");
+    }
+
+    if (
+      typeof data.message.message === "string"
+    ) {
+      return data.message.message;
+    }
+
+    if (
+      typeof data.message.error === "string"
+    ) {
+      return data.message.error;
+    }
+
+    try {
+      return JSON.stringify(data.message);
+    } catch {
+      return fallback;
+    }
+  }
+
+  if (typeof data?.error === "string") {
+    return data.error;
+  }
+
+  if (
+    data?.error &&
+    typeof data.error === "object"
+  ) {
+    try {
+      return JSON.stringify(data.error);
+    } catch {
+      return fallback;
+    }
+  }
+
+  try {
+    const json = JSON.stringify(data);
+
+    if (json && json !== "{}") {
+      return json;
+    }
+  } catch {
+    // ignore
+  }
+
+  return fallback;
+}
+
+// =========================================================
+// DATE HELPER
+// =========================================================
+
+function formatDateForInput(
+  value?: string | null
+): string {
+  if (!value) {
+    return "";
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().split("T")[0];
+}
+
+// =========================================================
+// NUMBER FORMATTER
+// =========================================================
+
+function formatCurrency(value: number): string {
+  return Number(value || 0).toLocaleString(
+    "en-LK",
+    {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }
+  );
+}
+
+// =========================================================
+// INTEGER VALIDATION
+// =========================================================
+
+function isPositiveInteger(
+  value: string
+): boolean {
+  const number = Number(value);
+
+  return (
+    Number.isInteger(number) &&
+    number > 0
+  );
+}
+
+// =========================================================
+// COMPONENT
+// =========================================================
+
 export default function EditPurchaseInvoicePage() {
-  // =====================================================
-  // GET DYNAMIC ID
-  // =====================================================
-
   const params = useParams();
+  const router = useRouter();
 
-  const invoiceId = params?.id
-    ? String(params.id)
-    : "";
+  const id = Number(params.id);
 
-  // =====================================================
-  // STATE
-  // =====================================================
+  // =======================================================
+  // DATA
+  // =======================================================
 
   const [invoice, setInvoice] =
     useState<PurchaseInvoice | null>(null);
@@ -79,10 +296,23 @@ export default function EditPurchaseInvoicePage() {
   const [products, setProducts] =
     useState<Product[]>([]);
 
-  const [invoiceNumber, setInvoiceNumber] =
-    useState("");
+  const [purchaseOrders, setPurchaseOrders] =
+    useState<PurchaseOrder[]>([]);
+
+  const [grns, setGrns] =
+    useState<GRN[]>([]);
+
+  // =======================================================
+  // FORM
+  // =======================================================
 
   const [supplierId, setSupplierId] =
+    useState("");
+
+  const [purchaseOrderId, setPurchaseOrderId] =
+    useState("");
+
+  const [grnId, setGrnId] =
     useState("");
 
   const [invoiceDate, setInvoiceDate] =
@@ -91,8 +321,18 @@ export default function EditPurchaseInvoicePage() {
   const [dueDate, setDueDate] =
     useState("");
 
+  const [discountAmount, setDiscountAmount] =
+    useState(0);
+
+  const [taxAmount, setTaxAmount] =
+    useState(0);
+
   const [items, setItems] =
     useState<InvoiceItem[]>([]);
+
+  // =======================================================
+  // UI STATE
+  // =======================================================
 
   const [loading, setLoading] =
     useState(true);
@@ -103,69 +343,91 @@ export default function EditPurchaseInvoicePage() {
   const [error, setError] =
     useState("");
 
-  // =====================================================
+  // =======================================================
   // TOKEN
-  // =====================================================
+  // =======================================================
 
-  const getToken = () =>
-    typeof window !== "undefined"
-      ? localStorage.getItem("accessToken")
-      : null;
+  const getToken = () => {
+    if (typeof window === "undefined") {
+      return null;
+    }
 
-  // =====================================================
+    return localStorage.getItem(
+      "accessToken"
+    );
+  };
+
+  // =======================================================
+  // HEADERS
+  // =======================================================
+
+  const getHeaders = (): HeadersInit => {
+    const token = getToken();
+
+    return {
+      "Content-Type": "application/json",
+
+      ...(token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {}),
+    };
+  };
+
+  // =======================================================
   // LOAD DATA
-  // =====================================================
+  // =======================================================
 
   useEffect(() => {
-    if (!invoiceId) return;
+    if (!id || Number.isNaN(id)) {
+      setError(
+        "Invalid purchase invoice ID."
+      );
+
+      setLoading(false);
+
+      return;
+    }
 
     const loadData = async () => {
       try {
         setLoading(true);
         setError("");
 
-        const token = getToken();
-
-        const headers: HeadersInit = {
-          ...(token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : {}),
-        };
-
         const [
           invoiceResponse,
           suppliersResponse,
           productsResponse,
+          ordersResponse,
+          grnsResponse,
         ] = await Promise.all([
           fetch(
-            `${API_URL}/purchasing/invoices/${invoiceId}`,
+            `${INVOICE_API}/${id}`,
             {
-              headers,
-              cache: "no-store",
+              headers: getHeaders(),
             }
           ),
 
-          fetch(
-            `${API_URL}/suppliers`,
-            {
-              headers,
-              cache: "no-store",
-            }
-          ),
+          fetch(SUPPLIER_API, {
+            headers: getHeaders(),
+          }),
 
-          fetch(
-            `${API_URL}/products`,
-            {
-              headers,
-              cache: "no-store",
-            }
-          ),
+          fetch(PRODUCT_API, {
+            headers: getHeaders(),
+          }),
+
+          fetch(PO_API, {
+            headers: getHeaders(),
+          }),
+
+          fetch(GRN_API, {
+            headers: getHeaders(),
+          }),
         ]);
 
         // =================================================
-        // INVOICE RESPONSE
+        // READ RESPONSE
         // =================================================
 
         const invoiceData =
@@ -173,129 +435,85 @@ export default function EditPurchaseInvoicePage() {
             .json()
             .catch(() => null);
 
-        if (!invoiceResponse.ok) {
-          throw new Error(
-            getApiErrorMessage(
-              invoiceData,
-              "Failed to load invoice"
-            )
-          );
-        }
-
-        const loadedInvoice =
-          invoiceData?.data ||
-          invoiceData;
-
-        if (!loadedInvoice) {
-          throw new Error(
-            "Invoice not found"
-          );
-        }
-
-        // =================================================
-        // SUPPLIERS
-        // =================================================
-
         const suppliersData =
           await suppliersResponse
             .json()
             .catch(() => null);
-
-        // =================================================
-        // PRODUCTS
-        // =================================================
 
         const productsData =
           await productsResponse
             .json()
             .catch(() => null);
 
-        // =================================================
-        // SET INVOICE
-        // =================================================
+        const ordersData =
+          await ordersResponse
+            .json()
+            .catch(() => null);
 
-        setInvoice(loadedInvoice);
-
-        setInvoiceNumber(
-          loadedInvoice.invoiceNumber || ""
-        );
-
-        setSupplierId(
-          loadedInvoice.supplierId !==
-            null &&
-          loadedInvoice.supplierId !==
-            undefined
-            ? String(
-                loadedInvoice.supplierId
-              )
-            : ""
-        );
-
-        setInvoiceDate(
-          loadedInvoice.invoiceDate
-            ? String(
-                loadedInvoice.invoiceDate
-              ).split("T")[0]
-            : ""
-        );
-
-        setDueDate(
-          loadedInvoice.dueDate
-            ? String(
-                loadedInvoice.dueDate
-              ).split("T")[0]
-            : ""
-        );
+        const grnsData =
+          await grnsResponse
+            .json()
+            .catch(() => null);
 
         // =================================================
-        // SET ITEMS
+        // RESPONSE VALIDATION
         // =================================================
 
-        setItems(
-          Array.isArray(
-            loadedInvoice.items
-          )
-            ? loadedInvoice.items.map(
-                (
-                  item: InvoiceItem
-                ) => ({
-                  id: item.id,
+        if (!invoiceResponse.ok) {
+          throw new Error(
+            getErrorMessage(
+              invoiceData,
+              "Failed to load purchase invoice."
+            )
+          );
+        }
 
-                  productId:
-                    item.productId
-                      ? String(
-                          item.productId
-                        )
-                      : "",
+        if (!suppliersResponse.ok) {
+          throw new Error(
+            getErrorMessage(
+              suppliersData,
+              "Failed to load suppliers."
+            )
+          );
+        }
 
-                  quantity: Number(
-                    item.quantity || 0
-                  ),
+        if (!productsResponse.ok) {
+          throw new Error(
+            getErrorMessage(
+              productsData,
+              "Failed to load products."
+            )
+          );
+        }
 
-                  unitPrice: Number(
-                    item.unitPrice || 0
-                  ),
+        if (!ordersResponse.ok) {
+          throw new Error(
+            getErrorMessage(
+              ordersData,
+              "Failed to load purchase orders."
+            )
+          );
+        }
 
-                  discount: Number(
-                    item.discount || 0
-                  ),
-
-                  tax: Number(
-                    item.tax || 0
-                  ),
-                })
-              )
-            : []
-        );
+        if (!grnsResponse.ok) {
+          throw new Error(
+            getErrorMessage(
+              grnsData,
+              "Failed to load GRNs."
+            )
+          );
+        }
 
         // =================================================
-        // SET SUPPLIERS
+        // NORMALIZE
         // =================================================
 
-        const supplierResult =
-          Array.isArray(
-            suppliersData
-          )
+        const invoiceResult: PurchaseInvoice =
+          invoiceData?.data ??
+          invoiceData;
+
+        const suppliersResult: Supplier[] =
+          Array.isArray(suppliersData)
             ? suppliersData
             : Array.isArray(
                 suppliersData?.data
@@ -303,14 +521,8 @@ export default function EditPurchaseInvoicePage() {
             ? suppliersData.data
             : [];
 
-        // =================================================
-        // SET PRODUCTS
-        // =================================================
-
-        const productResult =
-          Array.isArray(
-            productsData
-          )
+        const productsResult: Product[] =
+          Array.isArray(productsData)
             ? productsData
             : Array.isArray(
                 productsData?.data
@@ -318,23 +530,213 @@ export default function EditPurchaseInvoicePage() {
             ? productsData.data
             : [];
 
+        const ordersResult: PurchaseOrder[] =
+          Array.isArray(ordersData)
+            ? ordersData
+            : Array.isArray(
+                ordersData?.data
+              )
+            ? ordersData.data
+            : [];
+
+        const grnsResult: GRN[] =
+          Array.isArray(grnsData)
+            ? grnsData
+            : Array.isArray(
+                grnsData?.data
+              )
+            ? grnsData.data
+            : [];
+
+        // =================================================
+        // SET DATA
+        // =================================================
+
+        setInvoice(invoiceResult);
+
         setSuppliers(
-          supplierResult
+          suppliersResult
         );
 
         setProducts(
-          productResult
+          productsResult
         );
-      } catch (err) {
+
+        setPurchaseOrders(
+          ordersResult
+        );
+
+        setGrns(grnsResult);
+
+        // =================================================
+        // FORM VALUES
+        // =================================================
+
+        setSupplierId(
+          invoiceResult.supplierId !==
+            undefined &&
+          invoiceResult.supplierId !==
+            null
+            ? String(
+                invoiceResult.supplierId
+              )
+            : ""
+        );
+
+        setPurchaseOrderId(
+          invoiceResult.purchaseOrderId !==
+            undefined &&
+          invoiceResult.purchaseOrderId !==
+            null
+            ? String(
+                invoiceResult.purchaseOrderId
+              )
+            : ""
+        );
+
+        setGrnId(
+          invoiceResult.grnId !==
+            undefined &&
+          invoiceResult.grnId !==
+            null
+            ? String(
+                invoiceResult.grnId
+              )
+            : ""
+        );
+
+        setInvoiceDate(
+          formatDateForInput(
+            invoiceResult.invoiceDate
+          )
+        );
+
+        setDueDate(
+          formatDateForInput(
+            invoiceResult.dueDate
+          )
+        );
+
+        setDiscountAmount(
+          Number(
+            invoiceResult.discountAmount ||
+              0
+          )
+        );
+
+        setTaxAmount(
+          Number(
+            invoiceResult.taxAmount ||
+              0
+          )
+        );
+
+        // =================================================
+        // MAP ITEMS
+        // =================================================
+
+        const invoiceItems =
+          Array.isArray(
+            invoiceResult.items
+          )
+            ? invoiceResult.items
+            : [];
+
+        const mappedItems: InvoiceItem[] =
+          invoiceItems.map(
+            (item) => {
+              const invoiceProduct =
+                item.product;
+
+              const productFromProducts =
+                productsResult.find(
+                  (product) =>
+                    String(
+                      product.id
+                    ) ===
+                    String(
+                      item.productId
+                    )
+                );
+
+              return {
+                id: item.id,
+
+                productId:
+                  String(
+                    item.productId
+                  ),
+
+                productName:
+                  invoiceProduct
+                    ?.productName ||
+                  invoiceProduct?.name ||
+                  productFromProducts
+                    ?.productName ||
+                  productFromProducts
+                    ?.name ||
+                  "",
+
+                quantity:
+                  Number(
+                    item.quantity
+                  ) || 0,
+
+                unitPrice:
+                  Number(
+                    item.unitPrice
+                  ) || 0,
+              };
+            }
+          );
+
+        setItems(mappedItems);
+
+        console.log(
+          "========== PURCHASE INVOICE LOAD =========="
+        );
+
+        console.log(
+          "Invoice:",
+          invoiceResult
+        );
+
+        console.log(
+          "Items:",
+          mappedItems
+        );
+
+        console.log(
+          "Suppliers:",
+          suppliersResult
+        );
+
+        console.log(
+          "Purchase Orders:",
+          ordersResult
+        );
+
+        console.log(
+          "GRNs:",
+          grnsResult
+        );
+
+        console.log(
+          "=========================================="
+        );
+      } catch (loadError: unknown) {
         console.error(
-          "Load edit invoice error:",
-          err
+          "Failed to load purchase invoice:",
+          loadError
         );
 
         setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load invoice"
+          loadError instanceof Error
+            ? loadError.message
+            : getErrorMessage(
+                loadError,
+                "Failed to load purchase invoice."
+              )
         );
       } finally {
         setLoading(false);
@@ -342,65 +744,225 @@ export default function EditPurchaseInvoicePage() {
     };
 
     loadData();
-  }, [invoiceId]);
+  }, [id]);
 
-  // =====================================================
-  // TOTALS
-  // =====================================================
+  // =========================================================
+  // FILTER PURCHASE ORDERS
+  // =========================================================
 
-  const subtotal = useMemo(() => {
-    return items.reduce(
-      (total, item) =>
-        total +
-        Number(item.quantity || 0) *
-          Number(item.unitPrice || 0),
-      0
-    );
-  }, [items]);
+  const filteredPurchaseOrders =
+    useMemo(() => {
+      if (!supplierId) {
+        return [];
+      }
 
-  const discount = useMemo(() => {
-    return items.reduce(
-      (total, item) =>
-        total +
-        Number(item.discount || 0),
-      0
-    );
-  }, [items]);
+      const filtered =
+        purchaseOrders.filter(
+          (order) =>
+            String(
+              order.supplierId
+            ) ===
+            String(supplierId)
+        );
 
-  const tax = useMemo(() => {
-    return items.reduce(
-      (total, item) =>
-        total +
-        Number(item.tax || 0),
-      0
-    );
-  }, [items]);
+      // Keep currently selected PO
+      // even if backend response does not
+      // contain supplierId correctly.
+      if (
+        purchaseOrderId &&
+        !filtered.some(
+          (order) =>
+            String(order.id) ===
+            String(purchaseOrderId)
+        )
+      ) {
+        const currentOrder =
+          purchaseOrders.find(
+            (order) =>
+              String(order.id) ===
+              String(
+                purchaseOrderId
+              )
+          );
+
+        if (currentOrder) {
+          return [
+            currentOrder,
+            ...filtered,
+          ];
+        }
+      }
+
+      return filtered;
+    }, [
+      purchaseOrders,
+      supplierId,
+      purchaseOrderId,
+    ]);
+
+  // =========================================================
+  // FILTER GRNs
+  // =========================================================
+
+  const filteredGrns =
+    useMemo(() => {
+      if (!purchaseOrderId) {
+        return [];
+      }
+
+      const filtered =
+        grns.filter(
+          (grn) =>
+            String(
+              grn.purchaseOrderId
+            ) ===
+            String(
+              purchaseOrderId
+            )
+        );
+
+      // Keep current GRN if required
+      if (
+        grnId &&
+        !filtered.some(
+          (grn) =>
+            String(grn.id) ===
+            String(grnId)
+        )
+      ) {
+        const currentGrn =
+          grns.find(
+            (grn) =>
+              String(grn.id) ===
+              String(grnId)
+          );
+
+        if (currentGrn) {
+          return [
+            currentGrn,
+            ...filtered,
+          ];
+        }
+      }
+
+      return filtered;
+    }, [
+      grns,
+      purchaseOrderId,
+      grnId,
+    ]);
+
+  // =========================================================
+  // SELECTED SUPPLIER
+  // =========================================================
+
+  const selectedSupplier =
+    useMemo(() => {
+      return suppliers.find(
+        (supplier) =>
+          String(
+            supplier.id
+          ) ===
+          String(supplierId)
+      );
+    }, [
+      suppliers,
+      supplierId,
+    ]);
+
+  // =========================================================
+  // SELECTED PO
+  // =========================================================
+
+  const selectedPurchaseOrder =
+    useMemo(() => {
+      return purchaseOrders.find(
+        (order) =>
+          String(order.id) ===
+          String(
+            purchaseOrderId
+          )
+      );
+    }, [
+      purchaseOrders,
+      purchaseOrderId,
+    ]);
+
+  // =========================================================
+  // SELECTED GRN
+  // =========================================================
+
+  const selectedGrn =
+    useMemo(() => {
+      return grns.find(
+        (grn) =>
+          String(grn.id) ===
+          String(grnId)
+      );
+    }, [
+      grns,
+      grnId,
+    ]);
+
+  // =========================================================
+  // SUBTOTAL
+  // =========================================================
+
+  const subtotal =
+    useMemo(() => {
+      return items.reduce(
+        (total, item) =>
+          total +
+          Number(
+            item.quantity || 0
+          ) *
+            Number(
+              item.unitPrice || 0
+            ),
+        0
+      );
+    }, [items]);
+
+  // =========================================================
+  // GRAND TOTAL
+  // =========================================================
 
   const grandTotal =
-    subtotal -
-    discount +
-    tax;
+    useMemo(() => {
+      return (
+        subtotal -
+        Number(
+          discountAmount || 0
+        ) +
+        Number(
+          taxAmount || 0
+        )
+      );
+    }, [
+      subtotal,
+      discountAmount,
+      taxAmount,
+    ]);
 
-  // =====================================================
+  // =========================================================
   // ADD ITEM
-  // =====================================================
+  // =========================================================
 
   const addItem = () => {
     setItems((current) => [
       ...current,
       {
         productId: "",
+        productName: "",
         quantity: 1,
         unitPrice: 0,
-        discount: 0,
-        tax: 0,
       },
     ]);
   };
 
-  // =====================================================
+  // =========================================================
   // REMOVE ITEM
-  // =====================================================
+  // =========================================================
 
   const removeItem = (
     index: number
@@ -412,30 +974,105 @@ export default function EditPurchaseInvoicePage() {
     );
   };
 
-  // =====================================================
-  // UPDATE ITEM
-  // =====================================================
+  // =========================================================
+  // PRODUCT CHANGE
+  // =========================================================
 
-  const updateItem = (
+  const handleProductChange = (
     index: number,
-    field: keyof InvoiceItem,
-    value: string | number
+    productId: string
   ) => {
+    const product =
+      products.find(
+        (item) =>
+          String(item.id) ===
+          String(productId)
+      );
+
     setItems((current) =>
-      current.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              [field]: value,
-            }
-          : item
+      current.map(
+        (item, i) =>
+          i === index
+            ? {
+                ...item,
+                productId,
+                productName:
+                  product?.productName ||
+                  product?.name ||
+                  "",
+              }
+            : item
       )
     );
   };
 
-  // =====================================================
+  // =========================================================
+  // ITEM FIELD CHANGE
+  // =========================================================
+
+  const updateItem = (
+    index: number,
+    field:
+      | "quantity"
+      | "unitPrice",
+    value: number
+  ) => {
+    setItems((current) =>
+      current.map(
+        (item, i) =>
+          i === index
+            ? {
+                ...item,
+                [field]: value,
+              }
+            : item
+      )
+    );
+  };
+
+  // =========================================================
+  // SUPPLIER CHANGE
+  // =========================================================
+
+  const handleSupplierChange = (
+    value: string
+  ) => {
+    setSupplierId(value);
+
+    // Supplier changed
+    // Reset dependent fields.
+    setPurchaseOrderId("");
+
+    setGrnId("");
+  };
+
+  // =========================================================
+  // PO CHANGE
+  // =========================================================
+
+  const handlePurchaseOrderChange = (
+    value: string
+  ) => {
+    setPurchaseOrderId(value);
+
+    // PO changed
+    // Reset GRN.
+    setGrnId("");
+  };
+
+  // =========================================================
+  // GRN CHANGE
+  // =========================================================
+
+  const handleGrnChange = (
+    value: string
+  ) => {
+    setGrnId(value);
+  };
+
+  // =========================================================
   // SUBMIT
-  // =====================================================
+  // =========================================================
 
   const handleSubmit = async (
     e: React.FormEvent
@@ -444,23 +1081,9 @@ export default function EditPurchaseInvoicePage() {
 
     setError("");
 
-    // ===================================================
-    // VALIDATION
-    // ===================================================
-
-    if (!invoiceId) {
-      setError(
-        "Invoice ID is missing."
-      );
-      return;
-    }
-
-    if (!invoiceNumber.trim()) {
-      setError(
-        "Please enter invoice number."
-      );
-      return;
-    }
+    // =======================================================
+    // SUPPLIER
+    // =======================================================
 
     if (!supplierId) {
       setError(
@@ -469,270 +1092,592 @@ export default function EditPurchaseInvoicePage() {
       return;
     }
 
+    if (
+      !isPositiveInteger(
+        supplierId
+      )
+    ) {
+      setError(
+        "Invalid supplier selected."
+      );
+      return;
+    }
+
+    // =======================================================
+    // PURCHASE ORDER
+    // =======================================================
+
+    if (!purchaseOrderId) {
+      setError(
+        "Please select a purchase order."
+      );
+      return;
+    }
+
+    if (
+      !isPositiveInteger(
+        purchaseOrderId
+      )
+    ) {
+      setError(
+        "Invalid purchase order selected."
+      );
+      return;
+    }
+
+    // =======================================================
+    // GRN
+    // =======================================================
+
+    if (!grnId) {
+      setError(
+        "Please select a GRN."
+      );
+      return;
+    }
+
+    if (
+      !isPositiveInteger(grnId)
+    ) {
+      setError(
+        "Invalid GRN selected."
+      );
+      return;
+    }
+
+    // =======================================================
+    // DATE
+    // =======================================================
+
     if (!invoiceDate) {
       setError(
-        "Please select invoice date."
+        "Invoice date is required."
       );
       return;
     }
 
-    if (!items.length) {
+    if (
+      dueDate &&
+      dueDate < invoiceDate
+    ) {
       setError(
-        "Please add at least one item."
+        "Due date cannot be before invoice date."
       );
       return;
     }
 
-    const invalidItem = items.find(
-      (item) =>
-        !item.productId ||
-        Number(item.quantity) <= 0 ||
-        Number(item.unitPrice) < 0
-    );
+    // =======================================================
+    // ITEMS
+    // =======================================================
+
+    if (items.length === 0) {
+      setError(
+        "Please add at least one invoice item."
+      );
+      return;
+    }
+
+    const invalidItem =
+      items.find(
+        (item) =>
+          !item.productId ||
+          !Number.isFinite(
+            Number(item.quantity)
+          ) ||
+          Number(item.quantity) <=
+            0 ||
+          !Number.isFinite(
+            Number(item.unitPrice)
+          ) ||
+          Number(item.unitPrice) <=
+            0
+      );
 
     if (invalidItem) {
       setError(
-        "Please check product, quantity and unit price for all items."
+        "Please provide a valid product, quantity and unit price for every item."
       );
       return;
     }
 
-    // ===================================================
+    // =======================================================
+    // DUPLICATE PRODUCTS
+    // =======================================================
+
+    const productIds =
+      items.map(
+        (item) =>
+          String(item.productId)
+      );
+
+    const uniqueProductIds =
+      new Set(productIds);
+
+    if (
+      uniqueProductIds.size !==
+      productIds.length
+    ) {
+      setError(
+        "Duplicate products are not allowed."
+      );
+      return;
+    }
+
+    // =======================================================
+    // DISCOUNT
+    // =======================================================
+
+    const cleanDiscount =
+      Number(
+        discountAmount || 0
+      );
+
+    if (
+      !Number.isFinite(
+        cleanDiscount
+      ) ||
+      cleanDiscount < 0
+    ) {
+      setError(
+        "Discount amount cannot be negative."
+      );
+      return;
+    }
+
+    // =======================================================
+    // TAX
+    // =======================================================
+
+    const cleanTax =
+      Number(
+        taxAmount || 0
+      );
+
+    if (
+      !Number.isFinite(
+        cleanTax
+      ) ||
+      cleanTax < 0
+    ) {
+      setError(
+        "Tax amount cannot be negative."
+      );
+      return;
+    }
+
+    // =======================================================
+    // GRAND TOTAL
+    // =======================================================
+
+    const calculatedGrandTotal =
+      subtotal -
+      cleanDiscount +
+      cleanTax;
+
+    if (
+      calculatedGrandTotal < 0
+    ) {
+      setError(
+        "Discount cannot be greater than the subtotal."
+      );
+      return;
+    }
+
+    // =======================================================
     // UPDATE
-    // ===================================================
+    // =======================================================
 
     try {
       setSaving(true);
 
       const token = getToken();
 
-      const payload = {
-        invoiceNumber:
-          invoiceNumber.trim(),
+      // =====================================================
+      // PAYLOAD
+      // =====================================================
 
+      const payload = {
         supplierId:
           Number(supplierId),
 
+        purchaseOrderId:
+          Number(
+            purchaseOrderId
+          ),
+
+        grnId:
+          Number(grnId),
+
         invoiceDate,
 
-        dueDate:
-          dueDate || null,
+        ...(dueDate
+          ? {
+              dueDate,
+            }
+          : {}),
 
-        subtotal,
+        discountAmount:
+          cleanDiscount,
 
-        discount,
-
-        tax,
-
-        grandTotal,
+        taxAmount:
+          cleanTax,
 
         items: items.map(
           (item) => ({
-            ...(item.id
-              ? {
-                  id: item.id,
-                }
-              : {}),
-
             productId:
-              item.productId,
+              String(
+                item.productId
+              ),
 
             quantity:
-              Number(item.quantity),
+              Number(
+                item.quantity
+              ),
 
             unitPrice:
-              Number(item.unitPrice),
-
-            discount:
-              Number(item.discount),
-
-            tax:
-              Number(item.tax),
+              Number(
+                item.unitPrice
+              ),
           })
         ),
       };
 
-      const response =
-        await fetch(
-          `${API_URL}/purchasing/invoices/${invoiceId}`,
-          {
-            method: "PATCH",
+      console.log(
+        "================================================"
+      );
 
-            headers: {
-              "Content-Type":
-                "application/json",
+      console.log(
+        "UPDATE PURCHASE INVOICE"
+      );
 
-              ...(token
-                ? {
-                    Authorization: `Bearer ${token}`,
-                  }
-                : {}),
-            },
+      console.log(
+        "================================================"
+      );
 
-            body: JSON.stringify(
-              payload
-            ),
-          }
+      console.log(
+        "URL:",
+        `${INVOICE_API}/${id}`
+      );
+
+      console.log(
+        "METHOD:",
+        "PATCH"
+      );
+
+      console.log(
+        "PAYLOAD:",
+        JSON.stringify(
+          payload,
+          null,
+          2
+        )
+      );
+
+      console.log(
+        "================================================"
+      );
+
+      // =====================================================
+      // API REQUEST
+      // =====================================================
+
+      let response: Response;
+
+      try {
+        response =
+          await fetch(
+            `${INVOICE_API}/${id}`,
+            {
+              method: "PATCH",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                ...(token
+                  ? {
+                      Authorization:
+                        `Bearer ${token}`,
+                    }
+                  : {}),
+              },
+
+              body: JSON.stringify(
+                payload
+              ),
+            }
+          );
+      } catch (networkError) {
+        console.error(
+          "NETWORK ERROR:",
+          networkError
         );
 
-      const data =
-        await response
-          .json()
-          .catch(() => null);
+        throw new Error(
+          "Failed to connect to the backend server. Please make sure the backend is running at " +
+            API_URL
+        );
+      }
+
+      // =====================================================
+      // RESPONSE
+      // =====================================================
+
+      const responseText =
+        await response.text();
+
+      let data: any = null;
+
+      if (responseText) {
+        try {
+          data =
+            JSON.parse(
+              responseText
+            );
+        } catch {
+          data =
+            responseText;
+        }
+      }
+
+      console.log(
+        "================================================"
+      );
+
+      console.log(
+        "UPDATE RESPONSE"
+      );
+
+      console.log(
+        "HTTP STATUS:",
+        response.status
+      );
+
+      console.log(
+        "RESPONSE:",
+        data
+      );
+
+      console.log(
+        "================================================"
+      );
+
+      // =====================================================
+      // API ERROR
+      // =====================================================
 
       if (!response.ok) {
         throw new Error(
-          getApiErrorMessage(
+          getErrorMessage(
             data,
-            "Failed to update purchase invoice"
+            `Failed to update purchase invoice (${response.status}).`
           )
         );
       }
 
-      // =================================================
+      // =====================================================
       // SUCCESS
-      // =================================================
+      // =====================================================
 
-      window.location.href =
-        `/dashboard/purchasing/invoices/${invoiceId}`;
-    } catch (err) {
+      console.log(
+        "Purchase invoice updated successfully."
+      );
+
+      router.push(
+        INVOICE_LIST_PAGE
+      );
+
+      router.refresh();
+    } catch (updateError: unknown) {
       console.error(
-        "Update invoice error:",
-        err
+        "================================================"
       );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to update purchase invoice"
+      console.error(
+        "UPDATE PURCHASE INVOICE ERROR"
       );
+
+      console.error(
+        updateError
+      );
+
+      console.error(
+        "================================================"
+      );
+
+      let message =
+        "Failed to update purchase invoice.";
+
+      if (
+        updateError instanceof Error
+      ) {
+        message =
+          updateError.message ||
+          message;
+      } else if (
+        typeof updateError ===
+        "string"
+      ) {
+        message =
+          updateError;
+      } else {
+        message =
+          getErrorMessage(
+            updateError,
+            message
+          );
+      }
+
+      if (
+        message ===
+        "[object Object]"
+      ) {
+        message =
+          "An unexpected error occurred while updating the purchase invoice.";
+      }
+
+      setError(message);
     } finally {
       setSaving(false);
     }
   };
 
-  // =====================================================
+  // =========================================================
+  // CANCEL
+  // =========================================================
+
+  const handleCancel = () => {
+    if (saving) {
+      return;
+    }
+
+    router.push(
+      INVOICE_LIST_PAGE
+    );
+  };
+
+  // =========================================================
   // LOADING
-  // =====================================================
+  // =========================================================
 
   if (loading) {
     return (
-      <div className="flex min-h-[500px] items-center justify-center">
-        <div className="text-center">
-          <Loader2
-            size={38}
-            className="mx-auto animate-spin text-blue-600"
-          />
+      <div className="min-h-full bg-gray-50 p-6">
+        <div className="flex min-h-[400px] items-center justify-center">
+          <div className="flex items-center gap-3 text-sm text-gray-600">
+            <Loader2
+              size={20}
+              className="animate-spin"
+            />
 
-          <p className="mt-3 text-sm text-gray-500">
-            Loading invoice...
-          </p>
+            Loading purchase invoice...
+          </div>
         </div>
       </div>
     );
   }
 
-  // =====================================================
-  // ERROR / NOT FOUND
-  // =====================================================
+  // =========================================================
+  // NOT FOUND
+  // =========================================================
 
   if (!invoice) {
     return (
-      <div className="p-6">
+      <div className="min-h-full bg-gray-50 p-6">
         <div className="rounded-xl border border-red-200 bg-white p-8 text-center">
-          <p className="font-medium text-red-600">
-            {error ||
-              "Invoice not found"}
+          <Receipt
+            size={32}
+            className="mx-auto mb-3 text-red-400"
+          />
+
+          <p className="font-semibold text-red-600">
+            Purchase invoice not found
           </p>
 
-          <Link
-            href="/dashboard/purchasing/invoices"
-            className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-600"
+          {error && (
+            <p className="mt-2 text-sm text-gray-500">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            <ArrowLeft size={16} />
             Back to Invoices
-          </Link>
+          </button>
         </div>
       </div>
     );
   }
 
-  // =====================================================
+  // =========================================================
   // UI
-  // =====================================================
+  // =========================================================
 
   return (
     <div className="min-h-full bg-gray-50 p-6">
       <div className="w-full space-y-6">
 
         {/* =================================================
-    HEADER
-================================================= */}
+            HEADER
+        ================================================= */}
 
-<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm">
 
-  <div>
+            <Link
+              href="/dashboard/purchasing"
+              className="text-gray-500 transition hover:text-blue-600"
+            >
+              Purchasing
+            </Link>
 
-    {/* BREADCRUMB */}
+            <span className="text-gray-400">
+              /
+            </span>
 
-    <div className="flex flex-wrap items-center gap-2 text-sm mb-3">
+            <Link
+              href={INVOICE_LIST_PAGE}
+              className="text-gray-500 transition hover:text-blue-600"
+            >
+              Purchase Invoices
+            </Link>
 
-      <Link
-        href="/dashboard/purchasing"
-        className="text-gray-500 transition-colors hover:text-blue-600"
-      >
-        Purchasing
-      </Link>
+            <span className="text-gray-400">
+              /
+            </span>
 
-      <span className="text-gray-300">
-        /
-      </span>
+            <span className="font-medium text-gray-900">
+              Edit
+            </span>
 
-      <Link
-        href="/dashboard/purchasing/invoices"
-        className="text-gray-500 transition-colors hover:text-blue-600"
-      >
-        Purchase Invoices
-      </Link>
+          </div>
 
-      <span className="text-gray-300">
-        /
-      </span>
+          <div className="mt-2 flex items-center gap-3">
 
-      <Link
-        href={`/dashboard/purchasing/invoices/${invoiceId}`}
-        className="text-gray-500 transition-colors hover:text-blue-600"
-      >
-        {invoice.invoiceNumber}
-      </Link>
+            <div className="rounded-lg bg-blue-50 p-2">
+              <Receipt
+                size={22}
+                className="text-blue-600"
+              />
+            </div>
 
-      <span className="text-gray-300">
-        /
-      </span>
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">
+                Edit Purchase Invoice
+              </h1>
 
-      <span className="font-medium text-gray-900">
-        Edit
-      </span>
+              <p className="mt-1 text-sm text-gray-500">
+                Update{" "}
+                {invoice.invoiceNumber ||
+                  `Invoice #${invoice.id}`}
+              </p>
+            </div>
 
-    </div>
-
-    {/* PAGE TITLE */}
-
-    <div>
-
-      <h1 className="text-2xl font-semibold text-gray-900">
-        Edit Purchase Invoice
-      </h1>
-
-      <p className="mt-1 text-sm text-gray-500">
-        Update invoice details, products and pricing.
-      </p>
-
-    </div>
-
-  </div>
-
-</div>
+          </div>
+        </div>
 
         {/* =================================================
             ERROR
@@ -744,48 +1689,71 @@ export default function EditPurchaseInvoicePage() {
           </div>
         )}
 
+        {/* =================================================
+            FORM
+        ================================================= */}
+
         <form
           onSubmit={handleSubmit}
           className="space-y-6"
         >
 
-          {/* ===============================================
+          {/* =================================================
               INVOICE INFORMATION
-          =============================================== */}
+          ================================================= */}
 
           <div className="rounded-xl border border-gray-200 bg-white p-6">
 
-            <h2 className="font-semibold text-gray-900">
-              Invoice Information
-            </h2>
+            <div className="mb-5 flex items-center gap-3">
 
-            <p className="mt-1 text-sm text-gray-500">
-              Update supplier and invoice details.
-            </p>
-
-            <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-
-              {/* Invoice Number */}
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Invoice Number *
-                </label>
-
-                <input
-                  value={
-                    invoiceNumber
-                  }
-                  onChange={(e) =>
-                    setInvoiceNumber(
-                      e.target.value
-                    )
-                  }
-                  className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              <div className="rounded-lg bg-blue-50 p-2">
+                <Receipt
+                  size={20}
+                  className="text-blue-600"
                 />
               </div>
 
-              {/* Supplier */}
+              <div>
+                <h2 className="font-semibold text-gray-900">
+                  Invoice Information
+                </h2>
+
+                <p className="text-sm text-gray-500">
+                  Update supplier, purchase order, GRN and invoice dates.
+                </p>
+              </div>
+
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+
+              {/* =================================================
+                  INVOICE NUMBER
+              ================================================= */}
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Invoice Number
+                </label>
+
+                <input
+                  type="text"
+                  value={
+                    invoice.invoiceNumber ||
+                    ""
+                  }
+                  disabled
+                  className="h-10 w-full rounded-lg border border-gray-300 bg-gray-100 px-3 text-sm text-gray-600 outline-none"
+                />
+
+                <p className="mt-1 text-xs text-gray-400">
+                  Invoice number cannot be changed.
+                </p>
+              </div>
+
+              {/* =================================================
+                  SUPPLIER
+              ================================================= */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -793,15 +1761,14 @@ export default function EditPurchaseInvoicePage() {
                 </label>
 
                 <select
-                  value={
-                    supplierId
-                  }
+                  value={supplierId}
                   onChange={(e) =>
-                    setSupplierId(
+                    handleSupplierChange(
                       e.target.value
                     )
                   }
-                  className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  disabled={saving}
+                  className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                 >
                   <option value="">
                     Select supplier
@@ -817,16 +1784,135 @@ export default function EditPurchaseInvoicePage() {
                           supplier.id
                         }
                       >
-                        {
-                          supplier.supplierName
-                        }
+                        {supplier.supplierName}
+                        {supplier.supplierCode
+                          ? ` (${supplier.supplierCode})`
+                          : ""}
                       </option>
                     )
                   )}
                 </select>
               </div>
 
-              {/* Invoice Date */}
+              {/* =================================================
+                  PURCHASE ORDER
+              ================================================= */}
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Purchase Order *
+                </label>
+
+                <select
+                  value={
+                    purchaseOrderId
+                  }
+                  onChange={(e) =>
+                    handlePurchaseOrderChange(
+                      e.target.value
+                    )
+                  }
+                  disabled={
+                    !supplierId ||
+                    saving
+                  }
+                  className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                >
+                  <option value="">
+                    {supplierId
+                      ? "Select purchase order"
+                      : "Select supplier first"}
+                  </option>
+
+                  {filteredPurchaseOrders.map(
+                    (order) => (
+                      <option
+                        key={order.id}
+                        value={order.id}
+                      >
+                        {order.poNumber ||
+                          `PO-${String(
+                            order.id
+                          ).padStart(
+                            5,
+                            "0"
+                          )}`}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                {selectedPurchaseOrder && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Status:{" "}
+                    <span className="font-medium">
+                      {selectedPurchaseOrder.status ||
+                        "N/A"}
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              {/* =================================================
+                  GRN
+              ================================================= */}
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  GRN *
+                </label>
+
+                <select
+                  value={grnId}
+                  onChange={(e) =>
+                    handleGrnChange(
+                      e.target.value
+                    )
+                  }
+                  disabled={
+                    !purchaseOrderId ||
+                    saving
+                  }
+                  className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                >
+                  <option value="">
+                    {purchaseOrderId
+                      ? "Select GRN"
+                      : "Select purchase order first"}
+                  </option>
+
+                  {filteredGrns.map(
+                    (grn) => (
+                      <option
+                        key={grn.id}
+                        value={grn.id}
+                      >
+                        {grn.grnNumber ||
+                          `GRN-${String(
+                            grn.id
+                          ).padStart(
+                            5,
+                            "0"
+                          )}`}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                {selectedGrn && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Status:{" "}
+                    <span className="font-medium">
+                      {selectedGrn.status ||
+                        "N/A"}
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              {/* =================================================
+                  INVOICE DATE
+              ================================================= */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -835,19 +1921,20 @@ export default function EditPurchaseInvoicePage() {
 
                 <input
                   type="date"
-                  value={
-                    invoiceDate
-                  }
+                  value={invoiceDate}
                   onChange={(e) =>
                     setInvoiceDate(
                       e.target.value
                     )
                   }
-                  className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  disabled={saving}
+                  className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                 />
               </div>
 
-              {/* Due Date */}
+              {/* =================================================
+                  DUE DATE
+              ================================================= */}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -856,19 +1943,46 @@ export default function EditPurchaseInvoicePage() {
 
                 <input
                   type="date"
-                  value={
-                    dueDate
-                  }
+                  value={dueDate}
+                  min={invoiceDate}
                   onChange={(e) =>
                     setDueDate(
                       e.target.value
                     )
                   }
-                  className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  disabled={saving}
+                  className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                 />
               </div>
 
             </div>
+
+            {/* =================================================
+                SELECTED SUPPLIER
+            ================================================= */}
+
+            {selectedSupplier && (
+              <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                Supplier:{" "}
+                <span className="font-semibold">
+                  {
+                    selectedSupplier.supplierName
+                  }
+                </span>
+
+                {selectedSupplier.supplierCode && (
+                  <>
+                    {" "}
+                    (
+                    {
+                      selectedSupplier.supplierCode
+                    }
+                    )
+                  </>
+                )}
+              </div>
+            )}
+
           </div>
 
           {/* =================================================
@@ -885,83 +1999,79 @@ export default function EditPurchaseInvoicePage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  Update products and pricing.
+                  Update products, quantities and unit prices.
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={addItem}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
               >
                 <Plus size={16} />
                 Add Item
               </button>
+
             </div>
 
-            <div className="overflow-x-auto">
+            {items.length === 0 ? (
+              <div className="px-6 py-12 text-center">
 
-              <table className="w-full min-w-[950px] text-sm">
+                <Receipt
+                  size={32}
+                  className="mx-auto mb-3 text-gray-400"
+                />
 
-                <thead className="bg-gray-50">
+                <p className="font-medium text-gray-700">
+                  No invoice items
+                </p>
 
-                  <tr>
-                    <th className="px-5 py-3 text-left font-medium text-gray-600">
-                      Product
-                    </th>
+                <p className="mt-1 text-sm text-gray-500">
+                  Click Add Item to add a product.
+                </p>
 
-                    <th className="px-5 py-3 text-left font-medium text-gray-600">
-                      Quantity
-                    </th>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
 
-                    <th className="px-5 py-3 text-left font-medium text-gray-600">
-                      Unit Price
-                    </th>
+                <table className="w-full min-w-[850px] text-sm">
 
-                    <th className="px-5 py-3 text-left font-medium text-gray-600">
-                      Discount
-                    </th>
+                  <thead className="bg-gray-50">
+                    <tr>
 
-                    <th className="px-5 py-3 text-left font-medium text-gray-600">
-                      Tax
-                    </th>
+                      <th className="px-5 py-3 text-left font-medium text-gray-600">
+                        Product
+                      </th>
 
-                    <th className="px-5 py-3 text-right font-medium text-gray-600">
-                      Total
-                    </th>
+                      <th className="px-5 py-3 text-left font-medium text-gray-600">
+                        Quantity
+                      </th>
 
-                    <th />
-                  </tr>
+                      <th className="px-5 py-3 text-left font-medium text-gray-600">
+                        Unit Price
+                      </th>
 
-                </thead>
+                      <th className="px-5 py-3 text-right font-medium text-gray-600">
+                        Subtotal
+                      </th>
 
-                <tbody className="divide-y divide-gray-100">
+                      <th className="px-5 py-3" />
 
-                  {items.map(
-                    (item, index) => {
+                    </tr>
+                  </thead>
 
-                      const itemTotal =
-                        Number(
-                          item.quantity ||
-                            0
-                        ) *
-                          Number(
-                            item.unitPrice ||
-                              0
-                          ) -
-                        Number(
-                          item.discount ||
-                            0
-                        ) +
-                        Number(
-                          item.tax || 0
-                        );
+                  <tbody className="divide-y divide-gray-100">
 
-                      return (
+                    {items.map(
+                      (
+                        item,
+                        index
+                      ) => (
                         <tr
                           key={
                             item.id ??
-                            `new-${index}`
+                            `${item.productId}-${index}`
                           }
                         >
 
@@ -974,15 +2084,17 @@ export default function EditPurchaseInvoicePage() {
                                 item.productId
                               }
                               onChange={(e) =>
-                                updateItem(
+                                handleProductChange(
                                   index,
-                                  "productId",
-                                  e.target
-                                    .value
+                                  e.target.value
                                 )
                               }
-                              className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              disabled={
+                                saving
+                              }
+                              className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                             >
+
                               <option value="">
                                 Select product
                               </option>
@@ -999,15 +2111,17 @@ export default function EditPurchaseInvoicePage() {
                                       product.id
                                     }
                                   >
-                                    {
-                                      product.productName
-                                    }
                                     {product.productCode
-                                      ? ` (${product.productCode})`
+                                      ? `${product.productCode} - `
                                       : ""}
+                                    {
+                                      product.productName ||
+                                      product.name
+                                    }
                                   </option>
                                 )
                               )}
+
                             </select>
 
                           </td>
@@ -1019,6 +2133,7 @@ export default function EditPurchaseInvoicePage() {
                             <input
                               type="number"
                               min="1"
+                              step="1"
                               value={
                                 item.quantity
                               }
@@ -1027,12 +2142,14 @@ export default function EditPurchaseInvoicePage() {
                                   index,
                                   "quantity",
                                   Number(
-                                    e.target
-                                      .value
+                                    e.target.value
                                   )
                                 )
                               }
-                              className="h-10 w-24 rounded-lg border border-gray-300 px-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              disabled={
+                                saving
+                              }
+                              className="h-10 w-28 rounded-lg border border-gray-300 px-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                             />
 
                           </td>
@@ -1043,7 +2160,7 @@ export default function EditPurchaseInvoicePage() {
 
                             <input
                               type="number"
-                              min="0"
+                              min="0.01"
                               step="0.01"
                               value={
                                 item.unitPrice
@@ -1053,80 +2170,39 @@ export default function EditPurchaseInvoicePage() {
                                   index,
                                   "unitPrice",
                                   Number(
-                                    e.target
-                                      .value
+                                    e.target.value
                                   )
                                 )
                               }
-                              className="h-10 w-32 rounded-lg border border-gray-300 px-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              disabled={
+                                saving
+                              }
+                              className="h-10 w-32 rounded-lg border border-gray-300 px-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                             />
 
                           </td>
 
-                          {/* DISCOUNT */}
+                          {/* SUBTOTAL */}
 
-                          <td className="px-5 py-4">
+                          <td className="px-5 py-4 text-right font-medium">
 
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={
-                                item.discount
-                              }
-                              onChange={(e) =>
-                                updateItem(
-                                  index,
-                                  "discount",
-                                  Number(
-                                    e.target
-                                      .value
-                                  )
-                                )
-                              }
-                              className="h-10 w-28 rounded-lg border border-gray-300 px-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            />
-
-                          </td>
-
-                          {/* TAX */}
-
-                          <td className="px-5 py-4">
-
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={
-                                item.tax
-                              }
-                              onChange={(e) =>
-                                updateItem(
-                                  index,
-                                  "tax",
-                                  Number(
-                                    e.target
-                                      .value
-                                  )
-                                )
-                              }
-                              className="h-10 w-28 rounded-lg border border-gray-300 px-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            />
-
-                          </td>
-
-                          {/* TOTAL */}
-
-                          <td className="px-5 py-4 text-right font-medium text-gray-900">
                             Rs.{" "}
-                            {formatMoney(
-                              itemTotal
+                            {formatCurrency(
+                              Number(
+                                item.quantity ||
+                                  0
+                              ) *
+                                Number(
+                                  item.unitPrice ||
+                                    0
+                                )
                             )}
+
                           </td>
 
                           {/* DELETE */}
 
-                          <td className="px-5 py-4">
+                          <td className="px-5 py-4 text-right">
 
                             <button
                               type="button"
@@ -1136,10 +2212,17 @@ export default function EditPurchaseInvoicePage() {
                                 )
                               }
                               disabled={
+                                saving ||
+                                items.length ===
+                                  1
+                              }
+                              className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30"
+                              title={
                                 items.length ===
                                 1
+                                  ? "At least one item is required"
+                                  : "Remove item"
                               }
-                              className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
                             >
                               <Trash2
                                 size={17}
@@ -1149,14 +2232,16 @@ export default function EditPurchaseInvoicePage() {
                           </td>
 
                         </tr>
-                      );
-                    }
-                  )}
+                      )
+                    )}
 
-                </tbody>
+                  </tbody>
 
-              </table>
-            </div>
+                </table>
+
+              </div>
+            )}
+
           </div>
 
           {/* =================================================
@@ -1167,75 +2252,180 @@ export default function EditPurchaseInvoicePage() {
 
             <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6">
 
-              <TotalRow
-                label="Subtotal"
-                value={
-                  subtotal
-                }
-              />
+              {/* SUBTOTAL */}
 
-              <TotalRow
-                label="Discount"
-                value={
-                  discount
-                }
-              />
+              <div className="flex justify-between py-2 text-sm">
 
-              <TotalRow
-                label="Tax"
-                value={tax}
-              />
+                <span className="text-gray-500">
+                  Subtotal
+                </span>
+
+                <span className="font-medium">
+                  Rs.{" "}
+                  {formatCurrency(
+                    subtotal
+                  )}
+                </span>
+
+              </div>
+
+              {/* DISCOUNT */}
+
+              <div className="flex items-center justify-between gap-4 py-2 text-sm">
+
+                <label
+                  htmlFor="discountAmount"
+                  className="text-gray-500"
+                >
+                  Discount
+                </label>
+
+                <div className="flex items-center gap-2">
+
+                  <span className="text-gray-400">
+                    Rs.
+                  </span>
+
+                  <input
+                    id="discountAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={
+                      discountAmount
+                    }
+                    onChange={(e) =>
+                      setDiscountAmount(
+                        Number(
+                          e.target.value
+                        ) || 0
+                      )
+                    }
+                    disabled={
+                      saving
+                    }
+                    className="h-9 w-32 rounded-lg border border-gray-300 px-3 text-right text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                  />
+
+                </div>
+
+              </div>
+
+              {/* TAX */}
+
+              <div className="flex items-center justify-between gap-4 py-2 text-sm">
+
+                <label
+                  htmlFor="taxAmount"
+                  className="text-gray-500"
+                >
+                  Tax
+                </label>
+
+                <div className="flex items-center gap-2">
+
+                  <span className="text-gray-400">
+                    Rs.
+                  </span>
+
+                  <input
+                    id="taxAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={
+                      taxAmount
+                    }
+                    onChange={(e) =>
+                      setTaxAmount(
+                        Number(
+                          e.target.value
+                        ) || 0
+                      )
+                    }
+                    disabled={
+                      saving
+                    }
+                    className="h-9 w-32 rounded-lg border border-gray-300 px-3 text-right text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                  />
+
+                </div>
+
+              </div>
+
+              {/* GRAND TOTAL */}
 
               <div className="mt-3 flex justify-between border-t border-gray-200 pt-4">
 
-                <span className="font-semibold text-gray-900">
+                <span className="font-semibold">
                   Grand Total
                 </span>
 
-                <span className="text-xl font-semibold text-blue-600">
+                <span
+                  className={`text-xl font-semibold ${
+                    grandTotal < 0
+                      ? "text-red-600"
+                      : "text-blue-600"
+                  }`}
+                >
                   Rs.{" "}
-                  {formatMoney(
+                  {formatCurrency(
                     grandTotal
                   )}
                 </span>
 
               </div>
 
-              {/* BUTTONS */}
+              {/* =================================================
+                  BUTTONS
+              ================================================= */}
 
               <div className="mt-6 flex justify-end gap-3">
 
-                <Link
-                  href={`/dashboard/purchasing/invoices/${invoiceId}`}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                <button
+                  type="button"
+                  onClick={
+                    handleCancel
+                  }
+                  disabled={
+                    saving
+                  }
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
                   Cancel
-                </Link>
+                </button>
 
                 <button
                   type="submit"
                   disabled={
-                    saving
+                    saving ||
+                    items.length ===
+                      0
                   }
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
+
                   {saving ? (
                     <Loader2
                       size={17}
                       className="animate-spin"
                     />
                   ) : (
-                    <Save size={17} />
+                    <Save
+                      size={17}
+                    />
                   )}
 
                   {saving
-                    ? "Saving..."
-                    : "Save Changes"}
+                    ? "Updating..."
+                    : "Update Invoice"}
+
                 </button>
 
               </div>
 
             </div>
+
           </div>
 
         </form>
@@ -1244,82 +2434,3 @@ export default function EditPurchaseInvoicePage() {
   );
 }
 
-// =====================================================
-// TOTAL ROW
-// =====================================================
-
-function TotalRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="flex justify-between py-2 text-sm">
-      <span className="text-gray-500">
-        {label}
-      </span>
-
-      <span className="font-medium text-gray-900">
-        Rs. {formatMoney(value)}
-      </span>
-    </div>
-  );
-}
-
-// =====================================================
-// MONEY FORMAT
-// =====================================================
-
-function formatMoney(
-  value: string | number
-) {
-  return Number(value || 0).toLocaleString(
-    "en-LK",
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }
-  );
-}
-
-// =====================================================
-// API ERROR
-// =====================================================
-
-function getApiErrorMessage(
-  data: any,
-  fallback: string
-) {
-  if (!data) {
-    return fallback;
-  }
-
-  if (Array.isArray(data.message)) {
-    return data.message.join(", ");
-  }
-
-  if (
-    typeof data.message ===
-    "string"
-  ) {
-    return data.message;
-  }
-
-  if (
-    typeof data.error ===
-    "string"
-  ) {
-    return data.error;
-  }
-
-  if (
-    typeof data.data?.message ===
-    "string"
-  ) {
-    return data.data.message;
-  }
-
-  return fallback;
-}

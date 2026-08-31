@@ -2,7 +2,23 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import {Pencil,Loader2,Receipt,CalendarDays,CreditCard,} from "lucide-react";
+import {
+  Pencil,
+  Loader2,
+  Receipt,
+  CalendarDays,
+  CreditCard,
+  ArrowLeft,
+  ExternalLink,
+} from "lucide-react";
+
+/* API */
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000/api";
+
+/* TYPES */
 
 interface InvoiceItem {
   id: number;
@@ -12,6 +28,7 @@ interface InvoiceItem {
   discount?: string | number;
   tax?: string | number;
   subtotal: string | number;
+
   product?: {
     id: string;
     productCode?: string;
@@ -58,24 +75,39 @@ interface PurchaseInvoice {
   items: InvoiceItem[];
 }
 
+/* =========================================================
+   PAGE PROPS
+========================================================= */
+
 interface PageProps {
   params: Promise<{
     id: string;
   }>;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
+/* =========================================================
+   PAGE
+========================================================= */
 
 export default function ViewPurchaseInvoicePage({
   params,
 }: PageProps) {
   const { id } = use(params);
+
   const invoiceId = String(id);
-  const [invoice, setInvoice] = useState<PurchaseInvoice | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+
+  const [invoice, setInvoice] =
+    useState<PurchaseInvoice | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  /* =======================================================
+     LOAD INVOICE
+  ======================================================= */
 
   useEffect(() => {
     if (!invoiceId) {
@@ -95,30 +127,39 @@ export default function ViewPurchaseInvoicePage({
         const response = await fetch(
           `${API_URL}/purchasing/invoices/${invoiceId}`,
           {
+            method: "GET",
+
             headers: {
+              "Content-Type": "application/json",
+
               ...(token
                 ? {
                     Authorization: `Bearer ${token}`,
                   }
                 : {}),
             },
+
             cache: "no-store",
           }
         );
 
-        const data =
+        const result =
           await response.json().catch(() => null);
 
         if (!response.ok) {
           throw new Error(
-            Array.isArray(data?.message)
-              ? data.message.join(", ")
-              : data?.message ||
+            Array.isArray(result?.message)
+              ? result.message.join(", ")
+              : result?.message?.message ||
+                  result?.message ||
                   "Failed to load invoice"
           );
         }
 
-        setInvoice(data?.data || data);
+        const invoiceData =
+          result?.data || result;
+
+        setInvoice(invoiceData);
       } catch (err) {
         console.error(
           "Load invoice error:",
@@ -138,6 +179,10 @@ export default function ViewPurchaseInvoicePage({
     loadInvoice();
   }, [invoiceId]);
 
+  /* =======================================================
+     LOADING
+  ======================================================= */
+
   if (loading) {
     return (
       <div className="flex min-h-[500px] items-center justify-center">
@@ -155,112 +200,151 @@ export default function ViewPurchaseInvoicePage({
     );
   }
 
+  /* =======================================================
+     ERROR
+  ======================================================= */
+
   if (error || !invoice) {
     return (
-      <div className="p-6">
-        <div className="rounded-xl border border-red-200 bg-white p-8 text-center">
-          <p className="font-medium text-red-600">
-            {error || "Invoice not found"}
-          </p>
-
+      <div className="min-h-full bg-gray-50 p-6">
+        <div className="mx-auto max-w-3xl">
           <Link
             href="/dashboard/purchasing/invoices"
-            className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+            className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-blue-600"
           >
+            <ArrowLeft size={16} />
             Back to Invoices
           </Link>
+
+          <div className="rounded-xl border border-red-200 bg-white p-8 text-center shadow-sm">
+            <p className="font-medium text-red-600">
+              {error || "Invoice not found"}
+            </p>
+
+            <Link
+              href="/dashboard/purchasing/invoices"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Back to Invoices
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  const status =
+  /* =======================================================
+     STATUS
+  ======================================================= */
+
+  const paymentStatus =
     invoice.paymentStatus?.toUpperCase() || "";
 
   const canEdit = [
     "DRAFT",
     "UNPAID",
-  ].includes(status);
+  ].includes(paymentStatus);
+
+  /* =======================================================
+     PAGE
+  ======================================================= */
 
   return (
     <div className="min-h-full bg-gray-50 p-6">
       <div className="w-full space-y-6">
 
-       {/* HEADER */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
-<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
 
-  <div>
-    {/* BREADCRUMB */}
+          <div>
 
-    <div className="flex items-center gap-2 text-sm mb-3">
+            {/* BREADCRUMB */}
 
-      <Link
-        href="/dashboard/purchasing"
-        className="text-gray-500 hover:text-blue-600 transition-colors"
-      >
-        Purchasing
-      </Link>
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
 
-      <span className="text-gray-300">
-        /
-      </span>
+              <Link
+                href="/dashboard/purchasing"
+                className="text-gray-500 transition hover:text-blue-600"
+              >
+                Purchasing
+              </Link>
 
-      <Link
-        href="/dashboard/purchasing/invoices"
-        className="text-gray-500 hover:text-blue-600 transition-colors"
-      >
-        Purchase Invoices
-      </Link>
+              <span className="text-gray-300">
+                /
+              </span>
 
-      <span className="text-gray-300">
-        /
-      </span>
+              <Link
+                href="/dashboard/purchasing/invoices"
+                className="text-gray-500 transition hover:text-blue-600"
+              >
+                Purchase Invoices
+              </Link>
 
-      <span className="font-medium text-gray-900">
-        {invoice.invoiceNumber}
-      </span>
+              <span className="text-gray-300">
+                /
+              </span>
 
-    </div>
+              <span className="font-medium text-gray-900">
+                {invoice.invoiceNumber}
+              </span>
 
-    {/* PAGE TITLE */}
+            </div>
 
-    <div className="flex items-center gap-3">
+            {/* TITLE */}
 
-      <div className="rounded-xl bg-blue-50 p-2.5">
-        <Receipt
-          size={24}
-          className="text-blue-600"
-        />
-      </div>
+            <div className="flex items-center gap-3">
 
-      <div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50">
+                <Receipt
+                  size={23}
+                  className="text-blue-600"
+                />
+              </div>
 
-        <h1 className="text-2xl font-semibold text-gray-900">
-          {invoice.invoiceNumber}
-        </h1>
+              <div>
 
-        <p className="mt-1 text-sm text-gray-500">
-          Purchase Invoice Details
-        </p>
+                <h1 className="text-2xl font-semibold text-gray-900">
+                  {invoice.invoiceNumber}
+                </h1>
 
-      </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  Purchase Invoice Details
+                </p>
 
-    </div>
-  </div>
+              </div>
 
-          {/* ACTIONS */}
+            </div>
+
+          </div>
+
+          {/* =================================================
+              ACTIONS
+          ================================================= */}
 
           <div className="flex flex-wrap items-center gap-2">
+
+            {/* BACK */}
+
+            <Link
+              href="/dashboard/purchasing/invoices"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              <ArrowLeft size={16} />
+              Back
+            </Link>
 
             {/* PAYMENT TRACKING */}
 
             <Link
               href={`/dashboard/purchasing/invoices/${invoice.id}/payments`}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
             >
               <CreditCard size={16} />
               Payments
+              <ExternalLink size={14} />
             </Link>
 
             {/* EDIT */}
@@ -268,7 +352,7 @@ export default function ViewPurchaseInvoicePage({
             {canEdit && (
               <Link
                 href={`/dashboard/purchasing/invoices/${invoice.id}/edit`}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
               >
                 <Pencil size={16} />
                 Edit Invoice
@@ -276,11 +360,16 @@ export default function ViewPurchaseInvoicePage({
             )}
 
           </div>
+
         </div>
 
-        {/* BASIC INFORMATION */}
+        {/* =================================================
+            BASIC INFORMATION
+        ================================================= */}
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+
+          {/* SUPPLIER */}
 
           <InfoCard
             title="Supplier"
@@ -292,6 +381,8 @@ export default function ViewPurchaseInvoicePage({
               invoice.supplier?.supplierCode
             }
           />
+
+          {/* INVOICE DATE */}
 
           <InfoCard
             title="Invoice Date"
@@ -306,9 +397,13 @@ export default function ViewPurchaseInvoicePage({
             }
           />
 
+          {/* PAYMENT STATUS */}
+
           <InfoCard
             title="Payment Status"
-            value={formatStatus(status)}
+            value={formatStatus(
+              paymentStatus
+            )}
             icon={
               <CreditCard
                 size={20}
@@ -319,9 +414,53 @@ export default function ViewPurchaseInvoicePage({
 
         </div>
 
-        {/* REFERENCES */}
+        {/* =================================================
+            PAYMENT QUICK ACCESS
+        ================================================= */}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-5">
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+            <div>
+
+              <div className="flex items-center gap-2">
+
+                <CreditCard
+                  size={19}
+                  className="text-blue-600"
+                />
+
+                <h2 className="font-semibold text-blue-900">
+                  Payment Tracking
+                </h2>
+
+              </div>
+
+              <p className="mt-1 text-sm text-blue-700">
+                View payment history, record payments,
+                and track the outstanding balance.
+              </p>
+
+            </div>
+
+            <Link
+              href={`/dashboard/purchasing/invoices/${invoice.id}/payments`}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              <CreditCard size={16} />
+              Manage Payments
+            </Link>
+
+          </div>
+
+        </div>
+
+        {/* =================================================
+            REFERENCES
+        ================================================= */}
+
+        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
 
           <h2 className="font-semibold text-gray-900">
             References
@@ -361,6 +500,13 @@ export default function ViewPurchaseInvoicePage({
             />
 
             <Detail
+              label="Invoice Date"
+              value={formatDate(
+                invoice.invoiceDate
+              )}
+            />
+
+            <Detail
               label="Due Date"
               value={
                 invoice.dueDate
@@ -371,14 +517,24 @@ export default function ViewPurchaseInvoicePage({
               }
             />
 
+            <Detail
+              label="Payment Status"
+              value={formatStatus(
+                paymentStatus
+              )}
+            />
+
           </div>
+
         </div>
 
-        {/* ITEMS */}
+        {/* =================================================
+            ITEMS
+        ================================================= */}
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
 
-          <div className="border-b border-gray-100 px-6 py-4">
+          <div className="border-b border-gray-100 px-6 py-5">
 
             <h2 className="font-semibold text-gray-900">
               Invoice Items
@@ -396,7 +552,7 @@ export default function ViewPurchaseInvoicePage({
 
               <thead className="bg-gray-50">
 
-                <tr>
+                <tr className="border-b border-gray-200">
 
                   <th className="px-6 py-3 text-left font-medium text-gray-600">
                     Product
@@ -430,7 +586,10 @@ export default function ViewPurchaseInvoicePage({
 
                 {invoice.items?.map(
                   (item) => (
-                    <tr key={item.id}>
+                    <tr
+                      key={item.id}
+                      className="transition hover:bg-gray-50"
+                    >
 
                       <td className="px-6 py-4">
 
@@ -442,7 +601,7 @@ export default function ViewPurchaseInvoicePage({
 
                         {item.product
                           ?.productCode && (
-                          <p className="text-xs text-gray-400">
+                          <p className="mt-1 text-xs text-gray-400">
                             {
                               item.product
                                 .productCode
@@ -452,7 +611,7 @@ export default function ViewPurchaseInvoicePage({
 
                       </td>
 
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-gray-700">
                         {item.quantity}
                       </td>
 
@@ -493,13 +652,16 @@ export default function ViewPurchaseInvoicePage({
             </table>
 
           </div>
+
         </div>
 
-        {/* TOTAL */}
+        {/* =================================================
+            TOTAL
+        ================================================= */}
 
         <div className="flex justify-end">
 
-          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6">
+          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
 
             <TotalRow
               label="Subtotal"
@@ -540,9 +702,9 @@ export default function ViewPurchaseInvoicePage({
   );
 }
 
-// =====================================================
-// INFO CARD
-// =====================================================
+/* =========================================================
+   INFO CARD
+========================================================= */
 
 function InfoCard({
   title,
@@ -556,7 +718,7 @@ function InfoCard({
   icon?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
 
       <div className="flex items-start justify-between">
 
@@ -590,9 +752,9 @@ function InfoCard({
   );
 }
 
-// =====================================================
-// DETAIL
-// =====================================================
+/* =========================================================
+   DETAIL
+========================================================= */
 
 function Detail({
   label,
@@ -616,9 +778,9 @@ function Detail({
   );
 }
 
-// =====================================================
-// TOTAL ROW
-// =====================================================
+/* =========================================================
+   TOTAL ROW
+========================================================= */
 
 function TotalRow({
   label,
@@ -642,9 +804,9 @@ function TotalRow({
   );
 }
 
-// =====================================================
-// HELPERS
-// =====================================================
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function formatMoney(
   value: string | number
@@ -679,7 +841,9 @@ function formatDate(
   );
 }
 
-function formatStatus(status: string) {
+function formatStatus(
+  status: string
+) {
   if (!status) return "—";
 
   return status
