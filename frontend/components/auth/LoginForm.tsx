@@ -32,27 +32,53 @@ export default function LoginForm() {
     },
   });
 
-  const onSubmit = async (data: LoginFormData) => {
-    try {
-      setServerError('');
+const onSubmit = async (data: LoginFormData) => {
+  try {
+    setServerError('');
 
-      const response = await login({
-        email: data.email,
-        password: data.password,
-      });
+    const response = await login({
+      email: data.email,
+      password: data.password,
+    });
 
-      Cookies.set('access_token', response.access_token, {
-        expires: data.remember ? 7 : undefined,
-      });
+    // Save access token in cookie
+    Cookies.set('access_token', response.access_token, {
+      expires: data.remember ? 7 : undefined,
+    });
 
-      router.push('/dashboard');
-    } catch (error: any) {
-      setServerError(
-        error?.response?.data?.message?.message ||
-          'Invalid email or password'
+    // Save the SAME access token in localStorage
+    // Reports API and other frontend API calls can use this.
+    localStorage.setItem(
+      'authToken',
+      response.access_token,
+    );
+
+    // Save user information if needed
+    if (response.user) {
+      localStorage.setItem(
+        'user',
+        JSON.stringify(response.user),
+      );
+
+      localStorage.setItem(
+        'userId',
+        String(response.user.id),
+      );
+
+      localStorage.setItem(
+        'loggedInUserType',
+        response.user.role,
       );
     }
-  };
+
+    router.push('/dashboard');
+  } catch (error: any) {
+    setServerError(
+      error?.response?.data?.message?.message ||
+        'Invalid email or password',
+    );
+  }
+};
 
   return (
     <motion.form

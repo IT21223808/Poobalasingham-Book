@@ -1,23 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ArrowLeft, Save } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+
 import {
   getCategories,
   Category,
 } from "@/services/category.service";
+
 import {
   getSubcategories,
   Subcategory,
 } from "@/services/subcategory.service";
+
 import {
   getProduct,
   createProduct,
   updateProduct,
 } from "@/services/product.service";
 
-export default function ProductFormPage() {
+function ProductFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -31,9 +34,7 @@ export default function ProductFormPage() {
   const [saving, setSaving] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<
-    Subcategory[]
-  >([]);
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
 
   const [form, setForm] = useState({
     productCode: "",
@@ -67,10 +68,7 @@ export default function ProductFormPage() {
         const data = await getCategories();
         setCategories(data);
       } catch (error) {
-        console.error(
-          "Failed to load categories:",
-          error,
-        );
+        console.error("Failed to load categories:", error);
       }
     };
 
@@ -96,9 +94,13 @@ export default function ProductFormPage() {
           isbn: product.isbn ?? "",
           productName: product.productName ?? "",
 
-          categoryId: product.category?.id ?? "",
-          subcategoryId:
-            product.subcategory?.id ?? "",
+          categoryId: product.category?.id
+            ? String(product.category.id)
+            : "",
+
+          subcategoryId: product.subcategory?.id
+            ? String(product.subcategory.id)
+            : "",
 
           author: product.author ?? "",
           publisher: product.publisher ?? "",
@@ -109,28 +111,34 @@ export default function ProductFormPage() {
           brand: product.brand ?? "",
 
           purchasePrice:
-            product.purchasePrice?.toString() ?? "",
+            product.purchasePrice != null
+              ? String(product.purchasePrice)
+              : "",
 
           sellingPrice:
-            product.sellingPrice?.toString() ?? "",
+            product.sellingPrice != null
+              ? String(product.sellingPrice)
+              : "",
 
           wholesalePrice:
-            product.wholesalePrice?.toString() ?? "",
+            product.wholesalePrice != null
+              ? String(product.wholesalePrice)
+              : "",
 
           stockQuantity:
-            product.stockQuantity?.toString() ?? "",
+            product.stockQuantity != null
+              ? String(product.stockQuantity)
+              : "",
 
           reorderLevel:
-            product.reorderLevel?.toString() ?? "",
+            product.reorderLevel != null
+              ? String(product.reorderLevel)
+              : "",
 
           imageUrl: product.imageUrl ?? "",
         });
       } catch (error) {
-        console.error(
-          "Failed to load product:",
-          error,
-        );
-
+        console.error("Failed to load product:", error);
         alert("Failed to load product.");
       } finally {
         setLoading(false);
@@ -152,16 +160,11 @@ export default function ProductFormPage() {
       }
 
       try {
-        const data = await getSubcategories(
-          form.categoryId,
-        );
-
+        const data = await getSubcategories(form.categoryId);
         setSubcategories(data);
       } catch (error) {
-        console.error(
-          "Failed to load subcategories:",
-          error,
-        );
+        console.error("Failed to load subcategories:", error);
+        setSubcategories([]);
       }
     };
 
@@ -173,9 +176,7 @@ export default function ProductFormPage() {
   // ========================================
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement
-    >,
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
 
@@ -183,8 +184,6 @@ export default function ProductFormPage() {
       ...previous,
       [name]: value,
 
-      // When category changes,
-      // reset subcategory
       ...(name === "categoryId"
         ? {
             subcategoryId: "",
@@ -197,33 +196,28 @@ export default function ProductFormPage() {
   // Submit
   // ========================================
 
-  const handleSubmit = async (
-    e: React.FormEvent,
-  ) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
       setSaving(true);
 
       const data = {
-        productCode: form.productCode,
-        barcode: form.barcode || undefined,
-        isbn: form.isbn || undefined,
-        productName: form.productName,
+        productCode: form.productCode.trim(),
+        barcode: form.barcode.trim() || undefined,
+        isbn: form.isbn.trim() || undefined,
+        productName: form.productName.trim(),
 
-        categoryId:
-          form.categoryId || undefined,
+        categoryId: form.categoryId || undefined,
+        subcategoryId: form.subcategoryId || undefined,
 
-        subcategoryId:
-          form.subcategoryId || undefined,
-
-        author: form.author || undefined,
-        publisher: form.publisher || undefined,
-        language: form.language || undefined,
-        grade: form.grade || undefined,
-        subject: form.subject || undefined,
-        edition: form.edition || undefined,
-        brand: form.brand || undefined,
+        author: form.author.trim() || undefined,
+        publisher: form.publisher.trim() || undefined,
+        language: form.language.trim() || undefined,
+        grade: form.grade.trim() || undefined,
+        subject: form.subject.trim() || undefined,
+        edition: form.edition.trim() || undefined,
+        brand: form.brand.trim() || undefined,
 
         purchasePrice:
           form.purchasePrice === ""
@@ -250,7 +244,7 @@ export default function ProductFormPage() {
             ? undefined
             : Number(form.reorderLevel),
 
-        imageUrl: form.imageUrl || undefined,
+        imageUrl: form.imageUrl.trim() || undefined,
       };
 
       // ========================================
@@ -275,10 +269,7 @@ export default function ProductFormPage() {
 
       router.push("/dashboard/products");
     } catch (error) {
-      console.error(
-        "Failed to save product:",
-        error,
-      );
+      console.error("Failed to save product:", error);
 
       alert(
         error instanceof Error
@@ -317,9 +308,7 @@ export default function ProductFormPage() {
 
         <button
           type="button"
-          onClick={() =>
-            router.push("/dashboard/products")
-          }
+          onClick={() => router.push("/dashboard/products")}
           className="rounded-lg border border-gray-200 p-2 hover:bg-gray-50"
         >
           <ArrowLeft size={20} />
@@ -327,9 +316,7 @@ export default function ProductFormPage() {
 
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {isEditMode
-              ? "Edit Product"
-              : "Add Product"}
+            {isEditMode ? "Edit Product" : "Add Product"}
           </h1>
 
           <p className="mt-1 text-sm text-gray-500">
@@ -436,16 +423,14 @@ export default function ProductFormPage() {
                     : "Select Category First"}
                 </option>
 
-                {subcategories.map(
-                  (subcategory) => (
-                    <option
-                      key={subcategory.id}
-                      value={subcategory.id}
-                    >
-                      {subcategory.name}
-                    </option>
-                  ),
-                )}
+                {subcategories.map((subcategory) => (
+                  <option
+                    key={subcategory.id}
+                    value={subcategory.id}
+                  >
+                    {subcategory.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -609,9 +594,7 @@ export default function ProductFormPage() {
 
           <button
             type="button"
-            onClick={() =>
-              router.push("/dashboard/products")
-            }
+            onClick={() => router.push("/dashboard/products")}
             className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Cancel
@@ -635,6 +618,26 @@ export default function ProductFormPage() {
 
       </form>
     </div>
+  );
+}
+
+// ========================================
+// Page Wrapper
+// ========================================
+
+export default function ProductFormPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[400px] items-center justify-center">
+          <p className="text-sm text-gray-500">
+            Loading...
+          </p>
+        </div>
+      }
+    >
+      <ProductFormContent />
+    </Suspense>
   );
 }
 
@@ -665,7 +668,6 @@ function Input({
 }) {
   return (
     <div>
-
       <label className="mb-1.5 block text-sm font-medium text-gray-700">
         {label}
 
@@ -686,7 +688,6 @@ function Input({
         placeholder={placeholder}
         className="w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:ring-2 focus:ring-gray-100"
       />
-
     </div>
   );
 }

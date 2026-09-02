@@ -2,7 +2,7 @@ import axios from "axios";
 import Cookies from "js-cookie";
 
 const api = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -10,7 +10,21 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = Cookies.get("access_token");
+    let token =
+      Cookies.get("access_token") ||
+      Cookies.get("accessToken") ||
+      Cookies.get("token");
+
+    if (!token && typeof window !== "undefined") {
+      token =
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("token") ||
+        sessionStorage.getItem("accessToken") ||
+        sessionStorage.getItem("access_token") ||
+        sessionStorage.getItem("token") ||
+        undefined;
+    }
 
     if (token) {
       config.headers = config.headers ?? {};
@@ -28,11 +42,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       console.error("JWT authentication failed:", {
         url: error.config?.url,
-        hasToken: Boolean(Cookies.get("access_token")),
       });
-
-      // Don't automatically redirect here until
-      // we confirm your login/logout flow.
     }
 
     return Promise.reject(error);
