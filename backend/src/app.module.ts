@@ -15,6 +15,8 @@ import { PurchasingModule } from './purchasing/purchasing.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { CustomersModule } from './customers/customers.module';
 import { FinanceModule } from './finance/finance.module';
+import { PosModule } from './pos/pos.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -24,7 +26,7 @@ import { FinanceModule } from './finance/finance.module';
     }),
 
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule,UsersModule,AuthModule],
+      imports: [ConfigModule, UsersModule, AuthModule],
       inject: [ConfigService],
 
       useFactory: (configService: ConfigService) => ({
@@ -46,9 +48,11 @@ import { FinanceModule } from './finance/finance.module';
     SuppliersModule,
     CustomersModule,
     FinanceModule,
+    PosModule,
+    ReportsModule,
   ],
 
   controllers: [AppController],
-  providers: [AppService,JwtStrategy],
+  providers: [AppService, JwtStrategy],
 })
 export class AppModule {}
