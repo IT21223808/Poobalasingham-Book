@@ -8,72 +8,139 @@ import {
   Query,
   Req,
   UseGuards,
-} from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { PosService } from './pos.service';
-import { CreatePosSaleDto } from './dto/create-pos-sale.dto';
-import { HoldBillDto } from './dto/hold-bill.dto';
-import { ReturnSaleDto } from './dto/return-sale.dto';
+} from "@nestjs/common";
 
-@Controller('pos')
+import { AuthGuard } from "@nestjs/passport";
+
+import { PosService } from "./pos.service";
+
+import { CreatePosSaleDto } from "./dto/create-pos-sale.dto";
+import { HoldBillDto } from "./dto/hold-bill.dto";
+import { ReturnSaleDto } from "./dto/return-sale.dto";
+
+@Controller("pos")
+@UseGuards(AuthGuard("jwt"))
 export class PosController {
-  constructor(private readonly posService: PosService) {}
+  constructor(
+    private readonly posService: PosService,
+  ) {}
 
-  @Post('sales')
-  @UseGuards(AuthGuard('jwt'))
-  async createSale(@Body() dto: CreatePosSaleDto, @Req() req: any) {
-    const cashierId = req.user?.email || req.user?.id ? String(req.user.id || req.user.email) : 'Admin User';
-    return await this.posService.createSale(dto, cashierId);
+  /* =========================================================
+     SALES
+  ========================================================= */
+
+  @Post("sales")
+  async createSale(
+    @Body() dto: CreatePosSaleDto,
+    @Req() req: any,
+  ) {
+    const cashierId =
+      req?.user?.id != null
+        ? String(req.user.id)
+        : req?.user?.email ||
+          req?.user?.username ||
+          "System";
+
+    return await this.posService.createSale(
+      dto,
+      cashierId,
+    );
   }
 
-  @Get('sales')
-  @UseGuards(AuthGuard('jwt'))
+  @Get("sales")
   async getSales(
-    @Query('search') search?: string,
-    @Query('limit') limit?: string,
+    @Query("search") search?: string,
+    @Query("limit") limit?: string,
   ) {
     return await this.posService.getSales({
-      search,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      search:
+        search?.trim() || undefined,
+
+      limit:
+        limit && !Number.isNaN(Number(limit))
+          ? Number(limit)
+          : undefined,
     });
   }
 
-  @Get('sales/:id')
-  @UseGuards(AuthGuard('jwt'))
-  async getSaleById(@Param('id') id: string) {
-    return await this.posService.getSaleById(id);
+  @Get("sales/:idOrInvoice")
+  async getSaleById(
+    @Param("idOrInvoice")
+    idOrInvoice: string,
+  ) {
+    return await this.posService.getSaleById(
+      idOrInvoice,
+    );
   }
 
-  @Post('hold')
-  @UseGuards(AuthGuard('jwt'))
-  async holdBill(@Body() dto: HoldBillDto, @Req() req: any) {
-    const cashierId = req.user?.email || req.user?.id ? String(req.user.id || req.user.email) : 'Admin User';
-    return await this.posService.holdBill(dto, cashierId);
+  /* =========================================================
+     HELD BILLS
+  ========================================================= */
+
+  @Post("held-bills")
+  async holdBill(
+    @Body() dto: HoldBillDto,
+    @Req() req: any,
+  ) {
+    const cashierId =
+      req?.user?.id != null
+        ? String(req.user.id)
+        : req?.user?.email ||
+          req?.user?.username ||
+          "System";
+
+    return await this.posService.holdBill(
+      dto,
+      cashierId,
+    );
   }
 
-  @Get('hold')
-  @UseGuards(AuthGuard('jwt'))
+  @Get("held-bills")
   async getHeldBills() {
     return await this.posService.getHeldBills();
   }
 
-  @Delete('hold/:id')
-  @UseGuards(AuthGuard('jwt'))
-  async deleteHeldBill(@Param('id') id: string) {
-    await this.posService.deleteHeldBill(id);
-    return { success: true, message: 'Held bill removed.' };
+  @Delete("held-bills/:id")
+  async deleteHeldBill(
+    @Param("id") id: string,
+  ) {
+    return await this.posService.deleteHeldBill(
+      id,
+    );
   }
 
-  @Post('returns')
-  @UseGuards(AuthGuard('jwt'))
-  async createReturn(@Body() dto: ReturnSaleDto, @Req() req: any) {
-    const cashierId = req.user?.email || req.user?.id ? String(req.user.id || req.user.email) : 'Admin User';
-    return await this.posService.createReturn(dto, cashierId);
+  /* =========================================================
+     RETURNS
+  ========================================================= */
+
+  @Post("returns")
+  async createReturn(
+    @Body() dto: ReturnSaleDto,
+    @Req() req: any,
+  ) {
+    const cashierId =
+      req?.user?.id != null
+        ? String(req.user.id)
+        : req?.user?.email ||
+          req?.user?.username ||
+          "System";
+
+    return await this.posService.createReturn(
+      dto,
+      cashierId,
+    );
   }
 
-  @Get('cash-closing')
-  @UseGuards(AuthGuard('jwt'))
-  async getCashClosing(@Query('date') date?: string) {
-    return await this.posService.getCashClosingSummary(date);
+  /* =========================================================
+     CASH CLOSING
+  ========================================================= */
+
+  @Get("cash-closing-summary")
+  async getCashClosingSummary(
+    @Query("date") date?: string,
+  ) {
+    return await this.posService.getCashClosingSummary(
+      date,
+    );
   }
 }

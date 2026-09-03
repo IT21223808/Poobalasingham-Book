@@ -8,9 +8,15 @@ import {
   IsUUID,
   Min,
   ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
-import { PaymentMethodEnum } from '../entities/pos-payment.entity';
+} from "class-validator";
+
+import { Type } from "class-transformer";
+
+import { PaymentMethodEnum } from "../entities/pos-payment.entity";
+
+/* =========================================================
+   PAYMENT DTO
+========================================================= */
 
 export class CreatePosPaymentDto {
   @IsEnum(PaymentMethodEnum)
@@ -22,16 +28,22 @@ export class CreatePosPaymentDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   amountReceived?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   changeAmount?: number;
 
   @IsOptional()
   @IsString()
   referenceNumber?: string;
 }
+
+/* =========================================================
+   SALE ITEM DTO
+========================================================= */
 
 export class CreatePosSaleItemDto {
   @IsUUID()
@@ -65,7 +77,20 @@ export class CreatePosSaleItemDto {
   lineTotal!: number;
 }
 
+/* =========================================================
+   SALE DTO
+========================================================= */
+
 export class CreatePosSaleDto {
+  /**
+   * Browser generated ID.
+   * Required for exact-once offline retry behaviour,
+   * but optional so old online clients can still work.
+   */
+  @IsOptional()
+  @IsString()
+  clientSaleId?: string;
+
   @IsOptional()
   @IsNumber()
   customerId?: number;
@@ -83,17 +108,28 @@ export class CreatePosSaleDto {
   @Min(0)
   discountAmount?: number;
 
+  /**
+   * Branch / POS location.
+   */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
   @IsNumber()
   @Min(0)
   grandTotal!: number;
 
   @IsArray()
-  @ValidateNested({ each: true })
+  @ValidateNested({
+    each: true,
+  })
   @Type(() => CreatePosSaleItemDto)
   items!: CreatePosSaleItemDto[];
 
   @IsArray()
-  @ValidateNested({ each: true })
+  @ValidateNested({
+    each: true,
+  })
   @Type(() => CreatePosPaymentDto)
   payments!: CreatePosPaymentDto[];
 

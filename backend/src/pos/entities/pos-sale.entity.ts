@@ -1,12 +1,5 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  OneToMany,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-  Index,
-} from 'typeorm';
+import { Column,CreateDateColumn,Entity,OneToMany,PrimaryGeneratedColumn,UpdateDateColumn,Index, ManyToOne, JoinColumn} from 'typeorm';
+import { Location } from '../../inventory/entities/location.entity';
 import { PosSaleItem } from './pos-sale-item.entity';
 import { PosPayment } from './pos-payment.entity';
 
@@ -25,6 +18,10 @@ export class PosSale {
   @Index({ unique: true })
   @Column({ type: 'varchar', length: 100, name: 'invoice_number', unique: true })
   invoiceNumber!: string;
+
+  @Index({ unique: true }) 
+  @Column({ type: 'varchar', length: 100, name: 'client_sale_id', nullable: true, })
+  clientSaleId!: string | null;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal!: number;
@@ -56,6 +53,13 @@ export class PosSale {
 
   @OneToMany(() => PosSaleItem, (item) => item.posSale, { cascade: true })
   items!: PosSaleItem[];
+
+  @Column({ type: 'uuid', name: 'location_id', nullable: true })
+locationId!: string | null;
+
+ @ManyToOne(() => Location, { nullable: true })
+  @JoinColumn({ name: 'location_id' })
+  location!: Location | null;
 
   @OneToMany(() => PosPayment, (payment) => payment.posSale, { cascade: true })
   payments!: PosPayment[];

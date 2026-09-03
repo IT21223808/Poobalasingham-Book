@@ -1,7 +1,11 @@
 import {
   Body,
   Controller,
-  Post,Get
+  Delete,
+  Get,
+  Param,
+  Post,
+  Patch,
 } from "@nestjs/common";
 import { CategoriesService } from "./categories.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
@@ -20,6 +24,11 @@ export class CategoriesController {
       createCategoryDto,
     );
   }
+
+  @Delete(":id")
+async remove(@Param("id") id: string) {
+  return this.categoriesService.remove(id);
+}
 
   @Get()
 async findAll() {
