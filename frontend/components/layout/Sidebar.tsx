@@ -18,7 +18,7 @@ import {
   Settings,
   LogOut,
   MapPin,
-  DollarSign,
+  DollarSign,BookOpen
 } from "lucide-react";
 
 interface SidebarProps {
@@ -32,6 +32,11 @@ const menuItems = [
     href: "/dashboard",
     icon: LayoutDashboard,
   },
+  {
+  title: "Catalog",
+  href: "/dashboard/catalog",
+  icon: BookOpen,
+},
   {
     title: "Products",
     href: "/dashboard/products",

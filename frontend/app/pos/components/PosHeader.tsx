@@ -26,6 +26,8 @@ interface PosHeaderProps {
   onBarcodeScan: (code: string) => void;
   onClearSearch: () => void;
   isLoadingProducts?: boolean;
+   isOffline?: boolean;
+  queuedSalesCount?: number;
 }
 
 export default function PosHeader({
@@ -39,6 +41,8 @@ export default function PosHeader({
   onBarcodeScan,
   onClearSearch,
   isLoadingProducts = false,
+  isOffline = false,
+  queuedSalesCount = 0,
 }: PosHeaderProps) {
   const [currentTime, setCurrentTime] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -147,6 +151,41 @@ export default function PosHeader({
           </div>
         </div>
       </div>
+
+{/* OFFLINE / SYNC STATUS */}
+<div
+  className={`hidden sm:flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
+    isOffline
+      ? "border-red-200 bg-red-50 text-red-700"
+      : queuedSalesCount > 0
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+  }`}
+>
+  <span
+    className={`h-2 w-2 rounded-full ${
+      isOffline
+        ? "bg-red-500"
+        : queuedSalesCount > 0
+        ? "bg-amber-500"
+        : "bg-emerald-500"
+    }`}
+  />
+
+  <span>
+    {isOffline
+      ? "Offline"
+      : queuedSalesCount > 0
+      ? "Syncing"
+      : "Online"}
+  </span>
+
+  {queuedSalesCount > 0 && (
+    <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px]">
+      Queue: {queuedSalesCount}
+    </span>
+  )}
+</div>
 
       {/* RIGHT: Actions + Profile */}
       <div className="flex shrink-0 items-center gap-4">

@@ -25,6 +25,7 @@ interface PaymentModalProps {
   discountAmount: number;
   grandTotal: number;
   heldBillId?: string;
+  locationId?: string | null;
   onSaleSuccess: (saleInvoice: SaleInvoice) => void;
 }
 
@@ -37,6 +38,7 @@ export default function PaymentModal({
   discountAmount,
   grandTotal,
   heldBillId,
+  locationId,
   onSaleSuccess,
 }: PaymentModalProps) {
   const [activeMethod, setActiveMethod] = useState<PaymentMethod | "MULTIPLE">("CASH");
@@ -166,6 +168,7 @@ export default function PaymentModal({
       subtotal,
       discountAmount,
       grandTotal,
+      locationId: locationId || undefined,
       items: cartItems.map((ci) => ({
         productId: ci.productId,
         productCode: ci.productCode,
