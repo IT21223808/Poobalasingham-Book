@@ -18,76 +18,257 @@ import {
   Settings,
   LogOut,
   MapPin,
-  DollarSign,BookOpen
+  BookOpen,
 } from "lucide-react";
+
+import { useEffect, useMemo, useState } from "react";
 
 interface SidebarProps {
   collapsed: boolean;
   onLogoClick: () => void;
 }
 
-const menuItems = [
+/* =========================================================
+   TYPES
+========================================================= */
+
+type UserRole =
+  | "OWNER"
+  | "MANAGER"
+  | "CASHIER"
+  | "ADMIN"
+  | "STAFF"
+  | "USER";
+
+type MenuPermission =
+  | "dashboard"
+  | "catalog"
+  | "products"
+  | "inventory"
+  | "locations"
+  | "purchasing"
+  | "orders"
+  | "customers"
+  | "suppliers"
+  | "finance"
+  | "reports"
+  | "pos"
+  | "settings";
+
+interface StoredUser {
+  id?: number;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: UserRole;
+  locationId?: string | null;
+  tillId?: number | null;
+  location?: {
+    id: string;
+    name: string;
+  } | null;
+  till?: {
+    id: number;
+    name: string;
+    code: string;
+  } | null;
+}
+
+/* =========================================================
+   ROLE NORMALIZATION
+========================================================= */
+
+const normalizeRole = (
+  role?: UserRole,
+): "OWNER" | "MANAGER" | "CASHIER" | "USER" => {
+  switch (role) {
+    case "ADMIN":
+      return "OWNER";
+
+    case "STAFF":
+      return "CASHIER";
+
+    case "OWNER":
+      return "OWNER";
+
+    case "MANAGER":
+      return "MANAGER";
+
+    case "CASHIER":
+      return "CASHIER";
+
+    default:
+      return "USER";
+  }
+};
+
+/* =========================================================
+   ROLE PERMISSIONS
+========================================================= */
+
+const ROLE_PERMISSIONS: Record<
+  "OWNER" | "MANAGER" | "CASHIER" | "USER",
+  MenuPermission[]
+> = {
+  OWNER: [
+    "dashboard",
+    "catalog",
+    "products",
+    "inventory",
+    "locations",
+    "purchasing",
+    "orders",
+    "customers",
+    "suppliers",
+    "finance",
+    "reports",
+    "pos",
+    "settings",
+  ],
+
+  MANAGER: [
+    "dashboard",
+    "catalog",
+    "products",
+    "inventory",
+    "orders",
+    "customers",
+    "reports",
+    "pos",
+  ],
+
+  CASHIER: [
+    "dashboard",
+    "catalog",
+    "products",
+    "orders",
+    "customers",
+    "pos",
+  ],
+
+  USER: [],
+};
+
+/* =========================================================
+   MENU ITEMS
+========================================================= */
+
+const menuItems: {
+  title: string;
+  href: string;
+  icon: React.ElementType;
+  permission: MenuPermission;
+}[] = [
   {
     title: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+    permission: "dashboard",
   },
+
   {
-  title: "Catalog",
-  href: "/dashboard/catalog",
-  icon: BookOpen,
-},
+    title: "Catalog",
+    href: "/dashboard/catalog",
+    icon: BookOpen,
+    permission: "catalog",
+  },
+
   {
     title: "Products",
     href: "/dashboard/products",
     icon: Package,
+    permission: "products",
   },
+
   {
     title: "Inventory",
     href: "/dashboard/inventory",
     icon: Boxes,
+    permission: "inventory",
   },
+
   {
     title: "Locations",
     href: "/dashboard/inventory/locations",
     icon: MapPin,
+    permission: "locations",
   },
+
   {
     title: "Purchasing",
     href: "/dashboard/purchasing",
     icon: ShoppingCart,
+    permission: "purchasing",
   },
+
   {
     title: "Orders",
     href: "/dashboard/orders",
     icon: FolderOpen,
+    permission: "orders",
   },
+
   {
     title: "Customers",
     href: "/dashboard/customers",
     icon: Users,
+    permission: "customers",
   },
+
   {
     title: "Suppliers",
     href: "/dashboard/suppliers",
     icon: Truck,
+    permission: "suppliers",
   },
+
   {
     title: "Finance",
     href: "/dashboard/finance",
     icon: Wallet,
+    permission: "finance",
   },
+
   {
     title: "Reports",
     href: "/dashboard/reports",
     icon: BarChart3,
+    permission: "reports",
   },
+
   {
     title: "POS Billing",
     href: "/pos",
     icon: CreditCard,
+    permission: "pos",
   },
 ];
+
+/* =========================================================
+   ROLE LABEL
+========================================================= */
+
+const getRoleLabel = (
+  role: "OWNER" | "MANAGER" | "CASHIER" | "USER",
+) => {
+  switch (role) {
+    case "OWNER":
+      return "Shop Owner";
+
+    case "MANAGER":
+      return "Branch Manager";
+
+    case "CASHIER":
+      return "Cashier";
+
+    default:
+      return "User";
+  }
+};
+
+/* =========================================================
+   COMPONENT
+========================================================= */
 
 export default function Sidebar({
   collapsed,
@@ -96,30 +277,86 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
 
-  /* =========================
+  const [user, setUser] = useState<StoredUser | null>(
+    null,
+  );
+
+  /* =======================================================
+     LOAD LOGGED-IN USER
+  ======================================================= */
+
+  useEffect(() => {
+    try {
+      const storedUser =
+        localStorage.getItem("user");
+
+      if (!storedUser) {
+        return;
+      }
+
+      const parsedUser: StoredUser =
+        JSON.parse(storedUser);
+
+      setUser(parsedUser);
+    } catch (error) {
+      console.error(
+        "Failed to load logged-in user:",
+        error,
+      );
+    }
+  }, []);
+
+  /* =======================================================
+     CURRENT ROLE
+  ======================================================= */
+
+  const currentRole = useMemo(() => {
+    return normalizeRole(user?.role);
+  }, [user?.role]);
+
+  /* =======================================================
+     ALLOWED MENU ITEMS
+  ======================================================= */
+
+  const allowedPermissions =
+    ROLE_PERMISSIONS[currentRole];
+
+  const visibleMenuItems = useMemo(() => {
+    return menuItems.filter((item) =>
+      allowedPermissions.includes(
+        item.permission,
+      ),
+    );
+  }, [allowedPermissions]);
+
+  /* =======================================================
      LOGOUT
-  ========================= */
+  ======================================================= */
 
   const handleLogout = () => {
     // Remove authentication tokens
     localStorage.removeItem("token");
     localStorage.removeItem("accessToken");
     localStorage.removeItem("access_token");
+    localStorage.removeItem("authToken");
+
+    // Remove user/session data
+    localStorage.removeItem("user");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("loggedInUserType");
 
     sessionStorage.removeItem("token");
     sessionStorage.removeItem("accessToken");
     sessionStorage.removeItem("access_token");
 
-    // Clear remaining session data
     sessionStorage.clear();
 
-    // Redirect to login
     router.push("/login");
   };
 
-  /* =========================
+  /* =======================================================
      ACTIVE MENU
-  ========================= */
+  ======================================================= */
 
   const isActive = (href: string) => {
     // Dashboard should only be active on exact dashboard page
@@ -127,17 +364,37 @@ export default function Sidebar({
       return pathname === "/dashboard";
     }
 
-    // Inventory main menu should only be active on inventory dashboard
+    // Inventory main menu should only be active
+    // on inventory dashboard
     if (href === "/dashboard/inventory") {
       return pathname === "/dashboard/inventory";
     }
 
-    // Other menu items remain active for their child routes
+    // Other menu items remain active for child routes
     return (
       pathname === href ||
       pathname.startsWith(`${href}/`)
     );
   };
+
+  /* =======================================================
+     USER DISPLAY
+  ======================================================= */
+
+  const fullName =
+    user?.firstName || user?.lastName
+      ? `${user?.firstName ?? ""} ${
+          user?.lastName ?? ""
+        }`.trim()
+      : "User";
+
+  const initials =
+    `${user?.firstName?.charAt(0) ?? ""}${
+      user?.lastName?.charAt(0) ?? ""
+    }`.toUpperCase() || "U";
+
+  const roleLabel =
+    getRoleLabel(currentRole);
 
   return (
     <aside
@@ -188,7 +445,7 @@ export default function Sidebar({
         )}
 
         <div className="space-y-1">
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
 
@@ -245,36 +502,42 @@ export default function Sidebar({
         <div className="mt-2 space-y-1">
           {/* ================= SETTINGS ================= */}
 
-          <Link
-            href="/dashboard/settings"
-            title={
-              collapsed
-                ? "Settings"
-                : undefined
-            }
-            className={`group flex items-center rounded-lg py-3 transition ${
-              collapsed
-                ? "justify-center px-2"
-                : "gap-3 px-4"
-            } ${
-              pathname === "/dashboard/settings"
-                ? "bg-blue-50 font-semibold text-blue-600"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
-            }`}
-          >
-            <Settings
-              size={20}
-              className={
-                pathname === "/dashboard/settings"
-                  ? "text-blue-600"
-                  : "text-gray-500 group-hover:text-gray-700"
+          {allowedPermissions.includes(
+            "settings",
+          ) && (
+            <Link
+              href="/dashboard/settings"
+              title={
+                collapsed
+                  ? "Settings"
+                  : undefined
               }
-            />
+              className={`group flex items-center rounded-lg py-3 transition ${
+                collapsed
+                  ? "justify-center px-2"
+                  : "gap-3 px-4"
+              } ${
+                pathname ===
+                "/dashboard/settings"
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
+              }`}
+            >
+              <Settings
+                size={20}
+                className={
+                  pathname ===
+                  "/dashboard/settings"
+                    ? "text-blue-600"
+                    : "text-gray-500 group-hover:text-gray-700"
+                }
+              />
 
-            {!collapsed && (
-              <span>Settings</span>
-            )}
-          </Link>
+              {!collapsed && (
+                <span>Settings</span>
+              )}
+            </Link>
+          )}
 
           {/* ================= LOGOUT ================= */}
 
@@ -315,18 +578,27 @@ export default function Sidebar({
           }`}
         >
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
-            A
+            {initials}
           </div>
 
           {!collapsed && (
             <div className="min-w-0">
               <p className="truncate font-semibold text-gray-800">
-                Admin User
+                {fullName}
               </p>
 
               <p className="text-xs text-gray-500">
-                Administrator
+                {roleLabel}
               </p>
+
+              {user?.location?.name && (
+                <p className="truncate text-[11px] text-gray-400">
+                  {user.location.name}
+                  {user?.till?.name
+                    ? ` • ${user.till.name}`
+                    : ""}
+                </p>
+              )}
             </div>
           )}
         </div>
