@@ -9,6 +9,7 @@ import {
   Loader2,
   Receipt,
 } from "lucide-react";
+import api from "@/services/api";
 
 interface Supplier {
   id: number | string;
@@ -44,16 +45,12 @@ interface InvoiceItem {
 }
 
 // =========================================================
-// API
+// ERROR MESSAGE HELPER
 // =========================================================
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
 
 function getErrorMessage(
   data: any,
-  fallback = "Failed to create purchase invoice"
+  fallback = "Something went wrong",
 ): string {
   if (!data) {
     return fallback;
@@ -68,12 +65,7 @@ function getErrorMessage(
   }
 
   // NestJS validation:
-  // {
-  //   message: [
-  //     "supplierId must be an integer number",
-  //     ...
-  //   ]
-  // }
+  // { message: ["...", "..."] }
   if (Array.isArray(data?.message)) {
     return data.message
       .map((item: any) => {
@@ -103,10 +95,7 @@ function getErrorMessage(
       .join(", ");
   }
 
-  // NestJS:
-  // {
-  //   message: "..."
-  // }
+  // { message: "..." }
   if (typeof data?.message === "string") {
     return data.message;
   }
@@ -123,16 +112,20 @@ function getErrorMessage(
             ? item
             : item?.message ||
               item?.error ||
-              JSON.stringify(item)
+              JSON.stringify(item),
         )
         .join(", ");
     }
 
-    if (typeof data.message.message === "string") {
+    if (
+      typeof data.message.message === "string"
+    ) {
       return data.message.message;
     }
 
-    if (typeof data.message.error === "string") {
+    if (
+      typeof data.message.error === "string"
+    ) {
       return data.message.error;
     }
 
@@ -176,13 +169,13 @@ function getErrorMessage(
 // =========================================================
 
 export default function CreatePurchaseInvoicePage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(
-    []
-  );
+  const [suppliers, setSuppliers] = useState<
+    Supplier[]
+  >([]);
 
-  const [products, setProducts] = useState<Product[]>(
-    []
-  );
+  const [products, setProducts] = useState<
+    Product[]
+  >([]);
 
   const [purchaseOrders, setPurchaseOrders] =
     useState<PurchaseOrder[]>([]);
@@ -201,12 +194,14 @@ export default function CreatePurchaseInvoicePage() {
   const [grnId, setGrnId] = useState("");
 
   const [invoiceDate, setInvoiceDate] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
 
   const [dueDate, setDueDate] = useState("");
 
-  const [items, setItems] = useState<InvoiceItem[]>([
+  const [items, setItems] = useState<
+    InvoiceItem[]
+  >([
     {
       productId: "",
       productName: "",
@@ -220,73 +215,74 @@ export default function CreatePurchaseInvoicePage() {
   const [error, setError] = useState("");
 
   // =========================================================
-  // TOKEN
-  // =========================================================
-
-  const getToken = () =>
-    typeof window !== "undefined"
-      ? localStorage.getItem("accessToken")
-      : null;
-
-  // =========================================================
-  // COMMON FETCH HEADERS
-  // =========================================================
-
-  const getHeaders = () => {
-    const token = getToken();
-
-    return {
-      "Content-Type": "application/json",
-      ...(token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {}),
-    };
-  };
-
-  // =========================================================
   // LOAD SUPPLIERS
   // =========================================================
 
   useEffect(() => {
+    let mounted = true;
+
     const loadSuppliers = async () => {
       try {
-        const response = await fetch(
-          `${API_URL}/suppliers`,
-          {
-            headers: getHeaders(),
-          }
+        console.log(
+          "🔄 Loading suppliers...",
         );
 
-        const data =
-          await response.json().catch(() => null);
+        const response = await api.get(
+          "/suppliers",
+        );
 
-        if (!response.ok) {
-          throw new Error(
-            getErrorMessage(
-              data,
-              "Failed to load suppliers"
+        console.log(
+          "✅ Suppliers loaded:",
+          response.data,
+        );
+
+        const responseData =
+          response.data;
+
+        const result = Array.isArray(
+          responseData,
+        )
+          ? responseData
+          : Array.isArray(
+              responseData?.data,
             )
-          );
-        }
-
-        const result = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-          ? data.data
+          ? responseData.data
           : [];
 
-        setSuppliers(result);
-      } catch (error) {
+        if (mounted) {
+          setSuppliers(result);
+        }
+      } catch (error: any) {
         console.error(
-          "Failed to load suppliers:",
-          error
+          "❌ Failed to load suppliers:",
+          error,
         );
+
+        console.error(
+          "❌ Supplier status:",
+          error?.response?.status,
+        );
+
+        console.error(
+          "❌ Supplier backend response:",
+          error?.response?.data,
+        );
+
+        if (
+          error?.response?.status === 401
+        ) {
+          console.error(
+            "❌ Supplier request unauthorized. Check JWT.",
+          );
+        }
       }
     };
 
     loadSuppliers();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // =========================================================
@@ -294,43 +290,70 @@ export default function CreatePurchaseInvoicePage() {
   // =========================================================
 
   useEffect(() => {
+    let mounted = true;
+
     const loadProducts = async () => {
       try {
-        const response = await fetch(
-          `${API_URL}/products`,
-          {
-            headers: getHeaders(),
-          }
+        console.log(
+          "🔄 Loading products...",
         );
 
-        const data =
-          await response.json().catch(() => null);
+        const response = await api.get(
+          "/products",
+        );
 
-        if (!response.ok) {
-          throw new Error(
-            getErrorMessage(
-              data,
-              "Failed to load products"
+        console.log(
+          "✅ Products loaded:",
+          response.data,
+        );
+
+        const responseData =
+          response.data;
+
+        const result = Array.isArray(
+          responseData,
+        )
+          ? responseData
+          : Array.isArray(
+              responseData?.data,
             )
-          );
-        }
-
-        const result = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-          ? data.data
+          ? responseData.data
           : [];
 
-        setProducts(result);
-      } catch (error) {
+        if (mounted) {
+          setProducts(result);
+        }
+      } catch (error: any) {
         console.error(
-          "Failed to load products:",
-          error
+          "❌ Failed to load products:",
+          error,
         );
+
+        console.error(
+          "❌ Product status:",
+          error?.response?.status,
+        );
+
+        console.error(
+          "❌ Product backend response:",
+          error?.response?.data,
+        );
+
+        if (
+          error?.response?.status === 401
+        ) {
+          console.error(
+            "❌ Product request unauthorized. Check JWT.",
+          );
+        }
       }
     };
 
     loadProducts();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // =========================================================
@@ -338,43 +361,75 @@ export default function CreatePurchaseInvoicePage() {
   // =========================================================
 
   useEffect(() => {
-    const loadPurchaseOrders = async () => {
-      try {
-        const response = await fetch(
-          `${API_URL}/purchasing/orders`,
-          {
-            headers: getHeaders(),
-          }
-        );
+    let mounted = true;
 
-        const data =
-          await response.json().catch(() => null);
-
-        if (!response.ok) {
-          throw new Error(
-            getErrorMessage(
-              data,
-              "Failed to load purchase orders"
-            )
+    const loadPurchaseOrders =
+      async () => {
+        try {
+          console.log(
+            "🔄 Loading purchase orders...",
           );
+
+          const response =
+            await api.get(
+              "/purchasing/orders",
+            );
+
+          console.log(
+            "✅ Purchase orders loaded:",
+            response.data,
+          );
+
+          const responseData =
+            response.data;
+
+          const result = Array.isArray(
+            responseData,
+          )
+            ? responseData
+            : Array.isArray(
+                responseData?.data,
+              )
+            ? responseData.data
+            : [];
+
+          if (mounted) {
+            setPurchaseOrders(
+              result,
+            );
+          }
+        } catch (error: any) {
+          console.error(
+            "❌ Failed to load purchase orders:",
+            error,
+          );
+
+          console.error(
+            "❌ Purchase order status:",
+            error?.response?.status,
+          );
+
+          console.error(
+            "❌ Purchase order backend response:",
+            error?.response?.data,
+          );
+
+          if (
+            error?.response?.status ===
+            401
+          ) {
+            console.error(
+              "❌ Purchase order request unauthorized. Check JWT.",
+            );
+          }
         }
-
-        const result = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-          ? data.data
-          : [];
-
-        setPurchaseOrders(result);
-      } catch (error) {
-        console.error(
-          "Failed to load purchase orders:",
-          error
-        );
-      }
-    };
+      };
 
     loadPurchaseOrders();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // =========================================================
@@ -382,59 +437,91 @@ export default function CreatePurchaseInvoicePage() {
   // =========================================================
 
   useEffect(() => {
+    let mounted = true;
+
     const loadGrns = async () => {
       try {
-        const response = await fetch(
-          `${API_URL}/purchasing/grn`,
-          {
-            headers: getHeaders(),
-          }
+        console.log(
+          "🔄 Loading GRNs...",
         );
 
-        const data =
-          await response.json().catch(() => null);
+        const response = await api.get(
+          "/purchasing/grn",
+        );
 
-        if (!response.ok) {
-          throw new Error(
-            getErrorMessage(
-              data,
-              "Failed to load GRNs"
+        console.log(
+          "✅ GRNs loaded:",
+          response.data,
+        );
+
+        const responseData =
+          response.data;
+
+        const result = Array.isArray(
+          responseData,
+        )
+          ? responseData
+          : Array.isArray(
+              responseData?.data,
             )
-          );
-        }
-
-        const result = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-          ? data.data
+          ? responseData.data
           : [];
 
-        setGrns(result);
-      } catch (error) {
+        if (mounted) {
+          setGrns(result);
+        }
+      } catch (error: any) {
         console.error(
-          "Failed to load GRNs:",
-          error
+          "❌ Failed to load GRNs:",
+          error,
         );
+
+        console.error(
+          "❌ GRN status:",
+          error?.response?.status,
+        );
+
+        console.error(
+          "❌ GRN backend response:",
+          error?.response?.data,
+        );
+
+        if (
+          error?.response?.status === 401
+        ) {
+          console.error(
+            "❌ GRN request unauthorized. Check JWT.",
+          );
+        }
       }
     };
 
     loadGrns();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // =========================================================
   // FILTER PURCHASE ORDERS BY SUPPLIER
   // =========================================================
 
-  const filteredPurchaseOrders = useMemo(() => {
-    if (!supplierId) {
-      return purchaseOrders;
-    }
+  const filteredPurchaseOrders =
+    useMemo(() => {
+      if (!supplierId) {
+        return purchaseOrders;
+      }
 
-    return purchaseOrders.filter(
-      (order) =>
-        order.supplierId === Number(supplierId)
-    );
-  }, [purchaseOrders, supplierId]);
+      return purchaseOrders.filter(
+        (order) =>
+          order.supplierId ===
+          Number(supplierId),
+      );
+    }, [
+      purchaseOrders,
+      supplierId,
+    ]);
 
   // =========================================================
   // FILTER GRNS BY PURCHASE ORDER
@@ -448,16 +535,19 @@ export default function CreatePurchaseInvoicePage() {
     return grns.filter(
       (grn) =>
         grn.purchaseOrderId ===
-        Number(purchaseOrderId)
+        Number(purchaseOrderId),
     );
-  }, [grns, purchaseOrderId]);
+  }, [
+    grns,
+    purchaseOrderId,
+  ]);
 
   // =========================================================
   // ITEM SUBTOTAL
   // =========================================================
 
   const calculateItemSubtotal = (
-    item: InvoiceItem
+    item: InvoiceItem,
   ) => {
     return (
       Number(item.quantity || 0) *
@@ -474,8 +564,10 @@ export default function CreatePurchaseInvoicePage() {
       (total, item) =>
         total +
         Number(item.quantity || 0) *
-          Number(item.unitPrice || 0),
-      0
+          Number(
+            item.unitPrice || 0,
+          ),
+      0,
     );
   }, [items]);
 
@@ -499,11 +591,13 @@ export default function CreatePurchaseInvoicePage() {
   // REMOVE ITEM
   // =========================================================
 
-  const removeItem = (index: number) => {
+  const removeItem = (
+    index: number,
+  ) => {
     setItems((current) =>
       current.filter(
-        (_, i) => i !== index
-      )
+        (_, i) => i !== index,
+      ),
     );
   };
 
@@ -514,7 +608,7 @@ export default function CreatePurchaseInvoicePage() {
   const updateItem = (
     index: number,
     field: keyof InvoiceItem,
-    value: string | number
+    value: string | number,
   ) => {
     setItems((current) =>
       current.map((item, i) =>
@@ -523,8 +617,8 @@ export default function CreatePurchaseInvoicePage() {
               ...item,
               [field]: value,
             }
-          : item
-      )
+          : item,
+      ),
     );
   };
 
@@ -534,11 +628,12 @@ export default function CreatePurchaseInvoicePage() {
 
   const handleProductChange = (
     index: number,
-    productId: string
+    productId: string,
   ) => {
     const product = products.find(
       (item) =>
-        String(item.id) === productId
+        String(item.id) ===
+        productId,
     );
 
     setItems((current) =>
@@ -548,10 +643,11 @@ export default function CreatePurchaseInvoicePage() {
               ...item,
               productId,
               productName:
-                product?.productName || "",
+                product?.productName ||
+                "",
             }
-          : item
-      )
+          : item,
+      ),
     );
   };
 
@@ -560,7 +656,7 @@ export default function CreatePurchaseInvoicePage() {
   // =========================================================
 
   const handleSupplierChange = (
-    value: string
+    value: string,
   ) => {
     setSupplierId(value);
 
@@ -574,7 +670,7 @@ export default function CreatePurchaseInvoicePage() {
   // =========================================================
 
   const handlePurchaseOrderChange = (
-    value: string
+    value: string,
   ) => {
     setPurchaseOrderId(value);
 
@@ -587,7 +683,7 @@ export default function CreatePurchaseInvoicePage() {
   // =========================================================
 
   const handleSubmit = async (
-    e: React.FormEvent
+    e: React.FormEvent,
   ) => {
     e.preventDefault();
 
@@ -599,7 +695,7 @@ export default function CreatePurchaseInvoicePage() {
 
     if (!supplierId) {
       setError(
-        "Please select a supplier."
+        "Please select a supplier.",
       );
       return;
     }
@@ -609,12 +705,12 @@ export default function CreatePurchaseInvoicePage() {
 
     if (
       !Number.isInteger(
-        supplierNumber
+        supplierNumber,
       ) ||
       supplierNumber <= 0
     ) {
       setError(
-        "Invalid supplier selected."
+        "Invalid supplier selected.",
       );
       return;
     }
@@ -625,7 +721,7 @@ export default function CreatePurchaseInvoicePage() {
 
     if (!purchaseOrderId) {
       setError(
-        "Please select a purchase order."
+        "Please select a purchase order.",
       );
       return;
     }
@@ -635,12 +731,12 @@ export default function CreatePurchaseInvoicePage() {
 
     if (
       !Number.isInteger(
-        purchaseOrderNumber
+        purchaseOrderNumber,
       ) ||
       purchaseOrderNumber <= 0
     ) {
       setError(
-        "Invalid purchase order selected."
+        "Invalid purchase order selected.",
       );
       return;
     }
@@ -651,19 +747,22 @@ export default function CreatePurchaseInvoicePage() {
 
     if (!grnId) {
       setError(
-        "Please select a GRN."
+        "Please select a GRN.",
       );
       return;
     }
 
-    const grnNumber = Number(grnId);
+    const grnNumber =
+      Number(grnId);
 
     if (
-      !Number.isInteger(grnNumber) ||
+      !Number.isInteger(
+        grnNumber,
+      ) ||
       grnNumber <= 0
     ) {
       setError(
-        "Invalid GRN selected."
+        "Invalid GRN selected.",
       );
       return;
     }
@@ -674,7 +773,7 @@ export default function CreatePurchaseInvoicePage() {
 
     if (!invoiceDate) {
       setError(
-        "Invoice date is required."
+        "Invoice date is required.",
       );
       return;
     }
@@ -684,7 +783,7 @@ export default function CreatePurchaseInvoicePage() {
       dueDate < invoiceDate
     ) {
       setError(
-        "Due date cannot be before invoice date."
+        "Due date cannot be before invoice date.",
       );
       return;
     }
@@ -695,7 +794,7 @@ export default function CreatePurchaseInvoicePage() {
 
     if (items.length === 0) {
       setError(
-        "Please add at least one invoice item."
+        "Please add at least one invoice item.",
       );
       return;
     }
@@ -704,18 +803,18 @@ export default function CreatePurchaseInvoicePage() {
       (item) =>
         !item.productId ||
         !Number.isFinite(
-          Number(item.quantity)
+          Number(item.quantity),
         ) ||
         Number(item.quantity) <= 0 ||
         !Number.isFinite(
-          Number(item.unitPrice)
+          Number(item.unitPrice),
         ) ||
-        Number(item.unitPrice) <= 0
+        Number(item.unitPrice) <= 0,
     );
 
     if (invalidItem) {
       setError(
-        "Please provide a valid product, quantity and unit price for every item."
+        "Please provide a valid product, quantity and unit price for every item.",
       );
       return;
     }
@@ -725,7 +824,7 @@ export default function CreatePurchaseInvoicePage() {
     // -------------------------------------------------------
 
     const productIds = items.map(
-      (item) => item.productId
+      (item) => item.productId,
     );
 
     const uniqueProductIds = [
@@ -737,7 +836,7 @@ export default function CreatePurchaseInvoicePage() {
       productIds.length
     ) {
       setError(
-        "Duplicate products are not allowed."
+        "Duplicate products are not allowed.",
       );
       return;
     }
@@ -749,31 +848,8 @@ export default function CreatePurchaseInvoicePage() {
     try {
       setSaving(true);
 
-      const token = getToken();
-
       // =====================================================
-      // IMPORTANT
-      //
-      // Backend CreatePurchaseInvoiceDto expects:
-      //
-      // supplierId
-      // purchaseOrderId
-      // grnId
-      // invoiceDate?
-      // dueDate?
-      // discountAmount?
-      // taxAmount?
-      // items[]
-      //
-      // Backend generates invoiceNumber.
-      //
-      // Backend does NOT expect:
-      // invoiceNumber
-      // subtotal
-      // discount
-      // tax
-      // grandTotal
-      // paymentStatus
+      // BACKEND PAYLOAD
       // =====================================================
 
       const payload = {
@@ -797,10 +873,6 @@ export default function CreatePurchaseInvoicePage() {
 
         // Backend DTO uses discountAmount
         // and taxAmount.
-        //
-        // Current UI has no separate invoice-level
-        // discount/tax fields, so send 0.
-
         discountAmount: 0,
 
         taxAmount: 0,
@@ -809,24 +881,30 @@ export default function CreatePurchaseInvoicePage() {
           (item) => ({
             // Product.id is UUID
             productId:
-              String(item.productId),
+              String(
+                item.productId,
+              ),
 
             quantity:
-              Number(item.quantity),
+              Number(
+                item.quantity,
+              ),
 
             unitPrice:
-              Number(item.unitPrice),
-          })
+              Number(
+                item.unitPrice,
+              ),
+          }),
         ),
       };
 
       console.log(
-        "========== CREATE PURCHASE INVOICE =========="
+        "========== CREATE PURCHASE INVOICE ==========",
       );
 
       console.log(
         "REQUEST URL:",
-        `${API_URL}/purchasing/invoices`
+        "/purchasing/invoices",
       );
 
       console.log(
@@ -834,109 +912,42 @@ export default function CreatePurchaseInvoicePage() {
         JSON.stringify(
           payload,
           null,
-          2
-        )
+          2,
+        ),
       );
 
       console.log(
-        "============================================="
+        "=============================================",
       );
 
       // =====================================================
-      // FETCH
+      // AXIOS POST
+      // JWT IS AUTOMATICALLY ATTACHED BY @/services/api
       // =====================================================
 
-      let response: Response;
-
-      try {
-        response = await fetch(
-          `${API_URL}/purchasing/invoices`,
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-
-              ...(token
-                ? {
-                    Authorization: `Bearer ${token}`,
-                  }
-                : {}),
-            },
-
-            body:
-              JSON.stringify(
-                payload
-              ),
-          }
+      const response =
+        await api.post(
+          "/purchasing/invoices",
+          payload,
         );
-      } catch (networkError: any) {
-        console.error(
-          "NETWORK ERROR:",
-          networkError
-        );
-
-        throw new Error(
-          "Failed to fetch. Please make sure the backend server is running at " +
-            API_URL
-        );
-      }
-
-      // =====================================================
-      // RESPONSE
-      // =====================================================
-
-      const responseText =
-        await response.text();
-
-      let data: any = null;
-
-      if (responseText) {
-        try {
-          data =
-            JSON.parse(
-              responseText
-            );
-        } catch {
-          data =
-            responseText;
-        }
-      }
 
       console.log(
-        "========== PURCHASE INVOICE RESPONSE =========="
+        "========== PURCHASE INVOICE RESPONSE ==========",
       );
 
       console.log(
         "HTTP STATUS:",
-        response.status
+        response.status,
       );
 
       console.log(
         "RESPONSE:",
-        data
+        response.data,
       );
 
       console.log(
-        "================================================"
+        "================================================",
       );
-
-      // =====================================================
-      // ERROR RESPONSE
-      // =====================================================
-
-      if (!response.ok) {
-        const errorMessage =
-          getErrorMessage(
-            data,
-            `Failed to create purchase invoice (${response.status})`
-          );
-
-        throw new Error(
-          errorMessage
-        );
-      }
 
       // =====================================================
       // SUCCESS
@@ -944,25 +955,44 @@ export default function CreatePurchaseInvoicePage() {
 
       console.log(
         "Purchase invoice created successfully:",
-        data
+        response.data,
       );
 
-      // Redirect after successful creation
       window.location.href =
         "/dashboard/purchasing/invoices";
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error(
-        "========== CREATE PURCHASE INVOICE ERROR =========="
+        "========== CREATE PURCHASE INVOICE ERROR ==========",
       );
 
       console.error(
-        error
+        error,
+      );
+
+      console.error(
+        "STATUS:",
+        error?.response?.status,
+      );
+
+      console.error(
+        "BACKEND RESPONSE:",
+        error?.response?.data,
       );
 
       let message =
         "Failed to create purchase invoice.";
 
-      if (error instanceof Error) {
+      if (
+        error?.response?.data
+      ) {
+        message =
+          getErrorMessage(
+            error.response.data,
+            message,
+          );
+      } else if (
+        error instanceof Error
+      ) {
         message =
           error.message ||
           message;
@@ -975,7 +1005,7 @@ export default function CreatePurchaseInvoicePage() {
         message =
           getErrorMessage(
             error,
-            message
+            message,
           );
       }
 
@@ -990,16 +1020,14 @@ export default function CreatePurchaseInvoicePage() {
 
       console.error(
         "FINAL ERROR MESSAGE:",
-        message
+        message,
       );
 
       console.error(
-        "===================================================="
+        "====================================================",
       );
 
-      setError(
-        message
-      );
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -1119,7 +1147,7 @@ export default function CreatePurchaseInvoicePage() {
                   value={supplierId}
                   onChange={(e) =>
                     handleSupplierChange(
-                      e.target.value
+                      e.target.value,
                     )
                   }
                   className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -1138,7 +1166,7 @@ export default function CreatePurchaseInvoicePage() {
                           supplier.supplierName
                         }
                       </option>
-                    )
+                    ),
                   )}
                 </select>
               </div>
@@ -1154,7 +1182,7 @@ export default function CreatePurchaseInvoicePage() {
                   value={purchaseOrderId}
                   onChange={(e) =>
                     handlePurchaseOrderChange(
-                      e.target.value
+                      e.target.value,
                     )
                   }
                   disabled={!supplierId}
@@ -1174,13 +1202,13 @@ export default function CreatePurchaseInvoicePage() {
                       >
                         {order.poNumber ||
                           `PO-${String(
-                            order.id
+                            order.id,
                           ).padStart(
                             5,
-                            "0"
+                            "0",
                           )}`}
                       </option>
-                    )
+                    ),
                   )}
                 </select>
               </div>
@@ -1196,10 +1224,12 @@ export default function CreatePurchaseInvoicePage() {
                   value={grnId}
                   onChange={(e) =>
                     setGrnId(
-                      e.target.value
+                      e.target.value,
                     )
                   }
-                  disabled={!purchaseOrderId}
+                  disabled={
+                    !purchaseOrderId
+                  }
                   className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
                   <option value="">
@@ -1216,13 +1246,13 @@ export default function CreatePurchaseInvoicePage() {
                       >
                         {grn.grnNumber ||
                           `GRN-${String(
-                            grn.id
+                            grn.id,
                           ).padStart(
                             5,
-                            "0"
+                            "0",
                           )}`}
                       </option>
-                    )
+                    ),
                   )}
                 </select>
               </div>
@@ -1239,7 +1269,7 @@ export default function CreatePurchaseInvoicePage() {
                   value={invoiceDate}
                   onChange={(e) =>
                     setInvoiceDate(
-                      e.target.value
+                      e.target.value,
                     )
                   }
                   className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -1259,7 +1289,7 @@ export default function CreatePurchaseInvoicePage() {
                   min={invoiceDate}
                   onChange={(e) =>
                     setDueDate(
-                      e.target.value
+                      e.target.value,
                     )
                   }
                   className="h-10 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -1345,7 +1375,7 @@ export default function CreatePurchaseInvoicePage() {
                             onChange={(e) =>
                               handleProductChange(
                                 index,
-                                e.target.value
+                                e.target.value,
                               )
                             }
                             className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
@@ -1372,7 +1402,7 @@ export default function CreatePurchaseInvoicePage() {
                                     product.productName
                                   }
                                 </option>
-                              )
+                              ),
                             )}
 
                           </select>
@@ -1396,8 +1426,8 @@ export default function CreatePurchaseInvoicePage() {
                                 "quantity",
                                 Number(
                                   e.target
-                                    .value
-                                )
+                                    .value,
+                                ),
                               )
                             }
                             className="h-10 w-28 rounded-lg border border-gray-300 px-3"
@@ -1422,8 +1452,8 @@ export default function CreatePurchaseInvoicePage() {
                                 "unitPrice",
                                 Number(
                                   e.target
-                                    .value
-                                )
+                                    .value,
+                                ),
                               )
                             }
                             className="h-10 w-32 rounded-lg border border-gray-300 px-3"
@@ -1437,13 +1467,13 @@ export default function CreatePurchaseInvoicePage() {
 
                           Rs.{" "}
                           {calculateItemSubtotal(
-                            item
+                            item,
                           ).toLocaleString(
                             "en-LK",
                             {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
-                            }
+                            },
                           )}
 
                         </td>
@@ -1456,7 +1486,7 @@ export default function CreatePurchaseInvoicePage() {
                             type="button"
                             onClick={() =>
                               removeItem(
-                                index
+                                index,
                               )
                             }
                             disabled={
@@ -1473,7 +1503,7 @@ export default function CreatePurchaseInvoicePage() {
                         </td>
 
                       </tr>
-                    )
+                    ),
                   )}
 
                 </tbody>
@@ -1505,7 +1535,7 @@ export default function CreatePurchaseInvoicePage() {
                     {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
-                    }
+                    },
                   )}
                 </span>
 
@@ -1548,7 +1578,7 @@ export default function CreatePurchaseInvoicePage() {
                     {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
-                    }
+                    },
                   )}
                 </span>
 
@@ -1600,4 +1630,3 @@ export default function CreatePurchaseInvoicePage() {
     </div>
   );
 }
-

@@ -1,31 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Search,
-  Plus,
-  RefreshCw,
-  Eye,
-  Pencil,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  ShoppingCart,
-  Clock3,
-  CheckCircle2,
-  PackageCheck,
-  CalendarDays,
-  XCircle,
-  Trash2,
-  FileText,
-  Truck,
-} from "lucide-react";
+import {Search,Plus,RefreshCw,Eye,Pencil,Check,ChevronLeft,ChevronRight,ShoppingCart,Clock3,CheckCircle2,PackageCheck,CalendarDays,XCircle,Trash2,FileText,} from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+
+import api from "@/services/api";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface Supplier {
   id: number | string;
@@ -62,11 +50,9 @@ interface PurchaseOrder {
   orderDate?: string;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-const ORDERS_API = `${API_URL}/purchasing/orders`;
+/* =========================================================
+   PAGE
+========================================================= */
 
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -88,67 +74,104 @@ export default function PurchaseOrdersPage() {
      LOAD ORDERS
   ========================================================= */
 
-  const loadOrders = useCallback(async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+  const loadOrders = useCallback(
+    async (isRefresh = false) => {
+      try {
+        if (isRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
 
-      setError(null);
+        setError(null);
 
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-
-      const response = await fetch(ORDERS_API, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : {}),
-        },
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message ||
-                `Failed to load purchase orders (${response.status})`
+        console.log(
+          "📋 Loading purchase orders..."
         );
+
+        const response = await api.get(
+          "/purchasing/orders"
+        );
+
+        console.log(
+          "✅ Purchase orders response:",
+          response.status,
+          response.data
+        );
+
+        const data = response.data;
+
+        const result: PurchaseOrder[] =
+          Array.isArray(data)
+            ? data
+            : Array.isArray(data?.data)
+            ? data.data
+            : [];
+
+        setOrders(result);
+      } catch (err: unknown) {
+        console.error(
+          "❌ Load purchase orders error:",
+          err
+        );
+
+        const axiosError = err as {
+          response?: {
+            status?: number;
+            statusText?: string;
+            data?: {
+              message?: string | string[];
+            };
+          };
+          message?: string;
+        };
+
+        const statusCode =
+          axiosError.response?.status;
+
+        const backendMessage =
+          axiosError.response?.data?.message;
+
+        let message =
+          "Failed to load purchase orders";
+
+        if (statusCode === 401) {
+          message =
+            "Unauthorized (401): JWT token missing, invalid or expired. Please login again.";
+        } else if (statusCode === 403) {
+          message =
+            "Forbidden (403): You don't have permission to view purchase orders.";
+        } else if (statusCode === 404) {
+          message =
+            "Not Found (404): Purchase orders API endpoint was not found.";
+        } else if (statusCode === 500) {
+          message =
+            "Server Error (500): Failed to load purchase orders.";
+        } else if (
+          Array.isArray(backendMessage)
+        ) {
+          message =
+            backendMessage.join(", ");
+        } else if (
+          typeof backendMessage === "string"
+        ) {
+          message = backendMessage;
+        } else if (axiosError.message) {
+          message = axiosError.message;
+        }
+
+        setError(message);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
+    },
+    []
+  );
 
-      const data = await response.json();
-
-      const result = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-        ? data.data
-        : [];
-
-      setOrders(result);
-    } catch (err) {
-      console.error("Load purchase orders error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load purchase orders"
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  /* =========================================================
+     INITIAL LOAD
+  ========================================================= */
 
   useEffect(() => {
     loadOrders();
@@ -163,41 +186,54 @@ export default function PurchaseOrdersPage() {
       const normalizedStatus =
         order.status?.toUpperCase();
 
+      const normalizedSearch =
+        search.trim().toLowerCase();
+
+      const normalizedSupplierSearch =
+        supplierSearch.trim().toLowerCase();
+
       const matchesSearch =
-        !search ||
+        !normalizedSearch ||
         order.poNumber
           ?.toLowerCase()
-          .includes(search.toLowerCase());
+          .includes(normalizedSearch);
 
       const supplierName =
         order.supplier?.supplierName || "";
 
       const matchesSupplier =
-        !supplierSearch ||
+        !normalizedSupplierSearch ||
         supplierName
           .toLowerCase()
-          .includes(supplierSearch.toLowerCase());
+          .includes(
+            normalizedSupplierSearch
+          );
 
       const matchesStatus =
         status === "ALL" ||
         normalizedStatus === status;
 
       const dateValue =
-        order.orderDate || order.createdAt;
+        order.orderDate ||
+        order.createdAt;
 
-      const parsedDate = new Date(dateValue);
+      const parsedDate =
+        new Date(dateValue);
 
-      const orderDate = Number.isNaN(
-        parsedDate.getTime()
-      )
-        ? ""
-        : parsedDate.toISOString().split("T")[0];
+      const orderDate =
+        Number.isNaN(parsedDate.getTime())
+          ? ""
+          : parsedDate
+              .toISOString()
+              .split("T")[0];
 
       const matchesFromDate =
-        !fromDate || orderDate >= fromDate;
+        !fromDate ||
+        orderDate >= fromDate;
 
       const matchesToDate =
-        !toDate || orderDate <= toDate;
+        !toDate ||
+        orderDate <= toDate;
 
       return (
         matchesSearch &&
@@ -223,7 +259,8 @@ export default function PurchaseOrdersPage() {
   const totalPages = Math.max(
     1,
     Math.ceil(
-      filteredOrders.length / itemsPerPage
+      filteredOrders.length /
+        itemsPerPage
     )
   );
 
@@ -234,7 +271,8 @@ export default function PurchaseOrdersPage() {
 
   const paginatedOrders =
     filteredOrders.slice(
-      (safeCurrentPage - 1) * itemsPerPage,
+      (safeCurrentPage - 1) *
+        itemsPerPage,
       safeCurrentPage * itemsPerPage
     );
 
@@ -252,35 +290,46 @@ export default function PurchaseOrdersPage() {
      SUMMARY
   ========================================================= */
 
-  const totalOrders = orders.length;
+  const totalOrders =
+    orders.length;
 
-  const draftOrders = orders.filter(
-    (order) =>
-      order.status?.toUpperCase() === "DRAFT"
-  ).length;
+  const draftOrders =
+    orders.filter(
+      (order) =>
+        order.status?.toUpperCase() ===
+        "DRAFT"
+    ).length;
 
-  const pendingOrders = orders.filter(
-    (order) =>
-      order.status?.toUpperCase() === "PENDING"
-  ).length;
+  const pendingOrders =
+    orders.filter(
+      (order) =>
+        order.status?.toUpperCase() ===
+        "PENDING"
+    ).length;
 
-  const approvedOrders = orders.filter(
-    (order) =>
-      order.status?.toUpperCase() === "APPROVED"
-  ).length;
+  const approvedOrders =
+    orders.filter(
+      (order) =>
+        order.status?.toUpperCase() ===
+        "APPROVED"
+    ).length;
 
-  const partiallyReceivedOrders = orders.filter(
-    (order) =>
-      order.status?.toUpperCase() ===
-      "PARTIALLY_RECEIVED"
-  ).length;
+  const partiallyReceivedOrders =
+    orders.filter(
+      (order) =>
+        order.status?.toUpperCase() ===
+        "PARTIALLY_RECEIVED"
+    ).length;
 
-  const receivedOrders = orders.filter(
-    (order) =>
-      ["RECEIVED", "COMPLETED"].includes(
+  const receivedOrders =
+    orders.filter((order) =>
+      [
+        "RECEIVED",
+        "COMPLETED",
+      ].includes(
         order.status?.toUpperCase()
       )
-  ).length;
+    ).length;
 
   /* =========================================================
      CLEAR FILTERS
@@ -296,7 +345,7 @@ export default function PurchaseOrdersPage() {
   };
 
   /* =========================================================
-     APPROVE
+     APPROVE PURCHASE ORDER
   ========================================================= */
 
   const handleApprove = async (
@@ -311,54 +360,81 @@ export default function PurchaseOrdersPage() {
     }
 
     try {
-      const token =
-        localStorage.getItem("accessToken");
+      setError(null);
 
-      const response = await fetch(
-        `${ORDERS_API}/${order.id}/approve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token
-              ? {
-                  Authorization: `Bearer ${token}`,
-                }
-              : {}),
-          },
-        }
+      console.log(
+        "🟢 Approving purchase order:",
+        order.id
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message ||
-                "Failed to approve purchase order"
+      const response =
+        await api.patch(
+          `/purchasing/orders/${order.id}/approve`
         );
-      }
+
+      console.log(
+        "✅ Purchase order approved:",
+        response.status,
+        response.data
+      );
 
       await loadOrders(true);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(
-        "Approve purchase order error:",
+        "❌ Approve purchase order error:",
         err
       );
 
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to approve purchase order"
-      );
+      const axiosError = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string | string[];
+          };
+        };
+        message?: string;
+      };
+
+      const statusCode =
+        axiosError.response?.status;
+
+      const backendMessage =
+        axiosError.response?.data?.message;
+
+      let message =
+        "Failed to approve purchase order";
+
+      if (statusCode === 401) {
+        message =
+          "Unauthorized (401): Please login again.";
+      } else if (statusCode === 403) {
+        message =
+          "Forbidden (403): You don't have permission to approve purchase orders.";
+      } else if (statusCode === 404) {
+        message =
+          "Purchase order not found (404).";
+      } else if (statusCode === 500) {
+        message =
+          "Server error (500): Failed to approve purchase order.";
+      } else if (
+        Array.isArray(backendMessage)
+      ) {
+        message =
+          backendMessage.join(", ");
+      } else if (
+        typeof backendMessage === "string"
+      ) {
+        message = backendMessage;
+      } else if (axiosError.message) {
+        message = axiosError.message;
+      }
+
+      alert(message);
     }
   };
 
   /* =========================================================
-     DELETE
+     DELETE PURCHASE ORDER
   ========================================================= */
 
   const handleDelete = async (
@@ -378,66 +454,95 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${order.poNumber}?\n\nThis action cannot be undone.`
-    );
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to delete ${order.poNumber}?\n\nThis action cannot be undone.`
+      );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setError(null);
 
-      const token =
-        localStorage.getItem("accessToken");
-
-      const response = await fetch(
-        `${ORDERS_API}/${order.id}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token
-              ? {
-                  Authorization: `Bearer ${token}`,
-                }
-              : {}),
-          },
-        }
+      console.log(
+        "🗑️ Deleting purchase order:",
+        order.id
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message ||
-                "Failed to delete purchase order"
+      const response =
+        await api.delete(
+          `/purchasing/orders/${order.id}`
         );
-      }
+
+      console.log(
+        "✅ Purchase order deleted:",
+        response.status,
+        response.data
+      );
 
       setOrders((previous) =>
         previous.filter(
-          (item) => item.id !== order.id
+          (item) =>
+            item.id !== order.id
         )
       );
 
       alert(
         `${order.poNumber} deleted successfully.`
       );
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(
-        "Delete purchase order error:",
+        "❌ Delete purchase order error:",
         err
       );
 
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to delete purchase order"
-      );
+      const axiosError = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string | string[];
+          };
+        };
+        message?: string;
+      };
+
+      const statusCode =
+        axiosError.response?.status;
+
+      const backendMessage =
+        axiosError.response?.data?.message;
+
+      let message =
+        "Failed to delete purchase order";
+
+      if (statusCode === 401) {
+        message =
+          "Unauthorized (401): Please login again.";
+      } else if (statusCode === 403) {
+        message =
+          "Forbidden (403): You don't have permission to delete this purchase order.";
+      } else if (statusCode === 404) {
+        message =
+          "Purchase order not found (404).";
+      } else if (statusCode === 500) {
+        message =
+          "Server error (500): Failed to delete purchase order.";
+      } else if (
+        Array.isArray(backendMessage)
+      ) {
+        message =
+          backendMessage.join(", ");
+      } else if (
+        typeof backendMessage === "string"
+      ) {
+        message = backendMessage;
+      } else if (axiosError.message) {
+        message = axiosError.message;
+      }
+
+      alert(message);
     }
   };
 
@@ -483,7 +588,10 @@ export default function PurchaseOrdersPage() {
           </p>
 
           <button
-            onClick={() => loadOrders()}
+            type="button"
+            onClick={() =>
+              loadOrders()
+            }
             className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
           >
             <RefreshCw size={16} />
@@ -509,7 +617,6 @@ export default function PurchaseOrdersPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
           <div>
-            {/* Breadcrumb - no back arrow */}
             <div className="flex items-center gap-2 text-sm">
               <Link
                 href="/dashboard/purchasing"
@@ -550,7 +657,10 @@ export default function PurchaseOrdersPage() {
           <div className="flex flex-wrap gap-3">
 
             <button
-              onClick={() => loadOrders(true)}
+              type="button"
+              onClick={() =>
+                loadOrders(true)
+              }
               disabled={refreshing}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             >
@@ -647,7 +757,9 @@ export default function PurchaseOrdersPage() {
                   type="text"
                   value={search}
                   onChange={(e) =>
-                    setSearch(e.target.value)
+                    setSearch(
+                      e.target.value
+                    )
                   }
                   placeholder="Search PO number..."
                   className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -685,7 +797,9 @@ export default function PurchaseOrdersPage() {
               <select
                 value={status}
                 onChange={(e) =>
-                  setStatus(e.target.value)
+                  setStatus(
+                    e.target.value
+                  )
                 }
                 className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
@@ -744,7 +858,9 @@ export default function PurchaseOrdersPage() {
                   type="date"
                   value={fromDate}
                   onChange={(e) =>
-                    setFromDate(e.target.value)
+                    setFromDate(
+                      e.target.value
+                    )
                   }
                   className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
@@ -768,7 +884,9 @@ export default function PurchaseOrdersPage() {
                   type="date"
                   value={toDate}
                   onChange={(e) =>
-                    setToDate(e.target.value)
+                    setToDate(
+                      e.target.value
+                    )
                   }
                   className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
@@ -785,13 +903,17 @@ export default function PurchaseOrdersPage() {
                 {filteredOrders.length}
               </span>{" "}
               result
-              {filteredOrders.length !== 1
+              {filteredOrders.length !==
+              1
                 ? "s"
                 : ""}
             </p>
 
             <button
-              onClick={clearFilters}
+              type="button"
+              onClick={
+                clearFilters
+              }
               className="text-sm font-medium text-blue-600 hover:text-blue-700"
             >
               Clear Filters
@@ -874,7 +996,8 @@ export default function PurchaseOrdersPage() {
 
               <tbody className="divide-y divide-gray-100">
 
-                {paginatedOrders.length === 0 ? (
+                {paginatedOrders.length ===
+                0 ? (
 
                   <tr>
                     <td
@@ -898,255 +1021,294 @@ export default function PurchaseOrdersPage() {
 
                 ) : (
 
-                  paginatedOrders.map((order) => {
+                  paginatedOrders.map(
+                    (order) => {
+                      const itemCount =
+                        order.items
+                          ?.length || 0;
 
-                    const itemCount =
-                      order.items?.length || 0;
+                      const totalQuantity =
+                        order.items?.reduce(
+                          (
+                            total,
+                            item
+                          ) =>
+                            total +
+                            Number(
+                              item.quantity ||
+                                0
+                            ),
+                          0
+                        ) || 0;
 
-                    const totalQuantity =
-                      order.items?.reduce(
-                        (total, item) =>
-                          total +
-                          Number(
-                            item.quantity || 0
-                          ),
-                        0
-                      ) || 0;
+                      const normalizedStatus =
+                        order.status?.toUpperCase();
 
-                    const normalizedStatus =
-                      order.status?.toUpperCase();
+                      const canEdit =
+                        [
+                          "DRAFT",
+                          "PENDING",
+                        ].includes(
+                          normalizedStatus
+                        );
 
-                    const canEdit =
-                      ["DRAFT", "PENDING"].includes(
-                        normalizedStatus
-                      );
+                      const canDelete =
+                        [
+                          "DRAFT",
+                          "PENDING",
+                        ].includes(
+                          normalizedStatus
+                        );
 
-                    const canDelete =
-                      ["DRAFT", "PENDING"].includes(
-                        normalizedStatus
-                      );
+                      const canApprove =
+                        normalizedStatus ===
+                        "PENDING";
 
-                    const canApprove =
-                      normalizedStatus ===
-                      "PENDING";
+                      const canReceive =
+                        [
+                          "APPROVED",
+                          "PARTIALLY_RECEIVED",
+                        ].includes(
+                          normalizedStatus
+                        );
 
-                    const canReceive =
-                      [
-                        "APPROVED",
-                        "PARTIALLY_RECEIVED",
-                      ].includes(
-                        normalizedStatus
-                      );
+                      return (
+                        <tr
+                          key={order.id}
+                          className="transition hover:bg-gray-50"
+                        >
 
-                    return (
-                      <tr
-                        key={order.id}
-                        className="transition hover:bg-gray-50"
-                      >
+                          {/* PO NUMBER */}
 
-                        {/* PO NUMBER */}
-
-                        <td className="px-6 py-4">
-
-                          <Link
-                            href={`/dashboard/purchasing/orders/${order.id}`}
-                            className="font-semibold text-blue-600 hover:text-blue-700"
-                          >
-                            {order.poNumber}
-                          </Link>
-
-                          <p className="mt-1 text-xs text-gray-400">
-                            ID #{order.id}
-                          </p>
-
-                        </td>
-
-                        {/* SUPPLIER */}
-
-                        <td className="px-6 py-4">
-
-                          <p className="font-medium text-gray-900">
-                            {order.supplier
-                              ?.supplierName ||
-                              "—"}
-                          </p>
-
-                          {order.supplier
-                            ?.supplierCode && (
-                            <p className="mt-0.5 text-xs text-gray-400">
-                              {
-                                order.supplier
-                                  .supplierCode
-                              }
-                            </p>
-                          )}
-
-                        </td>
-
-                        {/* REQUISITION */}
-
-                        <td className="px-6 py-4">
-
-                          {order.requisitionId ? (
-                            <Link
-                              href={`/dashboard/purchasing/requisitions/${order.requisitionId}`}
-                              className="text-blue-600 hover:underline"
-                            >
-                              REQ-
-                              {String(
-                                order.requisitionId
-                              ).padStart(5, "0")}
-                            </Link>
-                          ) : (
-                            <span className="text-gray-400">
-                              —
-                            </span>
-                          )}
-
-                        </td>
-
-                        {/* ITEMS */}
-
-                        <td className="px-6 py-4">
-
-                          <p className="font-medium text-gray-900">
-                            {itemCount}{" "}
-                            {itemCount === 1
-                              ? "item"
-                              : "items"}
-                          </p>
-
-                          <p className="mt-0.5 text-xs text-gray-400">
-                            {totalQuantity} total qty
-                          </p>
-
-                        </td>
-
-                        {/* TOTAL */}
-
-                        <td className="px-6 py-4">
-
-                          <p className="font-semibold text-gray-900">
-                            Rs.{" "}
-                            {Number(
-                              order.totalAmount || 0
-                            ).toLocaleString(
-                              "en-LK",
-                              {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              }
-                            )}
-                          </p>
-
-                        </td>
-
-                        {/* STATUS */}
-
-                        <td className="px-6 py-4">
-
-                          <StatusBadge
-                            status={
-                              normalizedStatus
-                            }
-                          />
-
-                        </td>
-
-                        {/* DATE */}
-
-                        <td className="px-6 py-4 text-gray-500">
-
-                          {formatDate(
-                            order.orderDate ||
-                              order.createdAt
-                          )}
-
-                        </td>
-
-                        {/* ACTIONS */}
-
-                        <td className="px-6 py-4">
-
-                          <div className="flex items-center justify-end gap-1">
-
-                            {/* VIEW */}
+                          <td className="px-6 py-4">
 
                             <Link
                               href={`/dashboard/purchasing/orders/${order.id}`}
-                              title="View Purchase Order"
-                              className="rounded-lg p-2 text-gray-500 hover:bg-blue-50 hover:text-blue-600"
+                              className="font-semibold text-blue-600 hover:text-blue-700"
                             >
-                              <Eye size={17} />
+                              {order.poNumber}
                             </Link>
 
-                            {/* EDIT */}
+                            <p className="mt-1 text-xs text-gray-400">
+                              ID #
+                              {order.id}
+                            </p>
 
-                            {canEdit && (
-                              <Link
-                                href={`/dashboard/purchasing/orders/${order.id}/edit`}
-                                title="Edit Purchase Order"
-                                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                              >
-                                <Pencil size={17} />
-                              </Link>
-                            )}
+                          </td>
 
-                            {/* APPROVE */}
+                          {/* SUPPLIER */}
 
-                            {canApprove && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleApprove(
-                                    order
-                                  )
+                          <td className="px-6 py-4">
+
+                            <p className="font-medium text-gray-900">
+                              {order.supplier
+                                ?.supplierName ||
+                                "—"}
+                            </p>
+
+                            {order
+                              .supplier
+                              ?.supplierCode && (
+                              <p className="mt-0.5 text-xs text-gray-400">
+                                {
+                                  order
+                                    .supplier
+                                    .supplierCode
                                 }
-                                title="Approve Purchase Order"
-                                className="rounded-lg p-2 text-gray-500 hover:bg-green-50 hover:text-green-600"
-                              >
-                                <Check size={17} />
-                              </button>
+                              </p>
                             )}
 
-                            {/* RECEIVE GOODS */}
+                          </td>
 
-                            {canReceive && (
+                          {/* REQUISITION */}
+
+                          <td className="px-6 py-4">
+
+                            {order.requisitionId ? (
                               <Link
-                                href={`/dashboard/purchasing/grn/create?purchaseOrderId=${order.id}`}
-                                title="Receive Goods"
-                                className="rounded-lg p-2 text-gray-500 hover:bg-purple-50 hover:text-purple-600"
+                                href={`/dashboard/purchasing/requisitions/${order.requisitionId}`}
+                                className="text-blue-600 hover:underline"
                               >
-                                <PackageCheck
-                                  size={17}
+                                REQ-
+                                {String(
+                                  order.requisitionId
+                                ).padStart(
+                                  5,
+                                  "0"
+                                )}
+                              </Link>
+                            ) : (
+                              <span className="text-gray-400">
+                                —
+                              </span>
+                            )}
+
+                          </td>
+
+                          {/* ITEMS */}
+
+                          <td className="px-6 py-4">
+
+                            <p className="font-medium text-gray-900">
+                              {itemCount}{" "}
+                              {itemCount ===
+                              1
+                                ? "item"
+                                : "items"}
+                            </p>
+
+                            <p className="mt-0.5 text-xs text-gray-400">
+                              {totalQuantity}{" "}
+                              total qty
+                            </p>
+
+                          </td>
+
+                          {/* TOTAL */}
+
+                          <td className="px-6 py-4">
+
+                            <p className="font-semibold text-gray-900">
+                              Rs.{" "}
+                              {Number(
+                                order.totalAmount ||
+                                  0
+                              ).toLocaleString(
+                                "en-LK",
+                                {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                }
+                              )}
+                            </p>
+
+                          </td>
+
+                          {/* STATUS */}
+
+                          <td className="px-6 py-4">
+
+                            <StatusBadge
+                              status={
+                                normalizedStatus
+                              }
+                            />
+
+                          </td>
+
+                          {/* DATE */}
+
+                          <td className="px-6 py-4 text-gray-500">
+
+                            {formatDate(
+                              order.orderDate ||
+                                order.createdAt
+                            )}
+
+                          </td>
+
+                          {/* ACTIONS */}
+
+                          <td className="px-6 py-4">
+
+                            <div className="flex items-center justify-end gap-1">
+
+                              {/* VIEW */}
+
+                              <Link
+                                href={`/dashboard/purchasing/orders/${order.id}`}
+                                title="View Purchase Order"
+                                className="rounded-lg p-2 text-gray-500 hover:bg-blue-50 hover:text-blue-600"
+                              >
+                                <Eye
+                                  size={
+                                    17
+                                  }
                                 />
                               </Link>
-                            )}
 
-                            {/* DELETE */}
+                              {/* EDIT */}
 
-                            {canDelete && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDelete(
-                                    order
-                                  )
-                                }
-                                title="Delete Purchase Order"
-                                className="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600"
-                              >
-                                <Trash2 size={17} />
-                              </button>
-                            )}
+                              {canEdit && (
+                                <Link
+                                  href={`/dashboard/purchasing/orders/${order.id}/edit`}
+                                  title="Edit Purchase Order"
+                                  className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                >
+                                  <Pencil
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </Link>
+                              )}
 
-                          </div>
+                              {/* APPROVE */}
 
-                        </td>
+                              {canApprove && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleApprove(
+                                      order
+                                    )
+                                  }
+                                  title="Approve Purchase Order"
+                                  className="rounded-lg p-2 text-gray-500 hover:bg-green-50 hover:text-green-600"
+                                >
+                                  <Check
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </button>
+                              )}
 
-                      </tr>
-                    );
-                  })
+                              {/* RECEIVE GOODS */}
+
+                              {canReceive && (
+                                <Link
+                                  href={`/dashboard/purchasing/grn/create?purchaseOrderId=${order.id}`}
+                                  title="Receive Goods"
+                                  className="rounded-lg p-2 text-gray-500 hover:bg-purple-50 hover:text-purple-600"
+                                >
+                                  <PackageCheck
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </Link>
+                              )}
+
+                              {/* DELETE */}
+
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDelete(
+                                      order
+                                    )
+                                  }
+                                  title="Delete Purchase Order"
+                                  className="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2
+                                    size={
+                                      17
+                                    }
+                                  />
+                                </button>
+                              )}
+
+                            </div>
+
+                          </td>
+
+                        </tr>
+                      );
+                    }
+                  )
                 )}
 
               </tbody>
@@ -1157,7 +1319,8 @@ export default function PurchaseOrdersPage() {
 
           {/* PAGINATION */}
 
-          {filteredOrders.length > 0 && (
+          {filteredOrders.length >
+            0 && (
             <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
 
               <p className="text-sm text-gray-500">
@@ -1176,16 +1339,23 @@ export default function PurchaseOrdersPage() {
                 <button
                   type="button"
                   disabled={
-                    safeCurrentPage === 1
+                    safeCurrentPage ===
+                    1
                   }
                   onClick={() =>
-                    setCurrentPage((page) =>
-                      Math.max(1, page - 1)
+                    setCurrentPage(
+                      (page) =>
+                        Math.max(
+                          1,
+                          page - 1
+                        )
                     )
                   }
                   className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <ChevronLeft size={16} />
+                  <ChevronLeft
+                    size={16}
+                  />
                   Previous
                 </button>
 
@@ -1196,17 +1366,20 @@ export default function PurchaseOrdersPage() {
                     totalPages
                   }
                   onClick={() =>
-                    setCurrentPage((page) =>
-                      Math.min(
-                        totalPages,
-                        page + 1
-                      )
+                    setCurrentPage(
+                      (page) =>
+                        Math.min(
+                          totalPages,
+                          page + 1
+                        )
                     )
                   }
                   className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Next
-                  <ChevronRight size={16} />
+                  <ChevronRight
+                    size={16}
+                  />
                 </button>
 
               </div>
@@ -1272,7 +1445,10 @@ function StatusBadge({
 }: {
   status: string;
 }) {
-  const styles: Record<string, string> = {
+  const styles: Record<
+    string,
+    string
+  > = {
     DRAFT:
       "bg-gray-50 text-gray-700 border-gray-200",
 
@@ -1298,11 +1474,15 @@ function StatusBadge({
       "bg-red-50 text-red-700 border-red-200",
   };
 
-  const labels: Record<string, string> = {
+  const labels: Record<
+    string,
+    string
+  > = {
     DRAFT: "Draft",
     PENDING: "Pending",
     APPROVED: "Approved",
-    PARTIALLY_RECEIVED: "Partially Received",
+    PARTIALLY_RECEIVED:
+      "Partially Received",
     RECEIVED: "Received",
     COMPLETED: "Completed",
     CANCELLED: "Cancelled",
@@ -1316,7 +1496,9 @@ function StatusBadge({
         "border-gray-200 bg-gray-100 text-gray-600"
       }`}
     >
-      {labels[status] || status || "Unknown"}
+      {labels[status] ||
+        status ||
+        "Unknown"}
     </span>
   );
 }
@@ -1325,12 +1507,19 @@ function StatusBadge({
    DATE
 ========================================================= */
 
-function formatDate(date: string) {
+function formatDate(
+  date: string
+) {
   if (!date) return "—";
 
-  const parsedDate = new Date(date);
+  const parsedDate =
+    new Date(date);
 
-  if (Number.isNaN(parsedDate.getTime())) {
+  if (
+    Number.isNaN(
+      parsedDate.getTime()
+    )
+  ) {
     return "—";
   }
 

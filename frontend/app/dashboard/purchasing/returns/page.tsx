@@ -18,15 +18,57 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-import {
-  purchasingService,
-  PurchaseReturn,
-} from "@/services/purchasing.service";
+import api from "@/services/api";
 
 const PAGE_SIZE = 10;
 
+/* =========================================================
+   TYPES
+========================================================= */
+
+export interface PurchaseReturnItem {
+  id: string | number;
+  productId?: string | number;
+  product?: {
+    id?: string | number;
+    productName?: string;
+    productCode?: string;
+    name?: string;
+  };
+  quantity?: number;
+  returnedQuantity?: number;
+}
+
+export interface PurchaseReturn {
+  id: string | number;
+  returnNumber?: string;
+  purchaseOrderId?: string | number;
+  invoiceId?: string | number | null;
+  purchaseOrder?: {
+    id?: string | number;
+    poNumber?: string;
+    purchaseOrderNumber?: string;
+  };
+  supplierName?: string;
+  supplier?: {
+    supplierName?: string;
+    name?: string;
+  };
+  status: string;
+  reason?: string;
+  totalAmount?: number;
+  returnDate?: string;
+  createdAt: string;
+  items?: PurchaseReturnItem[];
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function PurchaseReturnsPage() {
   const [returns, setReturns] = useState<PurchaseReturn[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -36,67 +78,197 @@ export default function PurchaseReturnsPage() {
 
   const [error, setError] = useState("");
 
-  // =========================================================
-  // LOAD RETURNS
-  // =========================================================
+  /* =========================================================
+     LOAD RETURNS
+  ========================================================= */
 
-  const loadReturns = useCallback(async () => {
-    try {
-      setError("");
+  const loadReturns = useCallback(
+    async (isRefresh = false) => {
+      try {
+        if (isRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
 
-      const data = await purchasingService.getReturns();
+        setError("");
 
-      setReturns(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      console.error("Failed to load purchase returns:", err);
+        console.log("🔄 Loading purchase returns...");
+        console.log(
+          "🌐 Returns API:",
+          "/purchasing/returns"
+        );
 
-      const message =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Failed to load purchase returns";
+        /*
+         * IMPORTANT:
+         * Do NOT use purchasingService.getReturns()
+         *
+         * Shared api.ts automatically adds:
+         * Authorization: Bearer <JWT>
+         */
 
-      setError(
-        typeof message === "string"
-          ? message
-          : JSON.stringify(message)
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+        const response = await api.get(
+          "/purchasing/returns"
+        );
+
+        console.log(
+          "✅ Purchase returns response:",
+          response.status,
+          response.data
+        );
+
+        const responseData = response.data;
+
+        /*
+         * Support both:
+         *
+         * [
+         *   ...
+         * ]
+         *
+         * and
+         *
+         * {
+         *   data: [...]
+         * }
+         */
+
+        const data: PurchaseReturn[] =
+          Array.isArray(responseData)
+            ? responseData
+            : Array.isArray(responseData?.data)
+            ? responseData.data
+            : [];
+
+        setReturns(data);
+
+        console.log(
+          `✅ ${data.length} purchase returns loaded`
+        );
+      } catch (err: unknown) {
+        console.error(
+          "❌ Failed to load purchase returns:",
+          err
+        );
+
+        const axiosError = err as {
+          response?: {
+            status?: number;
+            statusText?: string;
+            data?: {
+              message?: string | string[];
+              error?: string;
+            };
+          };
+          message?: string;
+          code?: string;
+        };
+
+        const statusCode =
+          axiosError.response?.status;
+
+        const responseData =
+          axiosError.response?.data;
+
+        console.error(
+          "❌ Returns API status:",
+          statusCode
+        );
+
+        console.error(
+          "❌ Returns API response:",
+          responseData
+        );
+
+        let message =
+          "Failed to load purchase returns";
+
+        if (statusCode === 401) {
+          message =
+            "Unauthorized (401): JWT token is missing, invalid or expired. Please login again.";
+        } else if (statusCode === 403) {
+          message =
+            "Forbidden (403): You don't have permission to view purchase returns.";
+        } else if (statusCode === 404) {
+          message =
+            "Not Found (404): /purchasing/returns endpoint does not exist.";
+        } else if (statusCode === 500) {
+          message =
+            "Server Error (500): Failed to load purchase returns.";
+        } else if (
+          Array.isArray(
+            responseData?.message
+          )
+        ) {
+          message =
+            responseData.message.join(", ");
+        } else if (
+          typeof responseData?.message ===
+          "string"
+        ) {
+          message =
+            responseData.message;
+        } else if (
+          typeof responseData?.error ===
+          "string"
+        ) {
+          message =
+            responseData.error;
+        } else if (
+          axiosError.message
+        ) {
+          message =
+            axiosError.message;
+        }
+
+        setError(message);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    []
+  );
+
+  /* =========================================================
+     INITIAL LOAD
+  ========================================================= */
 
   useEffect(() => {
     loadReturns();
   }, [loadReturns]);
 
-  // =========================================================
-  // REFRESH
-  // =========================================================
+  /* =========================================================
+     REFRESH
+  ========================================================= */
 
   const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadReturns();
+    await loadReturns(true);
   };
 
-  // =========================================================
-  // STATUS COUNTS
-  // =========================================================
+  /* =========================================================
+     STATUS COUNTS
+  ========================================================= */
 
   const stats = useMemo(() => {
     const total = returns.length;
 
     const pending = returns.filter(
-      (item) => item.status === "PENDING"
+      (item) =>
+        item.status?.toUpperCase() ===
+        "PENDING"
     ).length;
 
     const completed = returns.filter(
-      (item) => item.status === "COMPLETED"
+      (item) =>
+        item.status?.toUpperCase() ===
+        "COMPLETED"
     ).length;
 
     const cancelled = returns.filter(
-      (item) => item.status === "CANCELLED"
+      (item) =>
+        item.status?.toUpperCase() ===
+        "CANCELLED"
     ).length;
 
     return {
@@ -107,68 +279,100 @@ export default function PurchaseReturnsPage() {
     };
   }, [returns]);
 
-  // =========================================================
-  // FILTER
-  // =========================================================
+  /* =========================================================
+     FILTER
+  ========================================================= */
 
   const filteredReturns = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query =
+      search.trim().toLowerCase();
 
     return returns.filter((item) => {
       const matchesSearch =
         !query ||
-        item.returnNumber?.toLowerCase().includes(query) ||
+        item.returnNumber
+          ?.toLowerCase()
+          .includes(query) ||
         String(item.purchaseOrderId)
           .toLowerCase()
           .includes(query) ||
         String(item.invoiceId ?? "")
           .toLowerCase()
           .includes(query) ||
-        item.reason?.toLowerCase().includes(query);
+        item.reason
+          ?.toLowerCase()
+          .includes(query);
 
       const matchesStatus =
         statusFilter === "ALL" ||
-        item.status === statusFilter;
+        item.status?.toUpperCase() ===
+          statusFilter;
 
-      return matchesSearch && matchesStatus;
+      return (
+        matchesSearch &&
+        matchesStatus
+      );
     });
-  }, [returns, search, statusFilter]);
+  }, [
+    returns,
+    search,
+    statusFilter,
+  ]);
 
-  // =========================================================
-  // PAGINATION
-  // =========================================================
+  /* =========================================================
+     PAGINATION
+  ========================================================= */
 
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredReturns.length / PAGE_SIZE)
+    Math.ceil(
+      filteredReturns.length /
+        PAGE_SIZE
+    )
   );
 
   const paginatedReturns = useMemo(() => {
     const start =
-      (currentPage - 1) * PAGE_SIZE;
+      (currentPage - 1) *
+      PAGE_SIZE;
 
     return filteredReturns.slice(
       start,
       start + PAGE_SIZE
     );
-  }, [filteredReturns, currentPage]);
+  }, [
+    filteredReturns,
+    currentPage,
+  ]);
 
   useEffect(() => {
-    if (currentPage > totalPages) {
+    if (
+      currentPage > totalPages
+    ) {
       setCurrentPage(totalPages);
     }
-  }, [currentPage, totalPages]);
+  }, [
+    currentPage,
+    totalPages,
+  ]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter]);
+  }, [
+    search,
+    statusFilter,
+  ]);
 
-  // =========================================================
-  // STATUS BADGE
-  // =========================================================
+  /* =========================================================
+     STATUS BADGE
+  ========================================================= */
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+  const getStatusBadge = (
+    status: string
+  ) => {
+    switch (
+      status?.toUpperCase()
+    ) {
       case "PENDING":
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-700">
@@ -193,6 +397,22 @@ export default function PurchaseReturnsPage() {
           </span>
         );
 
+      case "APPROVED":
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Approved
+          </span>
+        );
+
+      case "REJECTED":
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+            <XCircle className="h-3.5 w-3.5" />
+            Rejected
+          </span>
+        );
+
       default:
         return (
           <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
@@ -202,29 +422,39 @@ export default function PurchaseReturnsPage() {
     }
   };
 
-  // =========================================================
-  // DATE FORMAT
-  // =========================================================
+  /* =========================================================
+     DATE FORMAT
+  ========================================================= */
 
-  const formatDate = (date?: string) => {
+  const formatDate = (
+    date?: string
+  ) => {
     if (!date) return "-";
 
-    const parsed = new Date(date);
+    const parsed =
+      new Date(date);
 
-    if (Number.isNaN(parsed.getTime())) {
+    if (
+      Number.isNaN(
+        parsed.getTime()
+      )
+    ) {
       return date;
     }
 
-    return parsed.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+    return parsed.toLocaleDateString(
+      "en-GB",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }
+    );
   };
 
-  // =========================================================
-  // LOADING
-  // =========================================================
+  /* =========================================================
+     LOADING
+  ========================================================= */
 
   if (loading) {
     return (
@@ -237,9 +467,9 @@ export default function PurchaseReturnsPage() {
     );
   }
 
-  // =========================================================
-  // PAGE
-  // =========================================================
+  /* =========================================================
+     PAGE
+  ========================================================= */
 
   return (
     <div className="space-y-6 p-6">
@@ -262,6 +492,7 @@ export default function PurchaseReturnsPage() {
         <span className="font-medium text-gray-900">
           Purchase Returns
         </span>
+
       </div>
 
       {/* =====================================================
@@ -269,13 +500,17 @@ export default function PurchaseReturnsPage() {
       ===================================================== */}
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+
         <div>
+
           <div className="flex items-center gap-3">
+
             <div className="rounded-xl bg-orange-100 p-2.5">
               <RotateCcw className="h-6 w-6 text-orange-600" />
             </div>
 
             <div>
+
               <h1 className="text-2xl font-bold text-gray-900">
                 Purchase Returns
               </h1>
@@ -283,11 +518,15 @@ export default function PurchaseReturnsPage() {
               <p className="mt-1 text-sm text-gray-500">
                 Manage returned products from purchase orders.
               </p>
+
             </div>
+
           </div>
+
         </div>
 
         <div className="flex items-center gap-3">
+
           <button
             type="button"
             onClick={handleRefresh}
@@ -296,9 +535,12 @@ export default function PurchaseReturnsPage() {
           >
             <RefreshCw
               className={`h-4 w-4 ${
-                refreshing ? "animate-spin" : ""
+                refreshing
+                  ? "animate-spin"
+                  : ""
               }`}
             />
+
             Refresh
           </button>
 
@@ -307,9 +549,12 @@ export default function PurchaseReturnsPage() {
             className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-orange-700"
           >
             <Plus className="h-4 w-4" />
+
             Create Return
           </Link>
+
         </div>
+
       </div>
 
       {/* =====================================================
@@ -318,9 +563,11 @@ export default function PurchaseReturnsPage() {
 
       {error && (
         <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
           <div className="flex-1">
+
             <p className="font-medium">
               Failed to load purchase returns
             </p>
@@ -328,15 +575,19 @@ export default function PurchaseReturnsPage() {
             <p className="mt-1 break-words">
               {error}
             </p>
+
           </div>
 
           <button
             type="button"
-            onClick={loadReturns}
+            onClick={() =>
+              loadReturns()
+            }
             className="text-sm font-medium underline"
           >
             Retry
           </button>
+
         </div>
       )}
 
@@ -349,8 +600,11 @@ export default function PurchaseReturnsPage() {
         {/* TOTAL */}
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
           <div className="flex items-center justify-between">
+
             <div>
+
               <p className="text-sm font-medium text-gray-500">
                 Total Returns
               </p>
@@ -358,19 +612,25 @@ export default function PurchaseReturnsPage() {
               <p className="mt-2 text-2xl font-bold text-gray-900">
                 {stats.total}
               </p>
+
             </div>
 
             <div className="rounded-lg bg-orange-100 p-3">
               <Package className="h-6 w-6 text-orange-600" />
             </div>
+
           </div>
+
         </div>
 
         {/* PENDING */}
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
           <div className="flex items-center justify-between">
+
             <div>
+
               <p className="text-sm font-medium text-gray-500">
                 Pending
               </p>
@@ -378,19 +638,25 @@ export default function PurchaseReturnsPage() {
               <p className="mt-2 text-2xl font-bold text-yellow-600">
                 {stats.pending}
               </p>
+
             </div>
 
             <div className="rounded-lg bg-yellow-100 p-3">
               <Clock3 className="h-6 w-6 text-yellow-600" />
             </div>
+
           </div>
+
         </div>
 
         {/* COMPLETED */}
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
           <div className="flex items-center justify-between">
+
             <div>
+
               <p className="text-sm font-medium text-gray-500">
                 Completed
               </p>
@@ -398,19 +664,25 @@ export default function PurchaseReturnsPage() {
               <p className="mt-2 text-2xl font-bold text-green-600">
                 {stats.completed}
               </p>
+
             </div>
 
             <div className="rounded-lg bg-green-100 p-3">
               <CheckCircle2 className="h-6 w-6 text-green-600" />
             </div>
+
           </div>
+
         </div>
 
         {/* CANCELLED */}
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
           <div className="flex items-center justify-between">
+
             <div>
+
               <p className="text-sm font-medium text-gray-500">
                 Cancelled
               </p>
@@ -418,13 +690,17 @@ export default function PurchaseReturnsPage() {
               <p className="mt-2 text-2xl font-bold text-red-600">
                 {stats.cancelled}
               </p>
+
             </div>
 
             <div className="rounded-lg bg-red-100 p-3">
               <XCircle className="h-6 w-6 text-red-600" />
             </div>
+
           </div>
+
         </div>
+
       </div>
 
       {/* =====================================================
@@ -432,22 +708,27 @@ export default function PurchaseReturnsPage() {
       ===================================================== */}
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
 
           {/* SEARCH */}
 
           <div className="relative flex-1">
+
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
             <input
               type="text"
               value={search}
               onChange={(e) =>
-                setSearch(e.target.value)
+                setSearch(
+                  e.target.value
+                )
               }
               placeholder="Search return number, PO, invoice or reason..."
               className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
+
           </div>
 
           {/* STATUS */}
@@ -455,10 +736,13 @@ export default function PurchaseReturnsPage() {
           <select
             value={statusFilter}
             onChange={(e) =>
-              setStatusFilter(e.target.value)
+              setStatusFilter(
+                e.target.value
+              )
             }
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
           >
+
             <option value="ALL">
               All Status
             </option>
@@ -467,15 +751,26 @@ export default function PurchaseReturnsPage() {
               Pending
             </option>
 
+            <option value="APPROVED">
+              Approved
+            </option>
+
             <option value="COMPLETED">
               Completed
+            </option>
+
+            <option value="REJECTED">
+              Rejected
             </option>
 
             <option value="CANCELLED">
               Cancelled
             </option>
+
           </select>
+
         </div>
+
       </div>
 
       {/* =====================================================
@@ -483,10 +778,15 @@ export default function PurchaseReturnsPage() {
       ===================================================== */}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+
         <div className="overflow-x-auto">
+
           <table className="min-w-full divide-y divide-gray-200">
+
             <thead className="bg-gray-50">
+
               <tr>
+
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Return Number
                 </th>
@@ -518,19 +818,28 @@ export default function PurchaseReturnsPage() {
                 <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Actions
                 </th>
+
               </tr>
+
             </thead>
 
             <tbody className="divide-y divide-gray-100 bg-white">
+
               {paginatedReturns.length === 0 ? (
+
                 <tr>
+
                   <td
                     colSpan={8}
                     className="px-6 py-16 text-center"
                   >
+
                     <div className="flex flex-col items-center justify-center">
+
                       <div className="rounded-full bg-gray-100 p-4">
+
                         <RotateCcw className="h-8 w-8 text-gray-400" />
+
                       </div>
 
                       <h3 className="mt-4 text-sm font-semibold text-gray-900">
@@ -545,7 +854,8 @@ export default function PurchaseReturnsPage() {
                       </p>
 
                       {!search &&
-                        statusFilter === "ALL" && (
+                        statusFilter ===
+                          "ALL" && (
                           <Link
                             href="/dashboard/purchasing/returns/create"
                             className="mt-4 inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
@@ -554,120 +864,177 @@ export default function PurchaseReturnsPage() {
                             Create Return
                           </Link>
                         )}
+
                     </div>
+
                   </td>
+
                 </tr>
+
               ) : (
-                paginatedReturns.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-gray-50"
-                  >
-                    {/* RETURN NUMBER */}
 
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <Link
-                        href={`/dashboard/purchasing/returns/${item.id}`}
-                        className="font-semibold text-orange-600 hover:text-orange-700 hover:underline"
-                      >
-                        {item.returnNumber}
-                      </Link>
-                    </td>
+                paginatedReturns.map(
+                  (item) => (
 
-                    {/* PO */}
+                    <tr
+                      key={item.id}
+                      className="hover:bg-gray-50"
+                    >
 
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                      PO-
-                      {String(
-                        item.purchaseOrderId
-                      ).padStart(5, "0")}
-                    </td>
+                      {/* RETURN NUMBER */}
 
-                    {/* INVOICE */}
-
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                      {item.invoiceId
-                        ? `INV-${String(
-                            item.invoiceId
-                          ).padStart(5, "0")}`
-                        : "-"}
-                    </td>
-
-                    {/* ITEMS */}
-
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
-                        <Package className="h-3.5 w-3.5" />
-
-                        {item.items?.length ?? 0}{" "}
-
-                        {item.items?.length === 1
-                          ? "item"
-                          : "items"}
-                      </span>
-                    </td>
-
-                    {/* REASON */}
-
-                    <td className="max-w-[220px] px-6 py-4 text-sm text-gray-600">
-                      <span
-                        className="block truncate"
-                        title={item.reason || ""}
-                      >
-                        {item.reason || "-"}
-                      </span>
-                    </td>
-
-                    {/* STATUS */}
-
-                    <td className="whitespace-nowrap px-6 py-4">
-                      {getStatusBadge(
-                        item.status
-                      )}
-                    </td>
-
-                    {/* DATE */}
-
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                      {formatDate(
-                        item.createdAt
-                      )}
-                    </td>
-
-                    {/* ACTIONS */}
-
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
-
-                        {/* VIEW */}
+                      <td className="whitespace-nowrap px-6 py-4">
 
                         <Link
                           href={`/dashboard/purchasing/returns/${item.id}`}
-                          title="View return"
-                          className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                          className="font-semibold text-orange-600 hover:text-orange-700 hover:underline"
                         >
-                          <Eye className="h-4 w-4" />
+                          {item.returnNumber ||
+                            `RET-${item.id}`}
                         </Link>
 
-                        {/* EDIT */}
+                      </td>
 
-                        {item.status !== "CANCELLED" &&
-                          item.status !== "COMPLETED" && (
-                            <Link
-                              href={`/dashboard/purchasing/returns/${item.id}/edit`}
-                              title="Edit return"
-                              className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50 hover:text-orange-600"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Link>
-                          )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      {/* PO */}
+
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+
+                        {item.purchaseOrder?.poNumber ||
+                        item.purchaseOrder?.purchaseOrderNumber
+                          ? item.purchaseOrder
+                              ?.poNumber ||
+                            item.purchaseOrder
+                              ?.purchaseOrderNumber
+                          : `PO-${String(
+                              item.purchaseOrderId ??
+                                ""
+                            ).padStart(
+                              5,
+                              "0"
+                            )}`}
+
+                      </td>
+
+                      {/* INVOICE */}
+
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
+
+                        {item.invoiceId
+                          ? `INV-${String(
+                              item.invoiceId
+                            ).padStart(
+                              5,
+                              "0"
+                            )}`
+                          : "-"}
+
+                      </td>
+
+                      {/* ITEMS */}
+
+                      <td className="whitespace-nowrap px-6 py-4">
+
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+
+                          <Package className="h-3.5 w-3.5" />
+
+                          {item.items?.length ??
+                            0}{" "}
+
+                          {item.items?.length ===
+                          1
+                            ? "item"
+                            : "items"}
+
+                        </span>
+
+                      </td>
+
+                      {/* REASON */}
+
+                      <td className="max-w-[220px] px-6 py-4 text-sm text-gray-600">
+
+                        <span
+                          className="block truncate"
+                          title={
+                            item.reason ||
+                            ""
+                          }
+                        >
+                          {item.reason ||
+                            "-"}
+                        </span>
+
+                      </td>
+
+                      {/* STATUS */}
+
+                      <td className="whitespace-nowrap px-6 py-4">
+
+                        {getStatusBadge(
+                          item.status
+                        )}
+
+                      </td>
+
+                      {/* CREATED */}
+
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+
+                        {formatDate(
+                          item.createdAt
+                        )}
+
+                      </td>
+
+                      {/* ACTIONS */}
+
+                      <td className="whitespace-nowrap px-6 py-4">
+
+                        <div className="flex items-center justify-end gap-2">
+
+                          {/* VIEW */}
+
+                          <Link
+                            href={`/dashboard/purchasing/returns/${item.id}`}
+                            title="View return"
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Link>
+
+                          {/* EDIT */}
+
+                          {item.status !==
+                            "CANCELLED" &&
+                            item.status !==
+                              "COMPLETED" && (
+
+                              <Link
+                                href={`/dashboard/purchasing/returns/${item.id}/edit`}
+                                title="Edit return"
+                                className="rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50 hover:text-orange-600"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Link>
+
+                            )}
+
+                        </div>
+
+                      </td>
+
+                    </tr>
+
+                  )
+                )
+
               )}
+
             </tbody>
+
           </table>
+
         </div>
 
         {/* ===================================================
@@ -675,16 +1042,21 @@ export default function PurchaseReturnsPage() {
         =================================================== */}
 
         {filteredReturns.length > 0 && (
+
           <div className="flex flex-col gap-3 border-t border-gray-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
 
             <p className="text-sm text-gray-500">
+
               Showing{" "}
+
               <span className="font-medium text-gray-700">
                 {(currentPage - 1) *
                   PAGE_SIZE +
                   1}
               </span>{" "}
+
               to{" "}
+
               <span className="font-medium text-gray-700">
                 {Math.min(
                   currentPage *
@@ -692,11 +1064,15 @@ export default function PurchaseReturnsPage() {
                   filteredReturns.length
                 )}
               </span>{" "}
+
               of{" "}
+
               <span className="font-medium text-gray-700">
                 {filteredReturns.length}
               </span>{" "}
+
               returns
+
             </p>
 
             <div className="flex items-center gap-2">
@@ -705,7 +1081,9 @@ export default function PurchaseReturnsPage() {
 
               <button
                 type="button"
-                disabled={currentPage === 1}
+                disabled={
+                  currentPage === 1
+                }
                 onClick={() =>
                   setCurrentPage(
                     (page) =>
@@ -717,19 +1095,30 @@ export default function PurchaseReturnsPage() {
                 }
                 className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
+
                 <ChevronLeft className="h-4 w-4" />
+
                 Previous
+
               </button>
 
               {/* PAGE NUMBERS */}
 
               <div className="flex items-center gap-1">
+
                 {Array.from(
-                  { length: totalPages },
-                  (_, index) => index + 1
+                  {
+                    length:
+                      totalPages,
+                  },
+                  (_, index) =>
+                    index + 1
                 )
                   .filter((page) => {
-                    if (totalPages <= 5) {
+
+                    if (
+                      totalPages <= 5
+                    ) {
                       return true;
                     }
 
@@ -738,7 +1127,8 @@ export default function PurchaseReturnsPage() {
                     }
 
                     if (
-                      page === totalPages
+                      page ===
+                      totalPages
                     ) {
                       return true;
                     }
@@ -751,6 +1141,7 @@ export default function PurchaseReturnsPage() {
                     );
                   })
                   .map((page) => (
+
                     <button
                       key={page}
                       type="button"
@@ -760,14 +1151,17 @@ export default function PurchaseReturnsPage() {
                         )
                       }
                       className={`h-9 min-w-9 rounded-lg px-3 text-sm font-medium ${
-                        currentPage === page
+                        currentPage ===
+                        page
                           ? "bg-orange-600 text-white"
                           : "border border-gray-300 text-gray-700 hover:bg-gray-50"
                       }`}
                     >
                       {page}
                     </button>
+
                   ))}
+
               </div>
 
               {/* NEXT */}
@@ -775,7 +1169,8 @@ export default function PurchaseReturnsPage() {
               <button
                 type="button"
                 disabled={
-                  currentPage === totalPages
+                  currentPage ===
+                  totalPages
                 }
                 onClick={() =>
                   setCurrentPage(
@@ -788,13 +1183,21 @@ export default function PurchaseReturnsPage() {
                 }
                 className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
+
                 Next
+
                 <ChevronRight className="h-4 w-4" />
+
               </button>
+
             </div>
+
           </div>
+
         )}
+
       </div>
+
     </div>
   );
 }

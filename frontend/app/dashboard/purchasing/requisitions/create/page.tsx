@@ -12,6 +12,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+import api from "@/services/api";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -26,20 +28,6 @@ interface RequisitionItem {
   productId: string;
   quantity: number;
 }
-
-/* =========================================================
-   API
-========================================================= */
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-const REQUISITION_API =
-  `${API_URL}/purchasing/requisitions`;
-
-const PRODUCTS_API =
-  `${API_URL}/products`;
 
 /* =========================================================
    PAGE
@@ -66,7 +54,9 @@ export default function CreatePurchaseRequisitionPage() {
      ITEMS
   ======================================================= */
 
-  const [items, setItems] = useState<RequisitionItem[]>([
+  const [items, setItems] = useState<
+    RequisitionItem[]
+  >([
     {
       productId: "",
       quantity: 1,
@@ -94,25 +84,20 @@ export default function CreatePurchaseRequisitionPage() {
     const loadProducts = async () => {
       try {
         setLoadingProducts(true);
+        setError(null);
 
-        const response = await fetch(
-          PRODUCTS_API,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            cache: "no-store",
-          }
+        /*
+         * IMPORTANT:
+         * Use shared Axios API instance.
+         * It automatically attaches:
+         *
+         * Authorization: Bearer <JWT>
+         */
+        const response = await api.get(
+          "/products"
         );
 
-        if (!response.ok) {
-          throw new Error(
-            `Failed to load products (${response.status})`
-          );
-        }
-
-        const data = await response.json();
+        const data = response.data;
 
         const result = Array.isArray(data)
           ? data
@@ -121,14 +106,26 @@ export default function CreatePurchaseRequisitionPage() {
           : [];
 
         setProducts(result);
-      } catch (err) {
+
+        console.log(
+          "Products loaded:",
+          result.length
+        );
+      } catch (err: any) {
         console.error(
           "Products loading error:",
           err
         );
 
+        const message =
+          err?.response?.data?.message;
+
         setError(
-          err instanceof Error
+          Array.isArray(message)
+            ? message.join(", ")
+            : typeof message === "string"
+            ? message
+            : err instanceof Error
             ? err.message
             : "Failed to load products"
         );
@@ -322,7 +319,8 @@ export default function CreatePurchaseRequisitionPage() {
       ----------------------------------------------------- */
 
       const payload = {
-        requestedBy: requestedBy.trim(),
+        requestedBy:
+          requestedBy.trim(),
 
         requestedDate,
 
@@ -332,8 +330,10 @@ export default function CreatePurchaseRequisitionPage() {
           notes.trim() || null,
 
         items: items.map((item) => ({
-          productId: item.productId,
-          quantity: Number(item.quantity),
+          productId:
+            item.productId,
+          quantity:
+            Number(item.quantity),
         })),
       };
 
@@ -346,117 +346,52 @@ export default function CreatePurchaseRequisitionPage() {
          POST REQUEST
       ----------------------------------------------------- */
 
-      const response = await fetch(
-        REQUISITION_API,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body:
-            JSON.stringify(payload),
-        }
+      /*
+       * IMPORTANT:
+       * Use shared Axios API instance.
+       * JWT Authorization header is automatically added
+       * by @/services/api interceptor.
+       */
+      const response = await api.post(
+        "/purchasing/requisitions",
+        payload
       );
 
       /* -----------------------------------------------------
-         READ RESPONSE
+         RESPONSE
       ----------------------------------------------------- */
 
-      const responseText =
-        await response.text();
-
-      let data: any = null;
-
-      try {
-        data =
-          responseText
-            ? JSON.parse(responseText)
-            : null;
-      } catch {
-        data = null;
-      }
-
-      /* -----------------------------------------------------
-         ERROR RESPONSE
-      ----------------------------------------------------- */
-
-      if (!response.ok) {
-        console.error(
-          "Create requisition backend response:",
-          {
-            status: response.status,
-            statusText:
-              response.statusText,
-            data,
-            rawResponse:
-              responseText,
-          }
-        );
-
-        let message =
-          "Failed to create requisition.";
-
-        if (
-          Array.isArray(
-            data?.message
-          )
-        ) {
-          message =
-            data.message.join(
-              ", "
-            );
-        } else if (
-          typeof data?.message ===
-          "string"
-        ) {
-          message =
-            data.message;
-        } else if (
-          data?.error &&
-          typeof data.error ===
-            "string"
-        ) {
-          message =
-            data.error;
-        } else if (
-          responseText
-        ) {
-          message =
-            responseText;
-        }
-
-        throw new Error(
-          message
-        );
-      }
-
-      /* -----------------------------------------------------
-         SUCCESS
-      ----------------------------------------------------- */
+      const data = response.data;
 
       console.log(
         "Purchase requisition created:",
         data
       );
 
+      /* -----------------------------------------------------
+         SUCCESS
+      ----------------------------------------------------- */
+
       window.location.href =
         "/dashboard/purchasing/requisitions";
-
-    } catch (err) {
+    } catch (err: any) {
       console.error(
         "Create requisition error:",
         err
       );
 
+      const message =
+        err?.response?.data?.message;
+
       setError(
-        err instanceof Error
+        Array.isArray(message)
+          ? message.join(", ")
+          : typeof message === "string"
+          ? message
+          : err instanceof Error
           ? err.message
           : "Failed to create requisition."
       );
-
     } finally {
       setSubmitting(false);
     }
@@ -987,6 +922,7 @@ export default function CreatePurchaseRequisitionPage() {
               {submitting ? (
                 <>
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+
                   Creating...
                 </>
               ) : (
@@ -994,6 +930,7 @@ export default function CreatePurchaseRequisitionPage() {
                   <Save
                     size={17}
                   />
+
                   Create Requisition
                 </>
               )}

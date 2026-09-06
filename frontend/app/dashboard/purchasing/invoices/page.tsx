@@ -18,7 +18,14 @@ import {
   CreditCard,
   Loader2,
 } from "lucide-react";
-import {useCallback,useEffect,useMemo,useState,} from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import api from "@/services/api";
 
 // =========================================================
 // TYPES
@@ -88,17 +95,6 @@ export interface PurchaseInvoice {
 }
 
 // =========================================================
-// API
-// =========================================================
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-const INVOICES_API =
-  `${API_URL}/purchasing/invoices`;
-
-// =========================================================
 // MAIN PAGE
 // =========================================================
 
@@ -143,18 +139,6 @@ export default function PurchaseInvoicesPage() {
 
   const itemsPerPage = 10;
 
-  // =======================================================
-  // TOKEN
-  // =======================================================
-
-  const getToken = () => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-
-    return localStorage.getItem("accessToken");
-  };
-
   // =========================================================
   // LOAD INVOICES
   // =========================================================
@@ -170,41 +154,22 @@ export default function PurchaseInvoicesPage() {
 
         setError(null);
 
-        const token = getToken();
-
-        const response = await fetch(
-          INVOICES_API,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-
-              ...(token
-                ? {
-                    Authorization:
-                      `Bearer ${token}`,
-                  }
-                : {}),
-            },
-            cache: "no-store",
-          }
+        console.log(
+          "🔄 Loading purchase invoices..."
         );
 
-        const data =
-          await response
-            .json()
-            .catch(() => null);
+        const response = await api.get(
+          "/purchasing/invoices"
+        );
 
-        if (!response.ok) {
-          throw new Error(
-            Array.isArray(data?.message)
-              ? data.message.join(", ")
-              : data?.message ||
-                  `Failed to load purchase invoices (${response.status})`
-          );
-        }
+        console.log(
+          "✅ PURCHASE INVOICES RESPONSE:",
+          response.data
+        );
 
-        const result =
+        const data = response.data;
+
+        const result: PurchaseInvoice[] =
           Array.isArray(data)
             ? data
             : Array.isArray(data?.data)
@@ -212,17 +177,50 @@ export default function PurchaseInvoicesPage() {
             : [];
 
         setInvoices(result);
-      } catch (err) {
+      } catch (err: any) {
         console.error(
-          "Load purchase invoices error:",
+          "❌ Load purchase invoices error:",
           err
         );
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load purchase invoices"
+        console.error(
+          "❌ Status:",
+          err?.response?.status
         );
+
+        console.error(
+          "❌ Status text:",
+          err?.response?.statusText
+        );
+
+        console.error(
+          "❌ Backend response:",
+          err?.response?.data
+        );
+
+        if (err?.response?.status === 401) {
+          setError(
+            "Unauthorized. Your login session may have expired. Please login again."
+          );
+        } else if (
+          err?.response?.status === 403
+        ) {
+          setError(
+            "You do not have permission to view purchase invoices."
+          );
+        } else {
+          setError(
+            Array.isArray(
+              err?.response?.data?.message
+            )
+              ? err.response.data.message.join(
+                  ", "
+                )
+              : err?.response?.data?.message ||
+                  err?.message ||
+                  "Failed to load purchase invoices"
+          );
+        }
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -346,7 +344,10 @@ export default function PurchaseInvoicesPage() {
         itemsPerPage
     );
 
-  // Reset page when filters change
+  // =========================================================
+  // RESET PAGE WHEN FILTERS CHANGE
+  // =========================================================
+
   useEffect(() => {
     setCurrentPage(1);
   }, [
@@ -463,52 +464,48 @@ export default function PurchaseInvoicesPage() {
     }
 
     try {
-      const token = getToken();
+      console.log(
+        "🔄 Cancelling purchase invoice:",
+        invoice.id
+      );
 
       const response =
-        await fetch(
-          `${INVOICES_API}/${invoice.id}/cancel`,
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type":
-                "application/json",
-
-              ...(token
-                ? {
-                    Authorization:
-                      `Bearer ${token}`,
-                  }
-                : {}),
-            },
-          }
+        await api.patch(
+          `/purchasing/invoices/${invoice.id}/cancel`
         );
 
-      const data =
-        await response
-          .json()
-          .catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message ||
-                "Failed to cancel purchase invoice"
-        );
-      }
+      console.log(
+        "✅ Purchase invoice cancelled:",
+        response.data
+      );
 
       await loadInvoices(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error(
-        "Cancel invoice error:",
+        "❌ Cancel invoice error:",
         err
       );
 
+      console.error(
+        "❌ Status:",
+        err?.response?.status
+      );
+
+      console.error(
+        "❌ Backend response:",
+        err?.response?.data
+      );
+
       alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to cancel purchase invoice"
+        Array.isArray(
+          err?.response?.data?.message
+        )
+          ? err.response.data.message.join(
+              ", "
+            )
+          : err?.response?.data?.message ||
+              err?.message ||
+              "Failed to cancel purchase invoice"
       );
     }
   };
@@ -631,6 +628,7 @@ export default function PurchaseInvoicesPage() {
           {/* Header buttons */}
 
           <div className="flex flex-wrap gap-3">
+
             {/* Refresh */}
 
             <button
@@ -671,6 +669,7 @@ export default function PurchaseInvoicesPage() {
         ================================================= */}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+
           <SummaryCard
             title="Total Invoices"
             value={totalInvoices}
@@ -935,8 +934,10 @@ export default function PurchaseInvoicesPage() {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1250px] text-left text-sm">
+
               <thead className="bg-gray-50">
                 <tr>
+
                   <th className="px-6 py-3 font-medium text-gray-600">
                     Invoice Number
                   </th>
@@ -972,6 +973,7 @@ export default function PurchaseInvoicesPage() {
                   <th className="px-6 py-3 text-right font-medium text-gray-600">
                     Actions
                   </th>
+
                 </tr>
               </thead>
 
@@ -996,8 +998,6 @@ export default function PurchaseInvoicesPage() {
                       <p className="mt-1 text-sm text-gray-400">
                         Try changing your filters or create a new invoice.
                       </p>
-
-                      {/* Create link */}
 
                       <Link
                         href="/dashboard/purchasing/invoices/create"
@@ -1246,13 +1246,16 @@ export default function PurchaseInvoicesPage() {
                                   />
                                 </button>
                               )}
+
                             </div>
                           </td>
+
                         </tr>
                       );
                     }
                   )
                 )}
+
               </tbody>
             </table>
           </div>
@@ -1329,9 +1332,11 @@ export default function PurchaseInvoicesPage() {
                     size={16}
                   />
                 </button>
+
               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>
@@ -1372,6 +1377,7 @@ function SummaryCard({
         >
           <Icon size={20} />
         </div>
+
       </div>
     </div>
   );
@@ -1419,8 +1425,7 @@ function InvoiceStatusBadge({
 
     PAID: "Paid",
 
-    CANCELLED:
-      "Cancelled",
+    CANCELLED: "Cancelled",
   };
 
   return (

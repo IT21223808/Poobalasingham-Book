@@ -18,7 +18,14 @@ import {
   XCircle,
   CalendarDays,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import api from "@/services/api";
 
 /* =========================================================
    TYPES
@@ -53,17 +60,6 @@ interface PurchaseRequisition {
 }
 
 /* =========================================================
-   API
-========================================================= */
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-const REQUISITIONS_ENDPOINT =
-  `${API_URL}/purchasing/requisitions`;
-
-/* =========================================================
    PAGE
 ========================================================= */
 
@@ -96,7 +92,7 @@ export default function PurchaseRequisitionsPage() {
   const [itemsPerPage] = useState(10);
 
   /* =======================================================
-     LOAD DATA
+     LOAD REQUISITIONS
   ======================================================= */
 
   const loadRequisitions = useCallback(
@@ -110,60 +106,131 @@ export default function PurchaseRequisitionsPage() {
 
         setError(null);
 
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("accessToken")
-            : null;
-
-        const response = await fetch(
-          REQUISITIONS_ENDPOINT,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token
-                ? {
-                    Authorization: `Bearer ${token}`,
-                  }
-                : {}),
-            },
-            cache: "no-store",
-          }
+        console.log(
+          "📋 Loading purchase requisitions..."
         );
 
-        if (!response.ok) {
-          const data = await response
-            .json()
-            .catch(() => null);
+        console.log(
+          "🌐 Requisitions API:",
+          "/purchasing/requisitions"
+        );
 
-          throw new Error(
-            Array.isArray(data?.message)
-              ? data.message.join(", ")
-              : data?.message ||
-                  `Failed to load requisitions (${response.status})`
+        const response =
+          await api.get(
+            "/purchasing/requisitions"
           );
-        }
 
-        const data = await response.json();
+        console.log(
+          "✅ Requisitions response:",
+          response.status,
+          response.data
+        );
 
-        const result = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-          ? data.data
-          : [];
+        const data = response.data;
+
+        /*
+         * Backend may return:
+         *
+         * [
+         *   ...
+         * ]
+         *
+         * OR
+         *
+         * {
+         *   data: [...]
+         * }
+         */
+
+        const result: PurchaseRequisition[] =
+          Array.isArray(data)
+            ? data
+            : Array.isArray(data?.data)
+            ? data.data
+            : [];
 
         setRequisitions(result);
-      } catch (err) {
+
+        console.log(
+          `✅ ${result.length} requisitions loaded`
+        );
+      } catch (err: unknown) {
         console.error(
-          "Purchase requisitions error:",
+          "❌ Purchase requisitions error:",
           err
         );
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load purchase requisitions"
+        const axiosError = err as {
+          response?: {
+            status?: number;
+            statusText?: string;
+            data?: {
+              message?: string | string[];
+              error?: string;
+            };
+          };
+          message?: string;
+          code?: string;
+        };
+
+        const statusCode =
+          axiosError.response?.status;
+
+        const responseData =
+          axiosError.response?.data;
+
+        let message =
+          "Failed to load requisitions";
+
+        if (statusCode === 401) {
+          message =
+            "Unauthorized (401): Please login again.";
+        } else if (statusCode === 403) {
+          message =
+            "Forbidden (403): You don't have permission to view requisitions.";
+        } else if (statusCode === 404) {
+          message =
+            "Requisitions API endpoint not found (404).";
+        } else if (statusCode === 500) {
+          message =
+            "Server error (500): Failed to load requisitions.";
+        } else if (
+          Array.isArray(
+            responseData?.message
+          )
+        ) {
+          message =
+            responseData.message.join(", ");
+        } else if (
+          typeof responseData?.message ===
+          "string"
+        ) {
+          message =
+            responseData.message;
+        } else if (
+          typeof responseData?.error ===
+          "string"
+        ) {
+          message =
+            responseData.error;
+        } else if (
+          axiosError.message
+        ) {
+          message =
+            axiosError.message;
+        }
+
+        console.error(
+          "❌ Status:",
+          statusCode
         );
+
+        console.error(
+          "❌ Response:",
+          responseData
+        );
+
+        setError(message);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -193,14 +260,17 @@ export default function PurchaseRequisitionsPage() {
           item.items
             ?.map(
               (product) =>
-                product.product?.productName || ""
+                product.product
+                  ?.productName || ""
             )
             .join(" ") || ""
         }`.toLowerCase();
 
       const matchesSearch =
         !search ||
-        searchText.includes(search.toLowerCase());
+        searchText.includes(
+          search.toLowerCase()
+        );
 
       const normalizedStatus =
         item.status?.toUpperCase();
@@ -258,7 +328,8 @@ export default function PurchaseRequisitionsPage() {
 
   const paginatedRequisitions =
     filteredRequisitions.slice(
-      (safeCurrentPage - 1) * itemsPerPage,
+      (safeCurrentPage - 1) *
+        itemsPerPage,
       safeCurrentPage * itemsPerPage
     );
 
@@ -279,25 +350,29 @@ export default function PurchaseRequisitionsPage() {
      SUMMARY
   ======================================================= */
 
-  const totalCount = requisitions.length;
+  const totalCount =
+    requisitions.length;
 
-  const pendingCount = requisitions.filter(
-    (item) =>
-      item.status?.toUpperCase() ===
-      "PENDING"
-  ).length;
+  const pendingCount =
+    requisitions.filter(
+      (item) =>
+        item.status?.toUpperCase() ===
+        "PENDING"
+    ).length;
 
-  const approvedCount = requisitions.filter(
-    (item) =>
-      item.status?.toUpperCase() ===
-      "APPROVED"
-  ).length;
+  const approvedCount =
+    requisitions.filter(
+      (item) =>
+        item.status?.toUpperCase() ===
+        "APPROVED"
+    ).length;
 
-  const rejectedCount = requisitions.filter(
-    (item) =>
-      item.status?.toUpperCase() ===
-      "REJECTED"
-  ).length;
+  const rejectedCount =
+    requisitions.filter(
+      (item) =>
+        item.status?.toUpperCase() ===
+        "REJECTED"
+    ).length;
 
   /* =======================================================
      CLEAR FILTERS
@@ -325,36 +400,73 @@ export default function PurchaseRequisitionsPage() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(
-        `${REQUISITIONS_ENDPOINT}/${requisition.id}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+      console.log(
+        "🗑️ Deleting requisition:",
+        requisition.id
       );
 
-      if (!response.ok) {
-        const data = await response
-          .json()
-          .catch(() => null);
-
-        throw new Error(
-          data?.message ||
-            "Failed to delete requisition"
+      const response =
+        await api.delete(
+          `/purchasing/requisitions/${requisition.id}`
         );
-      }
+
+      console.log(
+        "✅ Requisition deleted:",
+        response.status,
+        response.data
+      );
 
       await loadRequisitions(true);
-    } catch (err) {
-      console.error(err);
-
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to delete requisition"
+    } catch (err: unknown) {
+      console.error(
+        "❌ Delete requisition error:",
+        err
       );
+
+      const axiosError = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string | string[];
+          };
+        };
+        message?: string;
+      };
+
+      const backendMessage =
+        axiosError.response?.data?.message;
+
+      let message =
+        "Failed to delete requisition";
+
+      if (Array.isArray(backendMessage)) {
+        message =
+          backendMessage.join(", ");
+      } else if (
+        typeof backendMessage === "string"
+      ) {
+        message =
+          backendMessage;
+      } else if (
+        axiosError.response?.status ===
+        401
+      ) {
+        message =
+          "Unauthorized (401): Please login again.";
+      } else if (
+        axiosError.response?.status ===
+        403
+      ) {
+        message =
+          "Forbidden (403): You don't have permission to delete this requisition.";
+      } else if (
+        axiosError.message
+      ) {
+        message =
+          axiosError.message;
+      }
+
+      alert(message);
     }
   };
 
@@ -372,36 +484,73 @@ export default function PurchaseRequisitionsPage() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(
-        `${REQUISITIONS_ENDPOINT}/${requisition.id}/approve`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+      console.log(
+        "✅ Approving requisition:",
+        requisition.id
       );
 
-      if (!response.ok) {
-        const data = await response
-          .json()
-          .catch(() => null);
-
-        throw new Error(
-          data?.message ||
-            "Failed to approve requisition"
+      const response =
+        await api.patch(
+          `/purchasing/requisitions/${requisition.id}/approve`
         );
-      }
+
+      console.log(
+        "✅ Requisition approved:",
+        response.status,
+        response.data
+      );
 
       await loadRequisitions(true);
-    } catch (err) {
-      console.error(err);
-
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to approve requisition"
+    } catch (err: unknown) {
+      console.error(
+        "❌ Approve requisition error:",
+        err
       );
+
+      const axiosError = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string | string[];
+          };
+        };
+        message?: string;
+      };
+
+      const backendMessage =
+        axiosError.response?.data?.message;
+
+      let message =
+        "Failed to approve requisition";
+
+      if (Array.isArray(backendMessage)) {
+        message =
+          backendMessage.join(", ");
+      } else if (
+        typeof backendMessage === "string"
+      ) {
+        message =
+          backendMessage;
+      } else if (
+        axiosError.response?.status ===
+        401
+      ) {
+        message =
+          "Unauthorized (401): Please login again.";
+      } else if (
+        axiosError.response?.status ===
+        403
+      ) {
+        message =
+          "Forbidden (403): You don't have permission to approve this requisition.";
+      } else if (
+        axiosError.message
+      ) {
+        message =
+          axiosError.message;
+      }
+
+      alert(message);
     }
   };
 
@@ -419,36 +568,73 @@ export default function PurchaseRequisitionsPage() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(
-        `${REQUISITIONS_ENDPOINT}/${requisition.id}/reject`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+      console.log(
+        "❌ Rejecting requisition:",
+        requisition.id
       );
 
-      if (!response.ok) {
-        const data = await response
-          .json()
-          .catch(() => null);
-
-        throw new Error(
-          data?.message ||
-            "Failed to reject requisition"
+      const response =
+        await api.patch(
+          `/purchasing/requisitions/${requisition.id}/reject`
         );
-      }
+
+      console.log(
+        "✅ Requisition rejected:",
+        response.status,
+        response.data
+      );
 
       await loadRequisitions(true);
-    } catch (err) {
-      console.error(err);
-
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to reject requisition"
+    } catch (err: unknown) {
+      console.error(
+        "❌ Reject requisition error:",
+        err
       );
+
+      const axiosError = err as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string | string[];
+          };
+        };
+        message?: string;
+      };
+
+      const backendMessage =
+        axiosError.response?.data?.message;
+
+      let message =
+        "Failed to reject requisition";
+
+      if (Array.isArray(backendMessage)) {
+        message =
+          backendMessage.join(", ");
+      } else if (
+        typeof backendMessage === "string"
+      ) {
+        message =
+          backendMessage;
+      } else if (
+        axiosError.response?.status ===
+        401
+      ) {
+        message =
+          "Unauthorized (401): Please login again.";
+      } else if (
+        axiosError.response?.status ===
+        403
+      ) {
+        message =
+          "Forbidden (403): You don't have permission to reject this requisition.";
+      } else if (
+        axiosError.message
+      ) {
+        message =
+          axiosError.message;
+      }
+
+      alert(message);
     }
   };
 
@@ -524,7 +710,6 @@ export default function PurchaseRequisitionsPage() {
           {/* BREADCRUMB */}
 
           <div className="flex items-center gap-2 text-sm">
-
             <Link
               href="/dashboard/purchasing"
               className="font-medium text-gray-500 transition hover:text-blue-600"
@@ -540,7 +725,6 @@ export default function PurchaseRequisitionsPage() {
             <span className="font-medium text-gray-900">
               Purchase Requisitions
             </span>
-
           </div>
 
           {/* PAGE HEADER */}
@@ -601,9 +785,7 @@ export default function PurchaseRequisitionsPage() {
               </Link>
 
             </div>
-
           </div>
-
         </div>
 
         {/* =================================================
@@ -676,7 +858,6 @@ export default function PurchaseRequisitionsPage() {
                 />
 
               </div>
-
             </div>
 
             {/* Status */}
@@ -742,7 +923,6 @@ export default function PurchaseRequisitionsPage() {
                 />
 
               </div>
-
             </div>
 
             {/* To Date */}
@@ -770,7 +950,6 @@ export default function PurchaseRequisitionsPage() {
                 />
 
               </div>
-
             </div>
 
           </div>
@@ -778,18 +957,14 @@ export default function PurchaseRequisitionsPage() {
           <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
 
             <p className="text-sm text-gray-500">
-
               Showing{" "}
-
               <span className="font-medium text-gray-900">
                 {filteredRequisitions.length}
               </span>{" "}
-
               result
               {filteredRequisitions.length !== 1
                 ? "s"
                 : ""}
-
             </p>
 
             <button
@@ -800,7 +975,6 @@ export default function PurchaseRequisitionsPage() {
             </button>
 
           </div>
-
         </div>
 
         {/* =================================================
@@ -863,8 +1037,8 @@ export default function PurchaseRequisitionsPage() {
 
               <tbody className="divide-y divide-gray-100">
 
-                {paginatedRequisitions.length === 0 ? (
-
+                {paginatedRequisitions.length ===
+                0 ? (
                   <tr>
 
                     <td
@@ -896,18 +1070,20 @@ export default function PurchaseRequisitionsPage() {
                     </td>
 
                   </tr>
-
                 ) : (
-
                   paginatedRequisitions.map(
                     (requisition) => {
 
                       const totalQuantity =
                         requisition.items?.reduce(
-                          (total, item) =>
+                          (
+                            total,
+                            item
+                          ) =>
                             total +
                             Number(
-                              item.quantity || 0
+                              item.quantity ||
+                                0
                             ),
                           0
                         ) || 0;
@@ -940,7 +1116,9 @@ export default function PurchaseRequisitionsPage() {
                               href={`/dashboard/purchasing/requisitions/${requisition.id}`}
                               className="font-medium text-blue-600 hover:text-blue-700"
                             >
-                              {requisition.requisitionNumber}
+                              {
+                                requisition.requisitionNumber
+                              }
                             </Link>
 
                           </td>
@@ -948,21 +1126,17 @@ export default function PurchaseRequisitionsPage() {
                           {/* Date */}
 
                           <td className="px-6 py-4 text-gray-600">
-
                             {formatDate(
                               requisition.requestedDate ||
                                 requisition.createdAt
                             )}
-
                           </td>
 
                           {/* Requested By */}
 
                           <td className="px-6 py-4 text-gray-700">
-
                             {requisition.requestedBy ||
                               "—"}
-
                           </td>
 
                           {/* Products */}
@@ -977,9 +1151,7 @@ export default function PurchaseRequisitionsPage() {
                           {/* Quantity */}
 
                           <td className="px-6 py-4 font-medium text-gray-900">
-
                             {totalQuantity}
-
                           </td>
 
                           {/* Status */}
@@ -1038,7 +1210,9 @@ export default function PurchaseRequisitionsPage() {
                                   title="Approve"
                                   className="rounded-lg p-2 text-gray-500 hover:bg-green-50 hover:text-green-600"
                                 >
-                                  <Check size={17} />
+                                  <Check
+                                    size={17}
+                                  />
                                 </button>
                               )}
 
@@ -1086,7 +1260,6 @@ export default function PurchaseRequisitionsPage() {
                       );
                     }
                   )
-
                 )}
 
               </tbody>
@@ -1100,23 +1273,17 @@ export default function PurchaseRequisitionsPage() {
           ================================================= */}
 
           {filteredRequisitions.length > 0 && (
-
             <div className="flex flex-col gap-3 border-t border-gray-100 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
 
               <p className="text-sm text-gray-500">
-
                 Page{" "}
-
                 <span className="font-medium text-gray-900">
                   {safeCurrentPage}
                 </span>{" "}
-
                 of{" "}
-
                 <span className="font-medium text-gray-900">
                   {totalPages}
                 </span>
-
               </p>
 
               <div className="flex items-center gap-2">
@@ -1128,7 +1295,10 @@ export default function PurchaseRequisitionsPage() {
                   onClick={() =>
                     setCurrentPage(
                       (page) =>
-                        Math.max(1, page - 1)
+                        Math.max(
+                          1,
+                          page - 1
+                        )
                     )
                   }
                   className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1139,7 +1309,8 @@ export default function PurchaseRequisitionsPage() {
 
                 <button
                   disabled={
-                    safeCurrentPage === totalPages
+                    safeCurrentPage ===
+                    totalPages
                   }
                   onClick={() =>
                     setCurrentPage(
@@ -1159,7 +1330,6 @@ export default function PurchaseRequisitionsPage() {
               </div>
 
             </div>
-
           )}
 
         </div>
@@ -1259,7 +1429,7 @@ function StatusBadge({
    DATE
 ========================================================= */
 
-function formatDate(date: string) {
+function formatDate(date?: string) {
   if (!date) return "—";
 
   const parsedDate = new Date(date);

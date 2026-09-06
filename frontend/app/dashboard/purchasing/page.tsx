@@ -2,176 +2,201 @@
 
 import Link from "next/link";
 import {
-  ClipboardList,
-  ShoppingCart,
-  PackageCheck,
-  Receipt,
-  RotateCcw,
   ArrowRight,
-  TrendingUp,
+  BarChart3,
+  Boxes,
+  ClipboardList,
+  FileCheck2,
+  FileText,
+  PackageCheck,
+  PackageOpen,
   RefreshCw,
+  RotateCcw,
+  ShoppingCart,
+  Truck,
+  Users,
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+
+import api from "@/services/api";
 
 /* =========================================================
    TYPES
 ========================================================= */
 
 interface DashboardData {
-  summary: {
+  overview: {
     totalRequisitions: number;
     pendingRequisitions: number;
-
     totalPurchaseOrders: number;
     pendingPurchaseOrders: number;
-    approvedPurchaseOrders: number;
-    receivedPurchaseOrders: number;
-    cancelledPurchaseOrders: number;
-
-    totalGoodsReceived: number;
-    pendingGoodsReceived: number;
-    partialGoodsReceived: number;
-    cancelledGoodsReceived: number;
-
-    totalPurchaseInvoices: number;
-    draftPurchaseInvoices: number;
-    unpaidPurchaseInvoices: number;
-    partiallyPaidPurchaseInvoices: number;
-    paidPurchaseInvoices: number;
-    cancelledPurchaseInvoices: number;
-
-    totalPurchaseReturns: number;
-    pendingPurchaseReturns: number;
-    completedPurchaseReturns: number;
-    cancelledPurchaseReturns: number;
+    totalGRNs: number;
+    pendingGRNs: number;
+    totalInvoices: number;
+    pendingInvoices: number;
+    totalReturns: number;
+    pendingReturns: number;
   };
 
-  overview: {
+  purchaseOverview?: {
+    totalPurchases: number;
     totalPurchaseAmount: number;
-    orders: number;
-    received: number;
+    totalReceivedAmount: number;
+    totalPendingAmount: number;
+  };
+
+  poStatus?: {
     pending: number;
     approved: number;
+    rejected: number;
+    completed: number;
     cancelled: number;
   };
 
-  status: {
+  invoiceStatus?: {
     pending: number;
-    approved: number;
-    received: number;
+    partial: number;
+    paid: number;
+    overdue: number;
     cancelled: number;
   };
 
-  recentOrders: PurchaseOrder[];
-  recentGRNs: GRN[];
-  recentInvoices: PurchaseInvoice[];
-  recentReturns: PurchaseReturn[];
+  returnStatus?: {
+    pending: number;
+    approved: number;
+    completed: number;
+    rejected: number;
+  };
+
+  recentPurchaseOrders?: PurchaseOrder[];
+
+  recentGRNs?: GRN[];
+
+  recentReturns?: PurchaseReturn[];
+
+  recentInvoices?: PurchaseInvoice[];
 }
 
 interface Product {
-  id: string;
-  productCode?: string;
+  id: string | number;
   productName?: string;
   name?: string;
+  productCode?: string;
+  sku?: string;
 }
 
 interface PurchaseOrderItem {
-  id: number;
-  purchaseOrderId: number;
-  productId: string;
-  quantity: number;
-  unitPrice: string | number;
-  subtotal: string | number;
+  id: string | number;
+  productId?: string | number;
   product?: Product;
+  quantity?: number;
+  orderedQuantity?: number;
+  receivedQuantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
 }
 
 interface PurchaseOrder {
-  id: number;
-  poNumber: string;
-  requisitionId: number;
-  status: string;
-  totalAmount: string | number;
-  items: PurchaseOrderItem[];
-  createdAt: string;
+  id: string | number;
+  poNumber?: string;
+  purchaseOrderNumber?: string;
+  supplierName?: string;
+  supplier?: {
+    id?: string | number;
+    supplierName?: string;
+    name?: string;
+  };
+  status?: string;
+  totalAmount?: number;
+  createdAt?: string;
+  orderDate?: string;
+  items?: PurchaseOrderItem[];
 }
 
 interface GRNItem {
-  id: number;
-  grnId: number;
-  productId: string;
-  orderedQuantity: number;
-  receivedQuantity: number;
+  id: string | number;
+  productId?: string | number;
   product?: Product;
+  receivedQuantity?: number;
+  quantity?: number;
 }
 
 interface GRN {
-  id: number;
-  grnNumber: string;
-  purchaseOrderId: number;
-  status: string;
-  items: GRNItem[];
-  createdAt: string;
+  id: string | number;
+  grnNumber?: string;
+  purchaseOrderId?: string | number;
+  purchaseOrder?: PurchaseOrder;
+  status?: string;
+  receivedDate?: string;
+  createdAt?: string;
+  items?: GRNItem[];
 }
 
 interface PurchaseInvoiceItem {
-  id: number;
-  invoiceId: number;
-  productId: string;
-  quantity: number;
-  unitPrice: string | number;
-  subtotal: string | number;
+  id: string | number;
+  productId?: string | number;
   product?: Product;
+  quantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
 }
 
 interface PurchaseInvoice {
-  id: number;
-  invoiceNumber: string;
-  purchaseOrderId: number;
-  supplierId?: number | null;
-  grnId?: number | null;
+  id: string | number;
+  invoiceNumber?: string;
+  purchaseOrderId?: string | number;
+  purchaseOrder?: PurchaseOrder;
+  supplierName?: string;
+  supplier?: {
+    supplierName?: string;
+    name?: string;
+  };
+  status?: string;
+  totalAmount?: number;
   invoiceDate?: string;
-  dueDate?: string | null;
-  paymentStatus: string;
-  subtotal?: number | string;
-  discount?: number | string;
-  tax?: number | string;
-  grandTotal?: number | string;
-  items: PurchaseInvoiceItem[];
-  createdAt: string;
+  dueDate?: string;
+  createdAt?: string;
+  items?: PurchaseInvoiceItem[];
 }
 
 interface PurchaseReturnItem {
-  id: number;
-  returnId: number;
-  productId: string;
-  quantity: number;
+  id: string | number;
+  productId?: string | number;
   product?: Product;
+  quantity?: number;
+  returnedQuantity?: number;
 }
 
 interface PurchaseReturn {
-  id: number;
-  returnNumber: string;
-  purchaseOrderId: number;
-  invoiceId: number | null;
-  status: string;
-  reason: string | null;
-  items: PurchaseReturnItem[];
-  createdAt: string;
+  id: string | number;
+  returnNumber?: string;
+  purchaseOrderId?: string | number;
+  purchaseOrder?: PurchaseOrder;
+  supplierName?: string;
+  supplier?: {
+    supplierName?: string;
+    name?: string;
+  };
+  status?: string;
+  totalAmount?: number;
+  returnDate?: string;
+  createdAt?: string;
+  items?: PurchaseReturnItem[];
 }
 
 /* =========================================================
-   API
+   MAIN COMPONENT
 ========================================================= */
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-/* =========================================================
-   MAIN PURCHASING DASHBOARD
-========================================================= */
-
-export default function PurchasingDashboard() {
+export default function PurchasingDashboardPage() {
   const [dashboard, setDashboard] =
     useState<DashboardData | null>(null);
 
@@ -189,76 +214,169 @@ export default function PurchasingDashboard() {
   ======================================================= */
 
   const loadDashboard = useCallback(
-    async (isRefresh = false) => {
-      try {
-        if (isRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
-
-        setError(null);
-
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("accessToken")
-            : null;
-
-        const response = await fetch(
-          `${API_URL}/purchasing/dashboard`,
-          {
-            method: "GET",
-
-            headers: {
-              "Content-Type": "application/json",
-
-              ...(token
-                ? {
-                    Authorization: `Bearer ${token}`,
-                  }
-                : {}),
-            },
-
-            cache: "no-store",
-          }
-        );
-
-        if (!response.ok) {
-          const data =
-            await response.json().catch(
-              () => null
-            );
-
-          throw new Error(
-            Array.isArray(data?.message)
-              ? data.message.join(", ")
-              : data?.message ||
-                  `Failed to load purchasing dashboard (${response.status})`
-          );
-        }
-
-        const data: DashboardData =
-          await response.json();
-
-        setDashboard(data);
-      } catch (err) {
-        console.error(
-          "Purchasing dashboard error:",
-          err
-        );
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load purchasing dashboard"
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
+  async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
-    },
-    []
-  );
+
+      setError(null);
+
+      console.log("📊 Loading purchasing dashboard...");
+      console.log(
+        "🌐 Dashboard URL:",
+        "/purchasing/dashboard"
+      );
+
+      const response = await api.get<DashboardData>(
+        "/purchasing/dashboard"
+      );
+
+      console.log(
+        "✅ Purchasing dashboard loaded:",
+        response.status,
+        response.data
+      );
+
+      setDashboard(response.data);
+    } catch (err: unknown) {
+      console.error(
+        "❌ Purchasing dashboard FAILED:",
+        err
+      );
+
+      // Axios error details
+      if (
+        typeof err === "object" &&
+        err !== null
+      ) {
+        const axiosError = err as {
+          response?: {
+            status?: number;
+            statusText?: string;
+            data?: unknown;
+            headers?: unknown;
+          };
+          request?: unknown;
+          message?: string;
+          code?: string;
+          config?: {
+            url?: string;
+            method?: string;
+            baseURL?: string;
+          };
+        };
+
+        console.error(
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        );
+
+        console.error(
+          "❌ STATUS:",
+          axiosError.response?.status
+        );
+
+        console.error(
+          "❌ STATUS TEXT:",
+          axiosError.response?.statusText
+        );
+
+        console.error(
+          "❌ RESPONSE DATA:",
+          axiosError.response?.data
+        );
+
+        console.error(
+          "❌ ERROR MESSAGE:",
+          axiosError.message
+        );
+
+        console.error(
+          "❌ ERROR CODE:",
+          axiosError.code
+        );
+
+        console.error(
+          "❌ REQUEST URL:",
+          axiosError.config?.url
+        );
+
+        console.error(
+          "❌ BASE URL:",
+          axiosError.config?.baseURL
+        );
+
+        console.error(
+          "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        );
+
+        const status =
+          axiosError.response?.status;
+
+        const responseData =
+          axiosError.response?.data;
+
+        let message =
+          "Failed to load purchasing dashboard";
+
+        if (
+          responseData &&
+          typeof responseData === "object" &&
+          "message" in responseData
+        ) {
+          const backendMessage = (
+            responseData as {
+              message?: string | string[];
+            }
+          ).message;
+
+          if (Array.isArray(backendMessage)) {
+            message =
+              backendMessage.join(", ");
+          } else if (
+            typeof backendMessage === "string"
+          ) {
+            message = backendMessage;
+          }
+        } else if (
+          typeof responseData === "string"
+        ) {
+          message = responseData;
+        } else if (
+          axiosError.message
+        ) {
+          message = axiosError.message;
+        }
+
+        if (status === 401) {
+          message =
+            "Unauthorized (401): JWT token missing, invalid or expired.";
+        } else if (status === 403) {
+          message =
+            "Forbidden (403): You do not have permission to access the purchasing dashboard.";
+        } else if (status === 404) {
+          message =
+            "Not Found (404): /purchasing/dashboard endpoint does not exist.";
+        } else if (status === 500) {
+          message =
+            "Server Error (500): Purchasing dashboard backend has an error.";
+        }
+
+        setError(message);
+      } else {
+        setError(
+          "Failed to load purchasing dashboard"
+        );
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  },
+  []
+);
 
   /* =======================================================
      INITIAL LOAD
@@ -269,19 +387,21 @@ export default function PurchasingDashboard() {
   }, [loadDashboard]);
 
   /* =======================================================
-     LOADING
+     LOADING STATE
   ======================================================= */
 
   if (loading) {
     return (
-      <div className="min-h-full bg-gray-50 px-4 py-6 sm:px-6">
-        <div className="flex min-h-[500px] items-center justify-center">
-          <div className="text-center">
-            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex min-h-[500px] items-center justify-center">
+            <div className="text-center">
+              <RefreshCw className="mx-auto mb-4 h-8 w-8 animate-spin text-blue-600" />
 
-            <p className="mt-4 text-sm text-gray-500">
-              Loading purchasing dashboard...
-            </p>
+              <p className="text-sm text-gray-500">
+                Loading purchasing dashboard...
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -289,134 +409,149 @@ export default function PurchasingDashboard() {
   }
 
   /* =======================================================
-     ERROR
+     ERROR STATE
   ======================================================= */
 
-  if (error || !dashboard) {
+  if (error && !dashboard) {
     return (
-      <div className="min-h-full bg-gray-50 px-4 py-6 sm:px-6">
-        <div className="rounded-xl border border-red-200 bg-white p-8 text-center">
-          <p className="font-medium text-red-600">
-            Failed to load purchasing dashboard
-          </p>
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex min-h-[500px] items-center justify-center">
+            <div className="w-full max-w-md rounded-xl border border-red-200 bg-white p-8 text-center shadow-sm">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
 
-          <p className="mt-2 text-sm text-gray-500">
-            {error ||
-              "No dashboard data available"}
-          </p>
+              <h2 className="mb-2 text-lg font-semibold text-gray-900">
+                Failed to load purchasing dashboard
+              </h2>
 
-          <button
-            onClick={() =>
-              loadDashboard()
-            }
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-          >
-            <RefreshCw size={15} />
-            Try Again
-          </button>
+              <p className="mb-6 text-sm text-gray-500">
+                {error}
+              </p>
+
+              <button
+                onClick={() => loadDashboard()}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Try Again
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  /* =========================================================
-     MODULE CARDS
-  ========================================================= */
+  /* =======================================================
+     SAFE DATA
+  ======================================================= */
 
-  const moduleCards = [
-    {
-      title: "Requisitions",
-      description:
-        "Create and manage purchase requests",
-      href: "/dashboard/purchasing/requisitions",
-      icon: ClipboardList,
-      count:
-        dashboard.summary.totalRequisitions,
-      countLabel: "Total",
-      pending:
-        dashboard.summary.pendingRequisitions,
-      pendingLabel: "Pending",
-    },
+  const overview = dashboard?.overview ?? {
+    totalRequisitions: 0,
+    pendingRequisitions: 0,
+    totalPurchaseOrders: 0,
+    pendingPurchaseOrders: 0,
+    totalGRNs: 0,
+    pendingGRNs: 0,
+    totalInvoices: 0,
+    pendingInvoices: 0,
+    totalReturns: 0,
+    pendingReturns: 0,
+  };
 
-    {
-      title: "Purchase Orders",
-      description:
-        "Manage supplier purchase orders",
-      href: "/dashboard/purchasing/orders",
-      icon: ShoppingCart,
-      count:
-        dashboard.summary.totalPurchaseOrders,
-      countLabel: "Total",
-      pending:
-        dashboard.summary.pendingPurchaseOrders,
-      pendingLabel: "Pending",
-    },
+  const purchaseOverview =
+    dashboard?.purchaseOverview ?? {
+      totalPurchases: 0,
+      totalPurchaseAmount: 0,
+      totalReceivedAmount: 0,
+      totalPendingAmount: 0,
+    };
 
-    {
-      title: "Goods Received",
-      description:
-        "Receive and verify supplier goods",
-      href: "/dashboard/purchasing/grn",
-      icon: PackageCheck,
-      count:
-        dashboard.summary.totalGoodsReceived,
-      countLabel: "Received",
-      pending:
-        dashboard.summary.partialGoodsReceived,
-      pendingLabel: "Partial",
-    },
+  const poStatus =
+    dashboard?.poStatus ?? {
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      completed: 0,
+      cancelled: 0,
+    };
 
-    {
-      title: "Purchase Invoices",
-      description:
-        "Manage supplier invoices and payments",
-      href: "/dashboard/purchasing/invoices",
-      icon: Receipt,
-      count:
-        dashboard.summary.totalPurchaseInvoices,
-      countLabel: "Total",
-      pending:
-        dashboard.summary.unpaidPurchaseInvoices,
-      pendingLabel: "Unpaid",
-    },
+  const invoiceStatus =
+    dashboard?.invoiceStatus ?? {
+      pending: 0,
+      partial: 0,
+      paid: 0,
+      overdue: 0,
+      cancelled: 0,
+    };
 
-    {
-      title: "Purchase Returns",
-      description:
-        "Return goods to suppliers",
-      href: "/dashboard/purchasing/returns",
-      icon: RotateCcw,
-      count:
-        dashboard.summary.totalPurchaseReturns,
-      countLabel: "Total",
-      pending:
-        dashboard.summary.pendingPurchaseReturns,
-      pendingLabel: "Pending",
-    },
-  ];
+  const returnStatus =
+    dashboard?.returnStatus ?? {
+      pending: 0,
+      approved: 0,
+      completed: 0,
+      rejected: 0,
+    };
 
-  /* =========================================================
+  const recentPurchaseOrders =
+    dashboard?.recentPurchaseOrders ?? [];
+
+  const recentGRNs =
+    dashboard?.recentGRNs ?? [];
+
+  const recentReturns =
+    dashboard?.recentReturns ?? [];
+
+  const recentInvoices =
+    dashboard?.recentInvoices ?? [];
+
+  /* =======================================================
+     FORMATTERS
+  ======================================================= */
+
+  const formatCurrency = (
+    value?: number
+  ) => {
+    return new Intl.NumberFormat(
+      "en-LK",
+      {
+        style: "currency",
+        currency: "LKR",
+        minimumFractionDigits: 2,
+      }
+    ).format(value ?? 0);
+  };
+
+  /* =======================================================
      RENDER
-  ========================================================= */
+  ======================================================= */
 
   return (
-    <div className="min-h-full bg-gray-50 px-4 py-6 sm:px-6">
-      <div className="w-full space-y-6">
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto max-w-7xl p-6">
 
         {/* =================================================
             HEADER
         ================================================= */}
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-              Purchasing
-            </h1>
+            <div className="mb-2 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
+                <ShoppingCart className="h-5 w-5 text-white" />
+              </div>
 
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              Manage requisitions, purchase orders,
-              goods received, invoices and returns.
+              <h1 className="text-2xl font-bold text-gray-900">
+                Purchasing Dashboard
+              </h1>
+            </div>
+
+            <p className="text-sm text-gray-500">
+              Overview of purchasing activities,
+              orders, goods received, invoices and
+              returns.
             </p>
           </div>
 
@@ -425,928 +560,625 @@ export default function PurchasingDashboard() {
               loadDashboard(true)
             }
             disabled={refreshing}
-            className="inline-flex w-fit items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCw
-              size={15}
-              className={
+              className={`h-4 w-4 ${
                 refreshing
                   ? "animate-spin"
                   : ""
-              }
+              }`}
             />
 
             {refreshing
               ? "Refreshing..."
               : "Refresh"}
           </button>
-
         </div>
+
+        {/* =================================================
+            ERROR BANNER
+        ================================================= */}
+
+        {error && (
+          <div className="mb-6 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* =================================================
             MODULE CARDS
         ================================================= */}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
 
-          {moduleCards.map((card) => {
-            const Icon = card.icon;
+          <ModuleCard
+            href="/dashboard/purchasing/requisitions"
+            icon={
+              <ClipboardList className="h-5 w-5" />
+            }
+            title="Requisitions"
+            value={
+              overview.totalRequisitions
+            }
+            pending={
+              overview.pendingRequisitions
+            }
+          />
 
-            return (
-              <Link
-                key={card.title}
-                href={card.href}
-                className="group flex min-h-[175px] flex-col rounded-lg border border-gray-200 bg-white p-4 transition hover:border-blue-200 hover:bg-blue-50 hover:shadow-sm"
-              >
+          <ModuleCard
+            href="/dashboard/purchasing/orders"
+            icon={
+              <ShoppingCart className="h-5 w-5" />
+            }
+            title="Purchase Orders"
+            value={
+              overview.totalPurchaseOrders
+            }
+            pending={
+              overview.pendingPurchaseOrders
+            }
+          />
 
-                {/* CARD HEADER */}
+          <ModuleCard
+            href="/dashboard/purchasing/grn"
+            icon={
+              <PackageCheck className="h-5 w-5" />
+            }
+            title="GRNs"
+            value={overview.totalGRNs}
+            pending={overview.pendingGRNs}
+          />
 
-                <div className="flex items-center justify-between gap-2">
+          <ModuleCard
+            href="/dashboard/purchasing/invoices"
+            icon={
+              <FileText className="h-5 w-5" />
+            }
+            title="Invoices"
+            value={
+              overview.totalInvoices
+            }
+            pending={
+              overview.pendingInvoices
+            }
+          />
 
-                  <div className="flex min-w-0 items-center gap-3">
-
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
-                      <Icon size={18} />
-                    </div>
-
-                    <h2 className="truncate text-sm font-semibold text-gray-900">
-                      {card.title}
-                    </h2>
-
-                  </div>
-
-                  <ArrowRight
-                    size={15}
-                    className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600"
-                  />
-
-                </div>
-
-                {/* DESCRIPTION */}
-
-                <p className="mt-3 min-h-[32px] text-xs leading-4 text-gray-500">
-                  {card.description}
-                </p>
-
-                {/* COUNTS */}
-
-                <div className="mt-auto grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
-
-                  <div>
-                    <p className="text-xl font-semibold leading-none text-gray-900">
-                      {card.count}
-                    </p>
-
-                    <p className="mt-1 text-[11px] text-gray-400">
-                      {card.countLabel}
-                    </p>
-                  </div>
-
-                  <div className="border-l border-gray-100 pl-3">
-                    <p className="text-xl font-semibold leading-none text-gray-900">
-                      {card.pending}
-                    </p>
-
-                    <p className="mt-1 text-[11px] text-gray-400">
-                      {card.pendingLabel}
-                    </p>
-                  </div>
-
-                </div>
-
-              </Link>
-            );
-          })}
-
+          <ModuleCard
+            href="/dashboard/purchasing/returns"
+            icon={
+              <RotateCcw className="h-5 w-5" />
+            }
+            title="Returns"
+            value={
+              overview.totalReturns
+            }
+            pending={
+              overview.pendingReturns
+            }
+          />
         </div>
 
         {/* =================================================
-            QUICK STATUS SUMMARY
+            PURCHASE OVERVIEW
         ================================================= */}
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <section className="mb-8">
+          <SectionHeader
+            icon={
+              <BarChart3 className="h-5 w-5" />
+            }
+            title="Purchase Overview"
+          />
 
-          {/* PURCHASE OVERVIEW */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5 lg:col-span-2">
+            <SummaryBox
+              title="Total Purchases"
+              value={
+                purchaseOverview.totalPurchases
+              }
+              icon={
+                <ShoppingCart className="h-5 w-5" />
+              }
+            />
 
-            <div className="flex items-start justify-between">
+            <SummaryBox
+              title="Purchase Amount"
+              value={formatCurrency(
+                purchaseOverview.totalPurchaseAmount
+              )}
+              icon={
+                <BarChart3 className="h-5 w-5" />
+              }
+            />
 
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">
-                  Purchase Overview
-                </h2>
+            <SummaryBox
+              title="Received Amount"
+              value={formatCurrency(
+                purchaseOverview.totalReceivedAmount
+              )}
+              icon={
+                <PackageCheck className="h-5 w-5" />
+              }
+            />
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Current purchasing activity
-                </p>
-              </div>
-
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-50">
-                <TrendingUp
-                  size={19}
-                  className="text-green-600"
-                />
-              </div>
-
-            </div>
-
-            {/* TOTAL PURCHASE */}
-
-            <div className="mt-5">
-
-              <p className="text-sm text-gray-500">
-                Total Purchase Amount
-              </p>
-
-              <p className="mt-1 text-3xl font-semibold tracking-tight text-gray-900">
-                Rs.{" "}
-                {Number(
-                  dashboard.overview
-                    .totalPurchaseAmount
-                ).toLocaleString(
-                  "en-LK",
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}
-              </p>
-
-            </div>
-
-            {/* OVERVIEW */}
-
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
-
-              <OverviewItem
-                label="Orders"
-                value={
-                  dashboard.overview.orders
-                }
-              />
-
-              <OverviewItem
-                label="Pending"
-                value={
-                  dashboard.overview.pending
-                }
-              />
-
-              <OverviewItem
-                label="Approved"
-                value={
-                  dashboard.overview.approved
-                }
-              />
-
-              <OverviewItem
-                label="Received"
-                value={
-                  dashboard.overview.received
-                }
-              />
-
-              <OverviewItem
-                label="Cancelled"
-                value={
-                  dashboard.overview.cancelled
-                }
-              />
-
-            </div>
-
+            <SummaryBox
+              title="Pending Amount"
+              value={formatCurrency(
+                purchaseOverview.totalPendingAmount
+              )}
+              icon={
+                <Clock3 className="h-5 w-5" />
+              }
+            />
           </div>
-
-          {/* PURCHASE ORDER STATUS */}
-
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-
-            <h2 className="text-base font-semibold text-gray-900">
-              Purchase Order Status
-            </h2>
-
-            <p className="mt-1 text-sm text-gray-500">
-              Current purchase order status
-            </p>
-
-            <div className="mt-5 space-y-5">
-
-              <StatusProgress
-                label="Pending"
-                value={
-                  dashboard.status.pending
-                }
-                total={
-                  dashboard.overview.orders
-                }
-              />
-
-              <StatusProgress
-                label="Approved"
-                value={
-                  dashboard.status.approved
-                }
-                total={
-                  dashboard.overview.orders
-                }
-              />
-
-              <StatusProgress
-                label="Received"
-                value={
-                  dashboard.status.received
-                }
-                total={
-                  dashboard.overview.orders
-                }
-              />
-
-              <StatusProgress
-                label="Cancelled"
-                value={
-                  dashboard.status.cancelled
-                }
-                total={
-                  dashboard.overview.orders
-                }
-              />
-
-            </div>
-
-          </div>
-
-        </div>
+        </section>
 
         {/* =================================================
-            INVOICE + RETURN STATUS
+            STATUS SECTIONS
         ================================================= */}
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
 
-          {/* PURCHASE INVOICE STATUS */}
+          {/* PO STATUS */}
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <StatusProgress
+            title="Purchase Order Status"
+            icon={
+              <ShoppingCart className="h-5 w-5" />
+            }
+            items={[
+              {
+                label: "Pending",
+                value: poStatus.pending,
+                icon: (
+                  <Clock3 className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Approved",
+                value: poStatus.approved,
+                icon: (
+                  <CheckCircle2 className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Rejected",
+                value: poStatus.rejected,
+                icon: (
+                  <XCircle className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Completed",
+                value: poStatus.completed,
+                icon: (
+                  <PackageCheck className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Cancelled",
+                value: poStatus.cancelled,
+                icon: (
+                  <XCircle className="h-4 w-4" />
+                ),
+              },
+            ]}
+          />
 
-            <div className="flex items-start justify-between">
+          {/* INVOICE STATUS */}
 
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">
-                  Purchase Invoice Status
-                </h2>
+          <StatusProgress
+            title="Invoice Status"
+            icon={
+              <FileText className="h-5 w-5" />
+            }
+            items={[
+              {
+                label: "Pending",
+                value: invoiceStatus.pending,
+                icon: (
+                  <Clock3 className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Partial",
+                value: invoiceStatus.partial,
+                icon: (
+                  <BarChart3 className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Paid",
+                value: invoiceStatus.paid,
+                icon: (
+                  <CheckCircle2 className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Overdue",
+                value: invoiceStatus.overdue,
+                icon: (
+                  <AlertTriangle className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Cancelled",
+                value: invoiceStatus.cancelled,
+                icon: (
+                  <XCircle className="h-4 w-4" />
+                ),
+              },
+            ]}
+          />
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Current supplier invoice payment status
-                </p>
-              </div>
+          {/* RETURN STATUS */}
 
-              <Receipt
-                size={20}
-                className="text-blue-600"
-              />
-
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-
-              <SummaryBox
-                label="Total"
-                value={
-                  dashboard.summary
-                    .totalPurchaseInvoices
-                }
-              />
-
-              <SummaryBox
-                label="Draft"
-                value={
-                  dashboard.summary
-                    .draftPurchaseInvoices
-                }
-              />
-
-              <SummaryBox
-                label="Unpaid"
-                value={
-                  dashboard.summary
-                    .unpaidPurchaseInvoices
-                }
-              />
-
-              <SummaryBox
-                label="Partially Paid"
-                value={
-                  dashboard.summary
-                    .partiallyPaidPurchaseInvoices
-                }
-              />
-
-              <SummaryBox
-                label="Paid"
-                value={
-                  dashboard.summary
-                    .paidPurchaseInvoices
-                }
-              />
-
-              <SummaryBox
-                label="Cancelled"
-                value={
-                  dashboard.summary
-                    .cancelledPurchaseInvoices
-                }
-              />
-
-            </div>
-
-          </div>
-
-          {/* PURCHASE RETURN STATUS */}
-
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-
-            <div className="flex items-start justify-between">
-
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">
-                  Purchase Return Status
-                </h2>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  Current supplier return status
-                </p>
-              </div>
-
-              <RotateCcw
-                size={20}
-                className="text-orange-600"
-              />
-
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-
-              <SummaryBox
-                label="Total"
-                value={
-                  dashboard.summary
-                    .totalPurchaseReturns
-                }
-              />
-
-              <SummaryBox
-                label="Pending"
-                value={
-                  dashboard.summary
-                    .pendingPurchaseReturns
-                }
-              />
-
-              <SummaryBox
-                label="Completed"
-                value={
-                  dashboard.summary
-                    .completedPurchaseReturns
-                }
-              />
-
-              <SummaryBox
-                label="Cancelled"
-                value={
-                  dashboard.summary
-                    .cancelledPurchaseReturns
-                }
-              />
-
-            </div>
-
-          </div>
-
+          <StatusProgress
+            title="Return Status"
+            icon={
+              <RotateCcw className="h-5 w-5" />
+            }
+            items={[
+              {
+                label: "Pending",
+                value: returnStatus.pending,
+                icon: (
+                  <Clock3 className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Approved",
+                value: returnStatus.approved,
+                icon: (
+                  <CheckCircle2 className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Completed",
+                value: returnStatus.completed,
+                icon: (
+                  <PackageCheck className="h-4 w-4" />
+                ),
+              },
+              {
+                label: "Rejected",
+                value: returnStatus.rejected,
+                icon: (
+                  <XCircle className="h-4 w-4" />
+                ),
+              },
+            ]}
+          />
         </div>
 
         {/* =================================================
             RECENT PURCHASE ORDERS
         ================================================= */}
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <RecentSection
+          title="Recent Purchase Orders"
+          icon={
+            <ShoppingCart className="h-5 w-5" />
+          }
+          href="/purchasing/orders"
+          emptyMessage="No recent purchase orders."
+        >
+          {recentPurchaseOrders.map(
+            (po) => (
+              <div
+                key={po.id}
+                className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 md:flex-row md:items-center md:justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+                    <ShoppingCart className="h-5 w-5 text-blue-600" />
+                  </div>
 
-          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {po.poNumber ??
+                        po.purchaseOrderNumber ??
+                        `PO-${po.id}`}
+                    </p>
 
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Recent Purchase Orders
-              </h2>
+                    <p className="text-xs text-gray-500">
+                      {po.supplierName ??
+                        po.supplier?.supplierName ??
+                        po.supplier?.name ??
+                        "Unknown Supplier"}
+                    </p>
+                  </div>
+                </div>
 
-              <p className="mt-1 text-sm text-gray-500">
-                Latest supplier purchase orders
-              </p>
-            </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {formatCurrency(
+                        po.totalAmount
+                      )}
+                    </p>
 
-            <Link
-              href="/dashboard/purchasing/orders"
-              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-blue-600 transition hover:text-blue-700"
-            >
-              View All
-              <ArrowRight size={15} />
-            </Link>
+                    <p className="text-xs text-gray-500">
+                      {formatDate(
+                        po.createdAt ??
+                          po.orderDate
+                      )}
+                    </p>
+                  </div>
 
-          </div>
-
-          <div className="overflow-x-auto">
-
-            <table className="w-full min-w-[700px] text-left text-sm">
-
-              <thead className="bg-gray-50">
-
-                <tr>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    PO Number
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Product
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Amount
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Status
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Date
-                  </th>
-
-                </tr>
-
-              </thead>
-
-              <tbody className="divide-y divide-gray-100">
-
-                {dashboard.recentOrders.length ===
-                0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-10 text-center text-sm text-gray-500"
-                    >
-                      No purchase orders found.
-                    </td>
-                  </tr>
-                ) : (
-                  dashboard.recentOrders.map(
-                    (order) => (
-                      <tr
-                        key={order.id}
-                        className="transition hover:bg-gray-50"
-                      >
-
-                        <td className="px-5 py-4">
-
-                          <Link
-                            href={`/dashboard/purchasing/orders/${order.id}`}
-                            className="font-medium text-blue-600 hover:text-blue-700"
-                          >
-                            {order.poNumber}
-                          </Link>
-
-                        </td>
-
-                        <td className="max-w-[280px] truncate px-5 py-4 text-gray-600">
-
-                          {order.items
-                            ?.map(
-                              (item) =>
-                                item.product
-                                  ?.productName ||
-                                item.product
-                                  ?.name
-                            )
-                            .filter(Boolean)
-                            .join(", ") ||
-                            "—"}
-
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 font-medium text-gray-900">
-
-                          Rs.{" "}
-                          {Number(
-                            order.totalAmount
-                          ).toLocaleString(
-                            "en-LK",
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }
-                          )}
-
-                        </td>
-
-                        <td className="px-5 py-4">
-
-                          <StatusBadge
-                            status={formatStatus(
-                              order.status
-                            )}
-                          />
-
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 text-gray-500">
-
-                          {formatDate(
-                            order.createdAt
-                          )}
-
-                        </td>
-
-                      </tr>
-                    )
-                  )
-                )}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-        </div>
+                  <StatusBadge
+                    status={po.status}
+                  />
+                </div>
+              </div>
+            )
+          )}
+        </RecentSection>
 
         {/* =================================================
-            RECENT GRNs + RETURNS
+            RECENT GRNs
         ================================================= */}
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <RecentSection
+          title="Recent GRNs"
+          icon={
+            <PackageCheck className="h-5 w-5" />
+          }
+          href="/purchasing/grn"
+          emptyMessage="No recent GRNs."
+        >
+          {recentGRNs.map((grn) => (
+            <div
+              key={grn.id}
+              className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 md:flex-row md:items-center md:justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
+                  <PackageCheck className="h-5 w-5 text-green-600" />
+                </div>
 
-          {/* RECENT GRNs */}
+                <div>
+                  <p className="font-medium text-gray-900">
+                    {grn.grnNumber ??
+                      `GRN-${grn.id}`}
+                  </p>
 
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-
-            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">
-                  Recent Goods Received
-                </h2>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  Recently received goods
-                </p>
+                  <p className="text-xs text-gray-500">
+                    PO #
+                    {grn.purchaseOrder?.poNumber ??
+                      grn.purchaseOrder
+                        ?.purchaseOrderNumber ??
+                      grn.purchaseOrderId ??
+                      "-"}
+                  </p>
+                </div>
               </div>
 
-              <Link
-                href="/dashboard/purchasing/grn"
-                className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
-              >
-                View All
-                <ArrowRight size={15} />
-              </Link>
-
-            </div>
-
-            <div className="divide-y divide-gray-100">
-
-              {dashboard.recentGRNs.length ===
-              0 ? (
-                <div className="px-5 py-10 text-center text-sm text-gray-500">
-                  No GRNs found.
-                </div>
-              ) : (
-                dashboard.recentGRNs.map(
-                  (grn) => (
-                    <Link
-                      key={grn.id}
-                      href={`/dashboard/purchasing/grn/${grn.id}`}
-                      className="flex items-center justify-between gap-4 px-5 py-4 transition hover:bg-gray-50"
-                    >
-
-                      <div className="min-w-0">
-
-                        <p className="font-medium text-gray-900">
-                          {grn.grnNumber}
-                        </p>
-
-                        <p className="mt-1 truncate text-xs text-gray-500">
-
-                          PO-
-                          {String(
-                            grn.purchaseOrderId
-                          ).padStart(5, "0")}
-
-                          {" · "}
-
-                          {grn.items
-                            ?.map(
-                              (item) =>
-                                item.product
-                                  ?.productName ||
-                                item.product?.name
-                            )
-                            .filter(Boolean)
-                            .join(", ") ||
-                            "No product"}
-
-                        </p>
-
-                      </div>
-
-                      <StatusBadge
-                        status={formatStatus(
-                          grn.status
-                        )}
-                      />
-
-                    </Link>
-                  )
-                )
-              )}
-
-            </div>
-
-          </div>
-
-          {/* RECENT RETURNS */}
-
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-
-            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">
-                  Recent Purchase Returns
-                </h2>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  Latest supplier returns
+              <div className="flex items-center gap-4">
+                <p className="text-xs text-gray-500">
+                  {formatDate(
+                    grn.receivedDate ??
+                      grn.createdAt
+                  )}
                 </p>
+
+                <StatusBadge
+                  status={grn.status}
+                />
               </div>
+            </div>
+          ))}
+        </RecentSection>
 
-              <Link
-                href="/dashboard/purchasing/returns"
-                className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+        {/* =================================================
+            RECENT RETURNS
+        ================================================= */}
+
+        <RecentSection
+          title="Recent Purchase Returns"
+          icon={
+            <RotateCcw className="h-5 w-5" />
+          }
+          href="/purchasing/returns"
+          emptyMessage="No recent purchase returns."
+        >
+          {recentReturns.map(
+            (returnItem) => (
+              <div
+                key={returnItem.id}
+                className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 md:flex-row md:items-center md:justify-between"
               >
-                View All
-                <ArrowRight size={15} />
-              </Link>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100">
+                    <RotateCcw className="h-5 w-5 text-orange-600" />
+                  </div>
 
-            </div>
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {returnItem.returnNumber ??
+                        `RET-${returnItem.id}`}
+                    </p>
 
-            <div className="divide-y divide-gray-100">
-
-              {dashboard.recentReturns.length ===
-              0 ? (
-                <div className="px-5 py-10 text-center text-sm text-gray-500">
-                  No purchase returns found.
+                    <p className="text-xs text-gray-500">
+                      {returnItem.supplierName ??
+                        returnItem.supplier
+                          ?.supplierName ??
+                        returnItem.supplier?.name ??
+                        "Unknown Supplier"}
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                dashboard.recentReturns.map(
-                  (item) => (
-                    <Link
-                      key={item.id}
-                      href={`/dashboard/purchasing/returns/${item.id}`}
-                      className="flex items-center justify-between gap-4 px-5 py-4 transition hover:bg-gray-50"
-                    >
 
-                      <div className="min-w-0">
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {formatCurrency(
+                        returnItem.totalAmount
+                      )}
+                    </p>
 
-                        <p className="font-medium text-gray-900">
-                          {item.returnNumber}
-                        </p>
+                    <p className="text-xs text-gray-500">
+                      {formatDate(
+                        returnItem.returnDate ??
+                          returnItem.createdAt
+                      )}
+                    </p>
+                  </div>
 
-                        <p className="mt-1 truncate text-xs text-gray-500">
-
-                          {item.reason ||
-                            "Purchase return"}
-
-                          {" · "}
-
-                          {formatDate(
-                            item.createdAt
-                          )}
-
-                        </p>
-
-                      </div>
-
-                      <div className="shrink-0 text-right">
-
-                        <p className="font-medium text-gray-900">
-                          {item.items?.reduce(
-                            (
-                              total,
-                              returnItem
-                            ) =>
-                              total +
-                              Number(
-                                returnItem.quantity ||
-                                  0
-                              ),
-                            0
-                          ) || 0}{" "}
-                          items
-                        </p>
-
-                        <div className="mt-1">
-
-                          <StatusBadge
-                            status={formatStatus(
-                              item.status
-                            )}
-                          />
-
-                        </div>
-
-                      </div>
-
-                    </Link>
-                  )
-                )
-              )}
-
-            </div>
-
-          </div>
-
-        </div>
+                  <StatusBadge
+                    status={
+                      returnItem.status
+                    }
+                  />
+                </div>
+              </div>
+            )
+          )}
+        </RecentSection>
 
         {/* =================================================
             RECENT INVOICES
         ================================================= */}
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <RecentSection
+          title="Recent Purchase Invoices"
+          icon={
+            <FileText className="h-5 w-5" />
+          }
+          href="/purchasing/invoices"
+          emptyMessage="No recent purchase invoices."
+        >
+          {recentInvoices.map(
+            (invoice) => (
+              <div
+                key={invoice.id}
+                className="flex flex-col gap-3 rounded-lg border border-gray-100 bg-gray-50 p-4 md:flex-row md:items-center md:justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100">
+                    <FileText className="h-5 w-5 text-purple-600" />
+                  </div>
 
-          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {invoice.invoiceNumber ??
+                        `INV-${invoice.id}`}
+                    </p>
 
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">
-                Recent Purchase Invoices
-              </h2>
+                    <p className="text-xs text-gray-500">
+                      {invoice.supplierName ??
+                        invoice.supplier
+                          ?.supplierName ??
+                        invoice.supplier?.name ??
+                        "Unknown Supplier"}
+                    </p>
+                  </div>
+                </div>
 
-              <p className="mt-1 text-sm text-gray-500">
-                Latest supplier invoices
-              </p>
-            </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {formatCurrency(
+                        invoice.totalAmount
+                      )}
+                    </p>
 
-            <Link
-              href="/dashboard/purchasing/invoices"
-              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
-            >
-              View All
-              <ArrowRight size={15} />
-            </Link>
+                    <p className="text-xs text-gray-500">
+                      {formatDate(
+                        invoice.invoiceDate ??
+                          invoice.createdAt
+                      )}
+                    </p>
+                  </div>
 
-          </div>
-
-          <div className="overflow-x-auto">
-
-            <table className="w-full min-w-[700px] text-left text-sm">
-
-              <thead className="bg-gray-50">
-
-                <tr>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Invoice Number
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    PO
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Amount
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Payment Status
-                  </th>
-
-                  <th className="px-5 py-3 font-medium text-gray-600">
-                    Date
-                  </th>
-
-                </tr>
-
-              </thead>
-
-              <tbody className="divide-y divide-gray-100">
-
-                {dashboard.recentInvoices.length ===
-                0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-5 py-10 text-center text-sm text-gray-500"
-                    >
-                      No purchase invoices found.
-                    </td>
-                  </tr>
-                ) : (
-                  dashboard.recentInvoices.map(
-                    (invoice) => (
-                      <tr
-                        key={invoice.id}
-                        className="transition hover:bg-gray-50"
-                      >
-
-                        <td className="px-5 py-4">
-
-                          <Link
-                            href={`/dashboard/purchasing/invoices/${invoice.id}`}
-                            className="font-medium text-blue-600 hover:text-blue-700"
-                          >
-                            {invoice.invoiceNumber}
-                          </Link>
-
-                        </td>
-
-                        <td className="px-5 py-4 text-gray-600">
-
-                          PO-
-                          {String(
-                            invoice.purchaseOrderId
-                          ).padStart(5, "0")}
-
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 font-medium text-gray-900">
-
-                          Rs.{" "}
-                          {Number(
-                            invoice.grandTotal ?? 0
-                          ).toLocaleString(
-                            "en-LK",
-                            {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }
-                          )}
-
-                        </td>
-
-                        <td className="px-5 py-4">
-
-                          <StatusBadge
-                            status={formatStatus(
-                              invoice.paymentStatus
-                            )}
-                          />
-
-                        </td>
-
-                        <td className="whitespace-nowrap px-5 py-4 text-gray-500">
-
-                          {formatDate(
-                            invoice.createdAt
-                          )}
-
-                        </td>
-
-                      </tr>
-                    )
-                  )
-                )}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-        </div>
-
+                  <StatusBadge
+                    status={
+                      invoice.status
+                    }
+                  />
+                </div>
+              </div>
+            )
+          )}
+        </RecentSection>
       </div>
     </div>
   );
 }
 
 /* =========================================================
-   OVERVIEW ITEM
+   MODULE CARD
 ========================================================= */
 
-function OverviewItem({
-  label,
+function ModuleCard({
+  href,
+  icon,
+  title,
   value,
+  pending,
 }: {
-  label: string;
+  href: string;
+  icon: React.ReactNode;
+  title: string;
   value: number;
+  pending: number;
 }) {
   return (
-    <div className="rounded-lg bg-gray-50 px-4 py-3.5">
+    <Link
+      href={href}
+      className="group rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          {icon}
+        </div>
 
-      <p className="text-xs text-gray-500">
-        {label}
+        <ArrowRight className="h-4 w-4 text-gray-400 transition group-hover:translate-x-1 group-hover:text-blue-600" />
+      </div>
+
+      <p className="text-sm font-medium text-gray-500">
+        {title}
       </p>
 
-      <p className="mt-1 text-xl font-semibold text-gray-900">
+      <p className="mt-1 text-2xl font-bold text-gray-900">
         {value}
       </p>
 
+      <div className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+        <Clock3 className="h-3.5 w-3.5" />
+
+        <span>
+          {pending} pending
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+/* =========================================================
+   SECTION HEADER
+========================================================= */
+
+function SectionHeader({
+  icon,
+  title,
+}: {
+  icon: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <div className="mb-4 flex items-center gap-2">
+      <div className="text-blue-600">
+        {icon}
+      </div>
+
+      <h2 className="text-lg font-semibold text-gray-900">
+        {title}
+      </h2>
     </div>
   );
 }
@@ -1356,23 +1188,29 @@ function OverviewItem({
 ========================================================= */
 
 function SummaryBox({
-  label,
+  title,
   value,
+  icon,
 }: {
-  label: string;
-  value: number;
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg bg-gray-50 px-4 py-3.5">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm text-gray-500">
+          {title}
+        </p>
 
-      <p className="text-xs text-gray-500">
-        {label}
-      </p>
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          {icon}
+        </div>
+      </div>
 
-      <p className="mt-1 text-xl font-semibold text-gray-900">
+      <p className="text-xl font-bold text-gray-900">
         {value}
       </p>
-
     </div>
   );
 }
@@ -1382,54 +1220,73 @@ function SummaryBox({
 ========================================================= */
 
 function StatusProgress({
-  label,
-  value,
-  total,
+  title,
+  icon,
+  items,
 }: {
-  label: string;
-  value: number;
-  total: number;
+  title: string;
+  icon: React.ReactNode;
+  items: {
+    label: string;
+    value: number;
+    icon: React.ReactNode;
+  }[];
 }) {
-  const percentage =
-    total > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (value / total) * 100
-          )
-        )
-      : 0;
+  const total = items.reduce(
+    (sum, item) =>
+      sum + (item.value ?? 0),
+    0
+  );
 
   return (
-    <div>
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex items-center gap-2">
+        <div className="text-blue-600">
+          {icon}
+        </div>
 
-      <div className="mb-2 flex items-center justify-between text-sm">
-
-        <span className="text-gray-600">
-          {label}
-        </span>
-
-        <span className="font-medium text-gray-900">
-          {value}
-        </span>
-
+        <h3 className="font-semibold text-gray-900">
+          {title}
+        </h3>
       </div>
 
-      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+      <div className="space-y-4">
+        {items.map((item) => {
+          const percentage =
+            total > 0
+              ? (item.value / total) * 100
+              : 0;
 
-        <div
-          className="h-full rounded-full bg-blue-600 transition-all duration-500"
-          style={{
-            width: `${percentage}%`,
-          }}
-        />
+          return (
+            <div
+              key={item.label}
+            >
+              <div className="mb-1.5 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2 text-gray-600">
+                  {item.icon}
 
+                  <span>
+                    {item.label}
+                  </span>
+                </div>
+
+                <span className="font-medium text-gray-900">
+                  {item.value}
+                </span>
+              </div>
+
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all"
+                  style={{
+                    width: `${percentage}%`,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
-
-      <p className="mt-1 text-right text-xs text-gray-400">
-        {percentage}%
-      </p>
-
     </div>
   );
 }
@@ -1441,58 +1298,104 @@ function StatusProgress({
 function StatusBadge({
   status,
 }: {
-  status: string;
+  status?: string;
 }) {
-  const styles: Record<
-    string,
-    string
-  > = {
-    Pending:
-      "bg-yellow-50 text-yellow-700",
+  const normalized =
+    status
+      ?.toLowerCase()
+      .replace(/_/g, " ")
+      .trim() || "unknown";
 
-    Approved:
-      "bg-blue-50 text-blue-700",
+  let className =
+    "bg-gray-100 text-gray-700";
 
-    Received:
-      "bg-green-50 text-green-700",
-
-    Completed:
-      "bg-green-50 text-green-700",
-
-    Cancelled:
-      "bg-red-50 text-red-700",
-
-    Rejected:
-      "bg-red-50 text-red-700",
-
-    Draft:
-      "bg-gray-50 text-gray-700",
-
-    Unpaid:
-      "bg-yellow-50 text-yellow-700",
-
-    "Partially Paid":
-      "bg-orange-50 text-orange-700",
-
-    Paid:
-      "bg-green-50 text-green-700",
-
-    Partially_received:
-      "bg-orange-50 text-orange-700",
-
-    "Partially received":
-      "bg-orange-50 text-orange-700",
-  };
+  if (
+    normalized.includes("approved") ||
+    normalized.includes("completed") ||
+    normalized.includes("paid") ||
+    normalized.includes("received")
+  ) {
+    className =
+      "bg-green-100 text-green-700";
+  } else if (
+    normalized.includes("pending") ||
+    normalized.includes("partial")
+  ) {
+    className =
+      "bg-yellow-100 text-yellow-700";
+  } else if (
+    normalized.includes("rejected") ||
+    normalized.includes("cancelled") ||
+    normalized.includes("canceled") ||
+    normalized.includes("overdue")
+  ) {
+    className =
+      "bg-red-100 text-red-700";
+  }
 
   return (
     <span
-      className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
-        styles[status] ||
-        "bg-gray-100 text-gray-600"
-      }`}
+      className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${className}`}
     >
-      {status}
+      {formatStatus(status)}
     </span>
+  );
+}
+
+/* =========================================================
+   RECENT SECTION
+========================================================= */
+
+function RecentSection({
+  title,
+  icon,
+  href,
+  emptyMessage,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  href: string;
+  emptyMessage: string;
+  children: React.ReactNode;
+}) {
+  const hasChildren =
+    Array.isArray(children)
+      ? children.length > 0
+      : !!children;
+
+  return (
+    <section className="mb-8">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="text-blue-600">
+            {icon}
+          </div>
+
+          <h2 className="text-lg font-semibold text-gray-900">
+            {title}
+          </h2>
+        </div>
+
+        <Link
+          href={href}
+          className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+        >
+          View all
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        {hasChildren ? (
+          children
+        ) : (
+          <div className="flex min-h-[100px] items-center justify-center text-sm text-gray-500">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1501,7 +1404,7 @@ function StatusBadge({
 ========================================================= */
 
 function formatStatus(
-  status: string
+  status?: string
 ) {
   if (!status) {
     return "Unknown";
@@ -1520,24 +1423,19 @@ function formatStatus(
 ========================================================= */
 
 function formatDate(
-  date: string
+  value?: string
 ) {
-  if (!date) {
-    return "—";
+  if (!value) {
+    return "-";
   }
 
-  const parsedDate =
-    new Date(date);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      parsedDate.getTime()
-    )
-  ) {
-    return "—";
+  if (Number.isNaN(date.getTime())) {
+    return value;
   }
 
-  return parsedDate.toLocaleDateString(
+  return date.toLocaleDateString(
     "en-GB",
     {
       day: "2-digit",

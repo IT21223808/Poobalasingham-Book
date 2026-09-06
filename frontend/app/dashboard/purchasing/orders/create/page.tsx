@@ -4,18 +4,18 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  ShoppingCart,
-  Save,
-  Package,
-  FileText,
-  AlertCircle,
-  ChevronRight,
+  CalendarDays,
+  CheckCircle2,
+  Loader2,
+  Plus,
   Trash2,
 } from "lucide-react";
 
-/* =========================================================
-   TYPES
-========================================================= */
+import api from "@/services/api";
+
+// =========================================================
+// TYPES
+// =========================================================
 
 interface Product {
   id: string;
@@ -54,179 +54,149 @@ interface OrderItem {
   unitPrice: number;
 }
 
-/* =========================================================
-   API
-========================================================= */
+// =========================================================
+// HELPERS
+// =========================================================
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-const PRODUCTS_API = `${API_URL}/products`;
-
-const SUPPLIERS_API = `${API_URL}/suppliers`;
-
-const REQUISITIONS_API =
-  `${API_URL}/purchasing/requisitions`;
-
-const ORDERS_API =
-  `${API_URL}/purchasing/orders`;
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function extractArray<T>(data: unknown): T[] {
+function extractArray<T>(data: any): T[] {
   if (Array.isArray(data)) {
-    return data as T[];
+    return data;
   }
 
-  if (data && typeof data === "object") {
-    const objectData =
-      data as Record<string, unknown>;
+  if (Array.isArray(data?.data)) {
+    return data.data;
+  }
 
-    if (Array.isArray(objectData.data)) {
-      return objectData.data as T[];
-    }
+  if (Array.isArray(data?.items)) {
+    return data.items;
+  }
 
-    if (Array.isArray(objectData.items)) {
-      return objectData.items as T[];
-    }
-
-    if (Array.isArray(objectData.results)) {
-      return objectData.results as T[];
-    }
+  if (Array.isArray(data?.results)) {
+    return data.results;
   }
 
   return [];
 }
 
-/* =========================================================
-   PRICE
-========================================================= */
-
-function getProductPurchasePrice(
-  product?: Product
-): number {
+function getProductPurchasePrice(product?: Product): number {
   if (!product) {
     return 0;
   }
 
-  const price = Number(
+  const price =
+    product.purchasePrice ??
     product.costPrice ??
-      product.purchasePrice ??
-      product.sellingPrice ??
-      0
-  );
+    product.sellingPrice ??
+    0;
 
-  return Number.isFinite(price)
-    ? price
+  const numericPrice = Number(price);
+
+  return Number.isFinite(numericPrice)
+    ? numericPrice
     : 0;
 }
 
-/* =========================================================
-   CURRENCY
-========================================================= */
-
-function formatCurrency(
-  value: number
-): string {
-  return value.toLocaleString("en-LK", {
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("en-LK", {
+    style: "currency",
+    currency: "LKR",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  });
+  }).format(value);
 }
 
-/* =========================================================
-   DATE
-========================================================= */
+function toISODate(value: string): string {
+  if (!value) {
+    return "";
+  }
 
-function toISODate(date: string): string {
-  return new Date(
-    `${date}T00:00:00.000Z`
-  ).toISOString();
+  return new Date(`${value}T00:00:00`).toISOString();
 }
 
-/* =========================================================
-   PAGE
-========================================================= */
+// =========================================================
+// PAGE
+// =========================================================
 
 export default function CreatePurchaseOrderPage() {
-  /* =======================================================
-     DATA
-  ======================================================= */
+  // =======================================================
+  // DATA
+  // =======================================================
 
-  const [products, setProducts] =
-    useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [requisitions, setRequisitions] = useState<Requisition[]>(
+    [],
+  );
 
-  const [suppliers, setSuppliers] =
-    useState<Supplier[]>([]);
+  // =======================================================
+  // FORM
+  // =======================================================
 
-  const [requisitions, setRequisitions] =
-    useState<Requisition[]>([]);
-
-    const [notes, setNotes] = useState("");
-  /* =======================================================
-     FORM
-  ======================================================= */
+  const [notes, setNotes] = useState("");
 
   const [requisitionId, setRequisitionId] =
     useState("");
 
   const [selectedSupplierId, setSelectedSupplierId] =
-    useState<number | null>(null);
+    useState("");
 
-  const [poDate, setPoDate] = useState(
-    new Date()
-      .toISOString()
-      .split("T")[0]
-  );
+  const [poDate, setPoDate] = useState("");
 
-  const [
-    expectedDeliveryDate,
-    setExpectedDeliveryDate,
-  ] = useState("");
+  const [expectedDeliveryDate, setExpectedDeliveryDate] =
+    useState("");
 
-  const [discount, setDiscount] =
-    useState(0);
+  const [discount, setDiscount] = useState("0");
 
-  const [tax, setTax] =
-    useState(0);
+  const [tax, setTax] = useState("0");
 
-  const [items, setItems] =
-    useState<OrderItem[]>([]);
+  const [items, setItems] = useState<OrderItem[]>([]);
 
-  /* =======================================================
-     ITEM FORM
-  ======================================================= */
+  // =======================================================
+  // ADD ITEM
+  // =======================================================
 
-  const [
-    selectedProductId,
-    setSelectedProductId,
-  ] = useState("");
+  const [selectedProductId, setSelectedProductId] =
+    useState("");
 
   const [itemQuantity, setItemQuantity] =
-    useState(1);
+    useState("1");
 
   const [itemUnitPrice, setItemUnitPrice] =
-    useState(0);
+    useState("0");
 
-  /* =======================================================
-     STATES
-  ======================================================= */
+  // =======================================================
+  // UI STATE
+  // =======================================================
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
   const [submitting, setSubmitting] =
     useState(false);
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    null,
+  );
 
-  /* =======================================================
-     LOAD INITIAL DATA
-  ======================================================= */
+  // =======================================================
+  // INITIAL DATE
+  // =======================================================
+
+  useEffect(() => {
+    const today = new Date();
+
+    const localDate =
+      today.getFullYear() +
+      "-" +
+      String(today.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(today.getDate()).padStart(2, "0");
+
+    setPoDate(localDate);
+  }, []);
+
+  // =======================================================
+  // LOAD INITIAL DATA
+  // =======================================================
 
   useEffect(() => {
     loadInitialData();
@@ -242,916 +212,660 @@ export default function CreatePurchaseOrderPage() {
         suppliersResponse,
         requisitionsResponse,
       ] = await Promise.all([
-        fetch(PRODUCTS_API, {
-          cache: "no-store",
-        }),
+        api.get("/products"),
 
-        fetch(SUPPLIERS_API, {
-          cache: "no-store",
-        }),
+        api.get("/suppliers"),
 
-        fetch(
-          `${REQUISITIONS_API}?status=APPROVED`,
-          {
-            cache: "no-store",
-          }
-        ),
+        api.get("/purchasing/requisitions", {
+          params: {
+            status: "APPROVED",
+          },
+        }),
       ]);
 
-      if (!productsResponse.ok) {
-        throw new Error(
-          "Failed to load products."
-        );
-      }
-
-      if (!suppliersResponse.ok) {
-        throw new Error(
-          "Failed to load suppliers."
-        );
-      }
-
-      if (!requisitionsResponse.ok) {
-        throw new Error(
-          "Failed to load approved requisitions."
-        );
-      }
-
       const productsData =
-        await productsResponse.json();
+        productsResponse.data;
 
       const suppliersData =
-        await suppliersResponse.json();
+        suppliersResponse.data;
 
       const requisitionsData =
-        await requisitionsResponse.json();
+        requisitionsResponse.data;
 
       const loadedProducts =
         extractArray<Product>(
-          productsData
+          productsData,
         );
 
       const loadedSuppliers =
         extractArray<Supplier>(
-          suppliersData
+          suppliersData,
         );
 
       const loadedRequisitions =
         extractArray<Requisition>(
-          requisitionsData
+          requisitionsData,
         ).filter(
           (requisition) =>
             String(
-              requisition.status
-            ).toUpperCase() === "APPROVED"
+              requisition.status,
+            ).toUpperCase() === "APPROVED",
         );
 
       console.log(
-        "Approved requisitions:",
-        loadedRequisitions
+        "Products:",
+        loadedProducts,
       );
 
       console.log(
         "Suppliers:",
-        loadedSuppliers
+        loadedSuppliers,
       );
 
-      setProducts(
-        loadedProducts
+      console.log(
+        "Approved requisitions:",
+        loadedRequisitions,
       );
 
-      setSuppliers(
-        loadedSuppliers
-      );
-
+      setProducts(loadedProducts);
+      setSuppliers(loadedSuppliers);
       setRequisitions(
-        loadedRequisitions
+        loadedRequisitions,
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error(
         "Create PO load error:",
-        err
+        err,
       );
 
+      const message =
+        err?.response?.data?.message;
+
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load required data."
+        Array.isArray(message)
+          ? message.join(", ")
+          : typeof message === "string"
+            ? message
+            : err instanceof Error
+              ? err.message
+              : "Failed to load required data.",
       );
     } finally {
       setLoading(false);
     }
   }
 
-  /* =======================================================
-     GET SELECTED REQUISITION
-  ======================================================= */
+  // =======================================================
+  // SELECTED REQUISITION
+  // =======================================================
 
   const selectedRequisition =
     useMemo(() => {
       if (!requisitionId) {
-        return null;
+        return undefined;
       }
 
-      return (
-        requisitions.find(
-          (requisition) =>
-            String(requisition.id) ===
-            String(requisitionId)
-        ) ?? null
+      return requisitions.find(
+        (requisition) =>
+          String(requisition.id) ===
+          String(requisitionId),
       );
     }, [
       requisitions,
       requisitionId,
     ]);
 
-  /* =======================================================
-     GET SELECTED SUPPLIER
-  ======================================================= */
+  // =======================================================
+  // SELECTED SUPPLIER
+  // =======================================================
 
   const selectedSupplier =
     useMemo(() => {
       if (!selectedSupplierId) {
-        return null;
+        return undefined;
       }
 
-      return (
-        suppliers.find(
-          (supplier) =>
-            Number(supplier.id) ===
-            Number(selectedSupplierId)
-        ) ?? null
+      return suppliers.find(
+        (supplier) =>
+          String(supplier.id) ===
+          String(selectedSupplierId),
       );
     }, [
       suppliers,
       selectedSupplierId,
     ]);
 
-  /* =======================================================
-     PRODUCT PRICE
-  ======================================================= */
+  // =======================================================
+  // SELECTED PRODUCT
+  // =======================================================
+
+  const selectedProduct =
+    useMemo(() => {
+      if (!selectedProductId) {
+        return undefined;
+      }
+
+      return products.find(
+        (product) =>
+          String(product.id) ===
+          String(selectedProductId),
+      );
+    }, [
+      products,
+      selectedProductId,
+    ]);
+
+  // =======================================================
+  // UPDATE PRODUCT PRICE
+  // =======================================================
 
   useEffect(() => {
-    if (!selectedProductId) {
-      setItemUnitPrice(0);
+    if (!selectedProduct) {
+      setItemUnitPrice("0");
       return;
     }
 
-    const product =
-      products.find(
-        (item) =>
-          String(item.id) ===
-          String(selectedProductId)
+    const price =
+      getProductPurchasePrice(
+        selectedProduct,
       );
 
-    if (!product) {
-      setItemUnitPrice(0);
-      return;
-    }
-
     setItemUnitPrice(
-      getProductPurchasePrice(
-        product
-      )
+      String(price),
     );
-  }, [
-    selectedProductId,
-    products,
-  ]);
+  }, [selectedProduct]);
 
-  /* =======================================================
-     REQUISITION CHANGE
-  ======================================================= */
+  // =======================================================
+  // REQUISITION CHANGE
+  // =======================================================
 
   function handleRequisitionChange(
-    value: string
+    value: string,
   ) {
+    setRequisitionId(value);
     setError(null);
 
-    setRequisitionId(value);
-
-    /*
-     * IMPORTANT:
-     * Supplier is NOT connected to requisition.
-     *
-     * Therefore we DO NOT reset supplier here.
-     * User selects supplier separately.
-     */
-
-    setItems([]);
-
-    setSelectedProductId("");
-
-    setItemQuantity(1);
-
-    setItemUnitPrice(0);
-
     if (!value) {
+      setItems([]);
       return;
     }
 
     const requisition =
       requisitions.find(
         (item) =>
-          String(item.id) ===
-          String(value)
+          String(item.id) === value,
       );
 
     if (!requisition) {
-      setError(
-        "Selected requisition was not found."
-      );
+      setItems([]);
       return;
     }
 
     if (
-      String(
-        requisition.status
-      ).toUpperCase() !==
+      String(requisition.status).toUpperCase() !==
       "APPROVED"
     ) {
       setError(
-        "Only approved requisitions can be used to create a purchase order."
+        "Only approved requisitions can be converted into a purchase order.",
       );
 
-      setRequisitionId("");
-
+      setItems([]);
       return;
     }
 
-    /* =====================================================
-       REQUISITION ITEMS
-    ===================================================== */
-
-    if (
-      !requisition.items ||
-      requisition.items.length === 0
-    ) {
-      setError(
-        "The selected approved requisition has no items."
-      );
-
-      return;
-    }
-
-    /*
-     * Convert requisition items
-     * into purchase order items.
-     */
+    const requisitionItems =
+      requisition.items ?? [];
 
     const mappedItems: OrderItem[] =
-      requisition.items.map(
+      requisitionItems.map(
         (item) => {
           const product =
-            item.product ||
+            item.product ??
             products.find(
-              (productItem) =>
-                String(
-                  productItem.id
-                ) ===
-                String(
-                  item.productId
-                )
-            );
-
-          const price =
-            getProductPurchasePrice(
-              product
+              (product) =>
+                String(product.id) ===
+                String(item.productId),
             );
 
           return {
-            productId:
-              String(
-                item.productId
-              ),
-
+            productId: String(
+              item.productId,
+            ),
             productName:
-              product?.productName ||
-              "Unknown Product",
-
+              product?.productName ??
+              `Product ${item.productId}`,
             productCode:
               product?.productCode,
-
-            quantity:
-              Number(
-                item.quantity
-              ) > 0
-                ? Number(
-                    item.quantity
-                  )
-                : 1,
-
-            unitPrice: price,
+            quantity: Number(
+              item.quantity,
+            ),
+            unitPrice:
+              getProductPurchasePrice(
+                product,
+              ),
           };
-        }
+        },
       );
 
-    setItems(
-      mappedItems
-    );
+    setItems(mappedItems);
   }
 
-  /* =======================================================
-     ADD ITEM
-  ======================================================= */
+  // =======================================================
+  // ADD ITEM
+  // =======================================================
 
   function handleAddItem() {
     setError(null);
 
-    if (!requisitionId) {
+    if (!selectedRequisition) {
       setError(
-        "Please select an approved requisition first."
+        "Please select an approved requisition.",
       );
       return;
     }
 
-    /*
-     * Supplier is mandatory for PO.
-     * But it comes from PO, NOT requisition.
-     */
-
-    if (!selectedSupplierId) {
+    if (!selectedSupplier) {
       setError(
-        "Please select a supplier."
+        "Please select a supplier.",
       );
       return;
     }
 
-    if (!selectedProductId) {
+    if (!selectedProduct) {
       setError(
-        "Please select a product."
+        "Please select a product.",
+      );
+      return;
+    }
+
+    const quantity =
+      Number(itemQuantity);
+
+    const unitPrice =
+      Number(itemUnitPrice);
+
+    if (
+      !Number.isFinite(quantity) ||
+      quantity < 1
+    ) {
+      setError(
+        "Quantity must be at least 1.",
       );
       return;
     }
 
     if (
-      !Number.isFinite(
-        itemQuantity
-      ) ||
-      itemQuantity <= 0
+      !Number.isFinite(unitPrice) ||
+      unitPrice < 0
     ) {
       setError(
-        "Quantity must be greater than 0."
+        "Unit price cannot be negative.",
       );
       return;
     }
+
+    const requisitionProductIds =
+      (selectedRequisition.items ?? []).map(
+        (item) =>
+          String(item.productId),
+      );
 
     if (
-      !Number.isFinite(
-        itemUnitPrice
-      ) ||
-      itemUnitPrice < 0
+      !requisitionProductIds.includes(
+        String(selectedProduct.id),
+      )
     ) {
       setError(
-        "Unit price cannot be negative."
+        "This product does not belong to the selected requisition.",
       );
       return;
     }
 
-    /*
-     * Product must belong to selected requisition.
-     */
+    setItems((currentItems) => {
+      const existingIndex =
+        currentItems.findIndex(
+          (item) =>
+            String(item.productId) ===
+            String(selectedProduct.id),
+        );
 
-    const requisitionProduct =
-      selectedRequisition?.items?.find(
-        (item) =>
-          String(
-            item.productId
-          ) ===
-          String(
-            selectedProductId
-          )
-      );
+      if (existingIndex >= 0) {
+        return currentItems.map(
+          (item, index) => {
+            if (
+              index !== existingIndex
+            ) {
+              return item;
+            }
 
-    if (!requisitionProduct) {
-      setError(
-        "This product is not part of the selected requisition."
-      );
-      return;
-    }
+            return {
+              ...item,
+              quantity:
+                item.quantity +
+                quantity,
+              unitPrice,
+            };
+          },
+        );
+      }
 
-    const product =
-      products.find(
-        (item) =>
-          String(item.id) ===
-          String(
-            selectedProductId
-          )
-      );
-
-    if (!product) {
-      setError(
-        "Product not found."
-      );
-      return;
-    }
-
-    const existingIndex =
-      items.findIndex(
-        (item) =>
-          String(
-            item.productId
-          ) ===
-          String(
-            selectedProductId
-          )
-      );
-
-    if (existingIndex !== -1) {
-      const updatedItems =
-        [...items];
-
-      updatedItems[
-        existingIndex
-      ] = {
-        ...updatedItems[
-          existingIndex
-        ],
-
-        quantity:
-          updatedItems[
-            existingIndex
-          ].quantity +
-          itemQuantity,
-
-        unitPrice:
-          itemUnitPrice,
-      };
-
-      setItems(
-        updatedItems
-      );
-    } else {
-      setItems([
-        ...items,
+      return [
+        ...currentItems,
         {
-          productId:
-            String(
-              product.id
-            ),
-
+          productId: String(
+            selectedProduct.id,
+          ),
           productName:
-            product.productName,
-
+            selectedProduct.productName,
           productCode:
-            product.productCode,
-
-          quantity:
-            itemQuantity,
-
-          unitPrice:
-            itemUnitPrice,
+            selectedProduct.productCode,
+          quantity,
+          unitPrice,
         },
-      ]);
-    }
+      ];
+    });
 
     setSelectedProductId("");
-    setItemQuantity(1);
-    setItemUnitPrice(0);
+    setItemQuantity("1");
+    setItemUnitPrice("0");
   }
 
-  /* =======================================================
-     REMOVE ITEM
-  ======================================================= */
+  // =======================================================
+  // REMOVE ITEM
+  // =======================================================
 
   function handleRemoveItem(
-    index: number
+    productId: string,
   ) {
-    setItems(
-      items.filter(
-        (_, itemIndex) =>
-          itemIndex !== index
-      )
+    setItems((currentItems) =>
+      currentItems.filter(
+        (item) =>
+          String(item.productId) !==
+          String(productId),
+      ),
     );
   }
 
-  /* =======================================================
-     UPDATE QUANTITY
-  ======================================================= */
+  // =======================================================
+  // UPDATE QUANTITY
+  // =======================================================
 
   function updateQuantity(
-    index: number,
-    value: number
+    productId: string,
+    value: string,
   ) {
     const quantity =
       Number(value);
 
-    const updatedItems =
-      [...items];
+    if (
+      !Number.isFinite(quantity) ||
+      quantity < 1
+    ) {
+      return;
+    }
 
-    updatedItems[index] = {
-      ...updatedItems[index],
-
-      quantity:
-        Number.isFinite(
-          quantity
-        ) &&
-        quantity > 0
-          ? quantity
-          : 1,
-    };
-
-    setItems(
-      updatedItems
+    setItems((currentItems) =>
+      currentItems.map((item) =>
+        String(item.productId) ===
+        String(productId)
+          ? {
+              ...item,
+              quantity,
+            }
+          : item,
+      ),
     );
   }
 
-  /* =======================================================
-     UPDATE PRICE
-  ======================================================= */
+  // =======================================================
+  // UPDATE UNIT PRICE
+  // =======================================================
 
   function updateUnitPrice(
-    index: number,
-    value: number
+    productId: string,
+    value: string,
   ) {
-    const price =
+    const unitPrice =
       Number(value);
 
-    const updatedItems =
-      [...items];
+    if (
+      !Number.isFinite(unitPrice) ||
+      unitPrice < 0
+    ) {
+      return;
+    }
 
-    updatedItems[index] = {
-      ...updatedItems[index],
-
-      unitPrice:
-        Number.isFinite(price) &&
-        price >= 0
-          ? price
-          : 0,
-    };
-
-    setItems(
-      updatedItems
+    setItems((currentItems) =>
+      currentItems.map((item) =>
+        String(item.productId) ===
+        String(productId)
+          ? {
+              ...item,
+              unitPrice,
+            }
+          : item,
+      ),
     );
   }
 
-  /* =======================================================
-     TOTALS
-  ======================================================= */
+  // =======================================================
+  // TOTALS
+  // =======================================================
 
-  const subtotal =
-    useMemo(() => {
-      return items.reduce(
-        (total, item) =>
-          total +
-          Number(
-            item.quantity || 0
-          ) *
-            Number(
-              item.unitPrice || 0
-            ),
-        0
-      );
-    }, [items]);
+  const subtotal = useMemo(() => {
+    return items.reduce(
+      (total, item) =>
+        total +
+        Number(item.quantity) *
+          Number(item.unitPrice),
+      0,
+    );
+  }, [items]);
 
   const discountAmount =
-    Math.min(
-      Math.max(
-        Number(discount) || 0,
-        0
-      ),
-      subtotal
-    );
+    useMemo(() => {
+      const value =
+        Number(discount);
+
+      if (
+        !Number.isFinite(value) ||
+        value < 0
+      ) {
+        return 0;
+      }
+
+      return value;
+    }, [discount]);
+
+  const taxableAmount = Math.max(
+    0,
+    subtotal - discountAmount,
+  );
 
   const taxAmount =
-    Math.max(
-      Number(tax) || 0,
-      0
-    );
+    useMemo(() => {
+      const value =
+        Number(tax);
+
+      if (
+        !Number.isFinite(value) ||
+        value < 0
+      ) {
+        return 0;
+      }
+
+      return value;
+    }, [tax]);
 
   const totalAmount =
-    subtotal -
-    discountAmount +
-    taxAmount;
+    taxableAmount + taxAmount;
 
-  /* =======================================================
-     SUBMIT
-  ======================================================= */
+  // =======================================================
+  // SUBMIT
+  // =======================================================
 
   async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
+    event: React.FormEvent,
   ) {
     event.preventDefault();
 
     setError(null);
 
-    /* =====================================================
-       REQUISITION
-    ===================================================== */
+    // -----------------------------------------------------
+    // VALIDATION
+    // -----------------------------------------------------
 
-    if (!requisitionId) {
+    if (!selectedRequisition) {
       setError(
-        "Please select an approved purchase requisition."
-      );
-      return;
-    }
-
-    const requisition =
-      requisitions.find(
-        (item) =>
-          String(item.id) ===
-          String(requisitionId)
-      );
-
-    if (!requisition) {
-      setError(
-        "Selected requisition is not available."
+        "Please select an approved requisition.",
       );
       return;
     }
 
     if (
       String(
-        requisition.status
-      ).toUpperCase() !==
-      "APPROVED"
+        selectedRequisition.status,
+      ).toUpperCase() !== "APPROVED"
     ) {
       setError(
-        "Only approved requisitions can create purchase orders."
+        "Selected requisition is not approved.",
       );
       return;
     }
 
-    /* =====================================================
-       SUPPLIER
-    ===================================================== */
-
-    if (!selectedSupplierId) {
+    if (!selectedSupplier) {
       setError(
-        "Please select a supplier."
+        "Please select a supplier.",
       );
       return;
     }
-
-    const supplier =
-      suppliers.find(
-        (item) =>
-          Number(item.id) ===
-          Number(selectedSupplierId)
-      );
-
-    if (!supplier) {
-      setError(
-        "Selected supplier was not found."
-      );
-      return;
-    }
-
-    /* =====================================================
-       PO DATE
-    ===================================================== */
 
     if (!poDate) {
       setError(
-        "Please select a PO date."
+        "Please select the purchase order date.",
       );
       return;
     }
 
-    /* =====================================================
-       DELIVERY DATE
-    ===================================================== */
-
-    if (
-      !expectedDeliveryDate
-    ) {
+    if (!expectedDeliveryDate) {
       setError(
-        "Please select an expected delivery date."
+        "Please select the expected delivery date.",
       );
       return;
     }
 
     if (
-      new Date(
-        expectedDeliveryDate
-      ) <
-      new Date(poDate)
+      expectedDeliveryDate <
+      poDate
     ) {
       setError(
-        "Expected delivery date cannot be earlier than the PO date."
+        "Expected delivery date cannot be earlier than the PO date.",
       );
       return;
     }
-
-    /* =====================================================
-       ITEMS
-    ===================================================== */
 
     if (items.length === 0) {
       setError(
-        "The selected requisition has no products."
+        "Please add at least one product.",
       );
       return;
     }
 
-    /* =====================================================
-       VALIDATE ITEMS
-    ===================================================== */
+    for (const item of items) {
+      if (
+        !item.productId ||
+        Number(item.quantity) < 1
+      ) {
+        setError(
+          "All items must have a valid quantity.",
+        );
+        return;
+      }
 
-    const invalidItem =
-      items.find(
-        (item) =>
-          !item.productId ||
-          !Number.isInteger(
-            Number(
-              item.quantity
-            )
-          ) ||
-          Number(
-            item.quantity
-          ) <= 0 ||
-          !Number.isFinite(
-            Number(
-              item.unitPrice
-            )
-          ) ||
-          Number(
-            item.unitPrice
-          ) < 0
-      );
-
-    if (invalidItem) {
-      setError(
-        "Please check product quantities and prices."
-      );
-      return;
+      if (
+        !Number.isFinite(
+          Number(item.unitPrice),
+        ) ||
+        Number(item.unitPrice) < 0
+      ) {
+        setError(
+          "All items must have a valid unit price.",
+        );
+        return;
+      }
     }
 
-    /* =====================================================
-       PAYLOAD
-    ===================================================== */
+    // -----------------------------------------------------
+    // PAYLOAD
+    // -----------------------------------------------------
 
     const payload = {
-
       requisitionId:
-        Number(
-          requisitionId
-        ),
+        Number(requisitionId),
 
       supplierId:
-        Number(
-          selectedSupplierId
-        ),
+        Number(selectedSupplierId),
 
       poDate:
-        toISODate(
-          poDate
-        ),
+        toISODate(poDate),
 
       expectedDeliveryDate:
         toISODate(
-          expectedDeliveryDate
+          expectedDeliveryDate,
         ),
 
       discountAmount:
-        Number(
-          discountAmount
-        ),
+        Number(discountAmount),
 
       taxAmount:
-        Number(
-          taxAmount
-        ),
+        Number(taxAmount),
 
       notes:
         notes.trim() || null,
 
-      items:
-        items.map(
-          (item) => ({
-            productId:
-              String(
-                item.productId
-              ),
+      items: items.map(
+        (item) => ({
+          productId:
+            String(item.productId),
 
-            quantity:
-              Number(
-                item.quantity
-              ),
+          quantity:
+            Number(item.quantity),
 
-            unitPrice:
-              Number(
-                item.unitPrice
-              ),
-          })
-        ),
+          unitPrice:
+            Number(item.unitPrice),
+        }),
+      ),
     };
-
-    console.log(
-      "Create Purchase Order Payload:",
-      payload
-    );
-
-    /* =====================================================
-       CREATE
-    ===================================================== */
 
     try {
       setSubmitting(true);
 
+      console.log(
+        "Creating purchase order:",
+        payload,
+      );
+
+      // ===================================================
+      // CREATE PURCHASE ORDER
+      // ===================================================
+
       const response =
-        await fetch(
-          ORDERS_API,
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify(
-                payload
-              ),
-          }
+        await api.post(
+          "/purchasing/orders",
+          payload,
         );
-
-      if (!response.ok) {
-        let message =
-          "Failed to create purchase order.";
-
-        try {
-          const data =
-            await response.json();
-
-          console.error(
-            "Purchase Order API Error:",
-            data
-          );
-
-          if (
-            typeof data?.message ===
-            "string"
-          ) {
-            message =
-              data.message;
-          } else if (
-            Array.isArray(
-              data?.message
-            )
-          ) {
-            message =
-              data.message
-                .map(
-                  (
-                    item: unknown
-                  ) => {
-                    if (
-                      typeof item ===
-                      "string"
-                    ) {
-                      return item;
-                    }
-
-                    if (
-                      item &&
-                      typeof item ===
-                        "object"
-                    ) {
-                      const obj =
-                        item as Record<
-                          string,
-                          unknown
-                        >;
-
-                      return String(
-                        obj.message ??
-                          obj.error ??
-                          JSON.stringify(
-                            obj
-                          )
-                      );
-                    }
-
-                    return String(
-                      item
-                    );
-                  }
-                )
-                .join(", ");
-          } else if (
-            typeof data?.error ===
-            "string"
-          ) {
-            message =
-              data.error;
-          }
-        } catch {
-          // Ignore invalid JSON
-        }
-
-        throw new Error(
-          message
-        );
-      }
 
       const createdOrder =
-        await response.json();
+        response.data;
 
       console.log(
         "Purchase order created:",
-        createdOrder
+        createdOrder,
       );
+
+      // ===================================================
+      // REDIRECT
+      // ===================================================
 
       const createdId =
         createdOrder?.id ??
@@ -1164,120 +878,117 @@ export default function CreatePurchaseOrderPage() {
         window.location.href =
           "/dashboard/purchasing/orders";
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(
         "Create purchase order error:",
-        err
+        err,
       );
 
+      const message =
+        err?.response?.data?.message;
+
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create purchase order."
+        Array.isArray(message)
+          ? message.join(", ")
+          : typeof message === "string"
+            ? message
+            : err instanceof Error
+              ? err.message
+              : "Unable to create purchase order.",
       );
     } finally {
       setSubmitting(false);
     }
   }
 
-  /* =======================================================
-     LOADING
-  ======================================================= */
+  // =======================================================
+  // LOADING
+  // =======================================================
 
   if (loading) {
     return (
-      <div className="min-h-full bg-gray-50 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto flex min-h-[500px] w-full max-w-7xl items-center justify-center">
-          <div className="text-center">
-            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-600">
+          <Loader2 className="h-5 w-5 animate-spin" />
 
-            <p className="mt-4 text-sm text-gray-500">
-              Loading requisitions and suppliers...
-            </p>
-          </div>
+          <span>
+            Loading purchase order data...
+          </span>
         </div>
       </div>
     );
   }
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  // =======================================================
+  // UI
+  // =======================================================
 
   return (
-    <div className="min-h-full bg-gray-50 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="w-full">
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-7xl px-6 py-8">
 
         {/* =================================================
             BREADCRUMB
         ================================================= */}
 
-        <div className="mb-5 flex items-center gap-2 text-sm">
+        <div className="mb-6 flex items-center gap-2 text-sm text-slate-500">
+          <Link
+            href="/dashboard"
+            className="hover:text-slate-900"
+          >
+            Dashboard
+          </Link>
+
+          <span>/</span>
 
           <Link
             href="/dashboard/purchasing"
-            className="font-medium text-gray-500 transition hover:text-gray-900"
+            className="hover:text-slate-900"
           >
             Purchasing
           </Link>
 
-          <ChevronRight
-            size={15}
-            className="text-gray-400"
-          />
+          <span>/</span>
 
           <Link
             href="/dashboard/purchasing/orders"
-            className="text-gray-500 transition-colors hover:text-gray-900"
+            className="hover:text-slate-900"
           >
-            Orders
+            Purchase Orders
           </Link>
 
-          <ChevronRight
-            size={15}
-            className="text-gray-400"
-          />
+          <span>/</span>
 
-          <span className="font-medium text-gray-900">
-            Create Purchase Order
+          <span className="text-slate-900">
+            Create
           </span>
-
         </div>
 
         {/* =================================================
             HEADER
         ================================================= */}
 
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/dashboard/purchasing/orders"
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-100"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Link>
 
-          <div className="flex items-center gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">
+                  Create Purchase Order
+                </h1>
 
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-              <ShoppingCart size={22} />
+                <p className="mt-1 text-sm text-slate-500">
+                  Create a purchase order from an approved requisition.
+                </p>
+              </div>
             </div>
-
-            <div>
-
-              <h1 className="text-2xl font-semibold text-gray-900">
-                Create Purchase Order
-              </h1>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Create a purchase order from an approved requisition and select a supplier.
-              </p>
-
-            </div>
-
           </div>
-
-          <Link
-            href="/dashboard/purchasing/orders"
-            className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-gray-900"
-          >
-            <ArrowLeft size={16} />
-            Back to Orders
-          </Link>
-
         </div>
 
         {/* =================================================
@@ -1285,87 +996,44 @@ export default function CreatePurchaseOrderPage() {
         ================================================= */}
 
         {error && (
-          <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="flex items-start gap-3">
+              <span className="font-semibold">
+                Error:
+              </span>
 
-            <AlertCircle
-              size={20}
-              className="mt-0.5 shrink-0 text-red-600"
-            />
-
-            <div>
-
-              <p className="font-medium text-red-800">
-                Unable to create purchase order
-              </p>
-
-              <p className="mt-1 text-sm text-red-700">
+              <span>
                 {error}
-              </p>
-
+              </span>
             </div>
-
           </div>
         )}
 
         {/* =================================================
-            NO APPROVED REQUISITIONS
+            DATA WARNINGS
         ================================================= */}
 
         {requisitions.length === 0 && (
-          <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 px-5 py-4">
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <p className="font-semibold text-amber-800">
+              No approved requisitions available
+            </p>
 
-            <div className="flex items-start gap-3">
-
-              <AlertCircle
-                size={20}
-                className="mt-0.5 text-yellow-600"
-              />
-
-              <div>
-
-                <p className="font-medium text-yellow-800">
-                  No approved requisitions available
-                </p>
-
-                <p className="mt-1 text-sm text-yellow-700">
-                  Approve a purchase requisition first before creating a purchase order.
-                </p>
-
-              </div>
-
-            </div>
-
+            <p className="mt-1 text-sm text-amber-700">
+              Approve a purchase requisition first before creating a purchase order.
+            </p>
           </div>
         )}
 
-        {/* =================================================
-            NO SUPPLIERS
-        ================================================= */}
-
         {suppliers.length === 0 && (
-          <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 px-5 py-4">
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <p className="font-semibold text-amber-800">
+              No suppliers available
+            </p>
 
-            <div className="flex items-start gap-3">
-
-              <AlertCircle
-                size={20}
-                className="mt-0.5 text-yellow-600"
-              />
-
-              <div>
-
-                <p className="font-medium text-yellow-800">
-                  No suppliers available
-                </p>
-
-                <p className="mt-1 text-sm text-yellow-700">
-                  Create a supplier before creating a purchase order.
-                </p>
-
-              </div>
-
-            </div>
-
+            <p className="mt-1 text-sm text-amber-700">
+              Create a supplier before creating a purchase order.
+            </p>
           </div>
         )}
 
@@ -1379,41 +1047,26 @@ export default function CreatePurchaseOrderPage() {
         >
 
           {/* =================================================
-              BASIC INFORMATION
+              PO INFORMATION
           ================================================= */}
 
-          <div className="rounded-xl border border-gray-200 bg-white">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-6 py-5">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Purchase Order Information
+              </h2>
 
-            <div className="border-b border-gray-100 px-6 py-4">
-
-              <div className="flex items-center gap-2">
-
-                <FileText
-                  size={19}
-                  className="text-blue-600"
-                />
-
-                <h2 className="font-semibold text-gray-900">
-                  Purchase Order Information
-                </h2>
-
-              </div>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Select an approved requisition and choose the supplier for this purchase order.
+              <p className="mt-1 text-sm text-slate-500">
+                Select the approved requisition and supplier.
               </p>
-
             </div>
 
-            <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
 
-              {/* =================================================
-                  APPROVED REQUISITION
-              ================================================= */}
+              {/* REQUISITION */}
 
               <div>
-
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
                   Approved Requisition
                   <span className="ml-1 text-red-500">
                     *
@@ -1424,16 +1077,14 @@ export default function CreatePurchaseOrderPage() {
                   value={requisitionId}
                   onChange={(event) =>
                     handleRequisitionChange(
-                      event.target.value
+                      event.target.value,
                     )
                   }
-                  required
                   disabled={
                     requisitions.length === 0
                   }
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100"
                 >
-
                   <option value="">
                     Select approved requisition
                   </option>
@@ -1441,39 +1092,21 @@ export default function CreatePurchaseOrderPage() {
                   {requisitions.map(
                     (requisition) => (
                       <option
-                        key={
-                          requisition.id
-                        }
-                        value={
-                          requisition.id
-                        }
+                        key={requisition.id}
+                        value={requisition.id}
                       >
-                        {requisition.requisitionNumber ||
-                          `REQ-${String(
-                            requisition.id
-                          ).padStart(
-                            5,
-                            "0"
-                          )}`}
+                        {requisition.requisitionNumber ??
+                          `REQ-${requisition.id}`}
                       </option>
-                    )
+                    ),
                   )}
-
                 </select>
-
-                <p className="mt-1 text-xs text-gray-400">
-                  Only APPROVED requisitions are shown.
-                </p>
-
               </div>
 
-              {/* =================================================
-                  SUPPLIER - MANUAL
-              ================================================= */}
+              {/* SUPPLIER */}
 
               <div>
-
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
                   Supplier
                   <span className="ml-1 text-red-500">
                     *
@@ -1483,30 +1116,17 @@ export default function CreatePurchaseOrderPage() {
                 <select
                   value={
                     selectedSupplierId
-                      ? String(
-                          selectedSupplierId
-                        )
-                      : ""
                   }
-                  onChange={(event) => {
-                    setError(null);
-
-                    const value =
-                      event.target.value;
-
+                  onChange={(event) =>
                     setSelectedSupplierId(
-                      value
-                        ? Number(value)
-                        : null
-                    );
-                  }}
-                  required
+                      event.target.value,
+                    )
+                  }
                   disabled={
                     suppliers.length === 0
                   }
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100"
                 >
-
                   <option value="">
                     Select supplier
                   </option>
@@ -1514,532 +1134,501 @@ export default function CreatePurchaseOrderPage() {
                   {suppliers.map(
                     (supplier) => (
                       <option
-                        key={
-                          supplier.id
-                        }
-                        value={
-                          supplier.id
-                        }
+                        key={supplier.id}
+                        value={supplier.id}
                       >
                         {supplier.supplierCode
                           ? `${supplier.supplierCode} - `
                           : ""}
-                        {
-                          supplier.supplierName
-                        }
+                        {supplier.supplierName}
                       </option>
-                    )
+                    ),
                   )}
-
                 </select>
-
-                <p className="mt-1 text-xs text-gray-400">
-                  Supplier is selected when creating the purchase order.
-                </p>
-
               </div>
 
-              {/* =================================================
-                  PO DATE
-              ================================================= */}
+              {/* PO DATE */}
 
               <div>
-
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
                   PO Date
                   <span className="ml-1 text-red-500">
                     *
                   </span>
                 </label>
 
-                <input
-                  type="date"
-                  value={poDate}
-                  onChange={(event) =>
-                    setPoDate(
-                      event.target.value
-                    )
-                  }
-                  required
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
+                  <input
+                    type="date"
+                    value={poDate}
+                    onChange={(event) =>
+                      setPoDate(
+                        event.target.value,
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  />
+                </div>
               </div>
 
-              {/* =================================================
-                  EXPECTED DELIVERY
-              ================================================= */}
+              {/* EXPECTED DELIVERY */}
 
               <div>
-
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
                   Expected Delivery Date
                   <span className="ml-1 text-red-500">
                     *
                   </span>
                 </label>
 
-                <input
-                  type="date"
-                  value={
-                    expectedDeliveryDate
-                  }
-                  min={poDate}
-                  onChange={(event) =>
-                    setExpectedDeliveryDate(
-                      event.target.value
-                    )
-                  }
-                  required
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-              </div>
-
-            </div>
-
-            {/* =================================================
-                SELECTED SUPPLIER INFO
-            ================================================= */}
-
-            {selectedSupplier && (
-              <div className="border-t border-gray-100 bg-gray-50 px-6 py-4">
-
-                <div className="flex items-center gap-3">
-
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-blue-600">
-                    <ShoppingCart size={18} />
-                  </div>
-
-                  <div>
-
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                      Selected Supplier
-                    </p>
-
-                    <p className="font-medium text-gray-900">
-                      {
-                        selectedSupplier.supplierName
-                      }
-                    </p>
-
-                    {selectedSupplier.supplierCode && (
-                      <p className="text-xs text-gray-500">
-                        Code:{" "}
-                        {
-                          selectedSupplier.supplierCode
-                        }
-                      </p>
-                    )}
-
-                  </div>
-
+                  <input
+                    type="date"
+                    value={
+                      expectedDeliveryDate
+                    }
+                    min={poDate || undefined}
+                    onChange={(event) =>
+                      setExpectedDeliveryDate(
+                        event.target.value,
+                      )
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  />
                 </div>
-
               </div>
-            )}
-
+            </div>
           </div>
 
           {/* =================================================
-              PRODUCTS
+              REQUISITION PRODUCTS
           ================================================= */}
 
-          <div className="rounded-xl border border-gray-200 bg-white">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-6 py-5">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Requisition Products
+              </h2>
 
-            <div className="border-b border-gray-100 px-6 py-4">
-
-              <div className="flex items-center gap-2">
-
-                <Package
-                  size={19}
-                  className="text-blue-600"
-                />
-
-                <h2 className="font-semibold text-gray-900">
-                  Requisition Products
-                </h2>
-
-              </div>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Products are loaded from the selected approved requisition.
+              <p className="mt-1 text-sm text-slate-500">
+                Products from the selected approved requisition.
               </p>
-
             </div>
 
             <div className="p-6">
 
-              {!requisitionId ? (
-                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+              {/* ADD ITEM */}
 
-                  <Package
-                    size={34}
-                    className="mx-auto text-gray-300"
-                  />
+              <div className="mb-6 rounded-xl bg-slate-50 p-4">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_140px_160px_auto] lg:items-end">
 
-                  <p className="mt-3 font-medium text-gray-600">
-                    Select an approved requisition
-                  </p>
+                  {/* PRODUCT */}
 
-                  <p className="mt-1 text-sm text-gray-400">
-                    Requisition products will appear here.
-                  </p>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Product
+                    </label>
 
-                </div>
-              ) : items.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-red-200 bg-red-50 px-5 py-8 text-center">
+                    <select
+                      value={
+                        selectedProductId
+                      }
+                      onChange={(event) =>
+                        setSelectedProductId(
+                          event.target.value,
+                        )
+                      }
+                      disabled={
+                        !selectedRequisition
+                      }
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100"
+                    >
+                      <option value="">
+                        Select product
+                      </option>
 
-                  <AlertCircle
-                    size={34}
-                    className="mx-auto text-red-300"
-                  />
+                      {(
+                        selectedRequisition?.items ??
+                        []
+                      ).map(
+                        (requisitionItem) => {
+                          const product =
+                            requisitionItem.product ??
+                            products.find(
+                              (item) =>
+                                String(
+                                  item.id,
+                                ) ===
+                                String(
+                                  requisitionItem.productId,
+                                ),
+                            );
 
-                  <p className="mt-3 font-medium text-red-700">
-                    No products found
-                  </p>
-
-                  <p className="mt-1 text-sm text-red-500">
-                    The selected requisition does not contain any items.
-                  </p>
-
-                </div>
-              ) : (
-                <div className="rounded-lg border border-gray-200">
-
-                  <div className="overflow-x-auto">
-
-                    <table className="w-full min-w-[750px] text-left text-sm">
-
-                      <thead className="bg-gray-50">
-
-                        <tr>
-
-                          <th className="px-5 py-3 font-medium text-gray-600">
-                            Product
-                          </th>
-
-                          <th className="px-5 py-3 font-medium text-gray-600">
-                            Quantity
-                          </th>
-
-                          <th className="px-5 py-3 font-medium text-gray-600">
-                            Unit Price
-                          </th>
-
-                          <th className="px-5 py-3 font-medium text-gray-600">
-                            Subtotal
-                          </th>
-
-                          <th className="px-5 py-3 text-right font-medium text-gray-600">
-                            Action
-                          </th>
-
-                        </tr>
-
-                      </thead>
-
-                      <tbody className="divide-y divide-gray-100">
-
-                        {items.map(
-                          (
-                            item,
-                            index
-                          ) => (
-                            <tr
-                              key={`${item.productId}-${index}`}
-                              className="hover:bg-gray-50"
+                          return (
+                            <option
+                              key={
+                                requisitionItem.id
+                              }
+                              value={
+                                requisitionItem.productId
+                              }
                             >
-
-                              <td className="px-5 py-4">
-
-                                <p className="font-medium text-gray-900">
-                                  {
-                                    item.productName
-                                  }
-                                </p>
-
-                                {item.productCode && (
-                                  <p className="mt-1 text-xs text-gray-400">
-                                    {
-                                      item.productCode
-                                    }
-                                  </p>
-                                )}
-
-                              </td>
-
-                              <td className="px-5 py-4">
-
-                                <input
-                                  type="number"
-                                  min="1"
-                                  step="1"
-                                  value={
-                                    item.quantity
-                                  }
-                                  onChange={(
-                                    event
-                                  ) =>
-                                    updateQuantity(
-                                      index,
-                                      Number(
-                                        event
-                                          .target
-                                          .value
-                                      )
-                                    )
-                                  }
-                                  className="h-9 w-24 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                />
-
-                              </td>
-
-                              <td className="px-5 py-4">
-
-                                <div className="flex items-center gap-1">
-
-                                  <span className="text-gray-500">
-                                    Rs.
-                                  </span>
-
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={
-                                      item.unitPrice
-                                    }
-                                    onChange={(
-                                      event
-                                    ) =>
-                                      updateUnitPrice(
-                                        index,
-                                        Number(
-                                          event
-                                            .target
-                                            .value
-                                        )
-                                      )
-                                    }
-                                    className="h-9 w-32 rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                  />
-
-                                </div>
-
-                              </td>
-
-                              <td className="px-5 py-4 font-medium text-gray-900">
-                                Rs.{" "}
-                                {formatCurrency(
-                                  Number(
-                                    item.quantity
-                                  ) *
-                                    Number(
-                                      item.unitPrice
-                                    )
-                                )}
-                              </td>
-
-                              <td className="px-5 py-4 text-right">
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleRemoveItem(
-                                      index
-                                    )
-                                  }
-                                  className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
-                                  title="Remove item"
-                                >
-                                  <Trash2
-                                    size={17}
-                                  />
-                                </button>
-
-                              </td>
-
-                            </tr>
-                          )
-                        )}
-
-                      </tbody>
-
-                    </table>
-
+                              {product?.productCode
+                                ? `${product.productCode} - `
+                                : ""}
+                              {product?.productName ??
+                                `Product ${requisitionItem.productId}`}
+                            </option>
+                          );
+                        },
+                      )}
+                    </select>
                   </div>
 
-                </div>
-              )}
+                  {/* QUANTITY */}
 
-            </div>
-
-          </div>
-
-          {/* =================================================
-              SUMMARY
-          ================================================= */}
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-
-            {/* ADDITIONAL */}
-
-           <div className="rounded-xl border border-gray-200 bg-white p-6 lg:col-span-2">
-  <h2 className="font-semibold text-gray-900">
-    Additional Information
-  </h2>
-
-  <p className="mt-1 text-sm text-gray-500">
-    Add any additional notes or instructions for this purchase order.
-  </p>
-
-  <textarea
-    rows={7}
-    value={notes}
-    onChange={(event) =>
-      setNotes(event.target.value)
-    }
-    placeholder="Enter notes..."
-    className="mt-5 w-full resize-none rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-  />
-</div>
-
-            {/* SUMMARY */}
-
-            <div className="rounded-xl border border-gray-200 bg-white p-6">
-
-              <h2 className="font-semibold text-gray-900">
-                Order Summary
-              </h2>
-
-              <div className="mt-5 space-y-4">
-
-                <div className="flex items-center justify-between text-sm">
-
-                  <span className="text-gray-500">
-                    Subtotal
-                  </span>
-
-                  <span className="font-medium text-gray-900">
-                    Rs.{" "}
-                    {formatCurrency(
-                      subtotal
-                    )}
-                  </span>
-
-                </div>
-
-                <div className="flex items-center justify-between text-sm">
-
-                  <label
-                    htmlFor="discount"
-                    className="text-gray-500"
-                  >
-                    Discount
-                  </label>
-
-                  <div className="flex items-center">
-
-                    <span className="mr-1 text-gray-500">
-                      Rs.
-                    </span>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Quantity
+                    </label>
 
                     <input
-                      id="discount"
+                      type="number"
+                      min="1"
+                      value={
+                        itemQuantity
+                      }
+                      onChange={(event) =>
+                        setItemQuantity(
+                          event.target.value,
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                    />
+                  </div>
+
+                  {/* UNIT PRICE */}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Unit Price
+                    </label>
+
+                    <input
                       type="number"
                       min="0"
                       step="0.01"
                       value={
-                        discount
+                        itemUnitPrice
                       }
-                      onChange={(
-                        event
-                      ) =>
-                        setDiscount(
-                          Number(
-                            event.target.value
-                          )
+                      onChange={(event) =>
+                        setItemUnitPrice(
+                          event.target.value,
                         )
                       }
-                      className="h-9 w-28 rounded-lg border border-gray-300 px-2 text-right text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                     />
-
                   </div>
 
+                  {/* ADD BUTTON */}
+
+                  <button
+                    type="button"
+                    onClick={
+                      handleAddItem
+                    }
+                    disabled={
+                      !selectedRequisition ||
+                      !selectedSupplier
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+
+                    Add
+                  </button>
                 </div>
+              </div>
+
+              {/* ITEMS TABLE */}
+
+              {items.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 px-6 py-12 text-center">
+                  <p className="text-sm font-medium text-slate-600">
+                    No products added yet.
+                  </p>
+
+                  <p className="mt-1 text-sm text-slate-400">
+                    Select an approved requisition to load its products.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Product
+                        </th>
+
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Code
+                        </th>
+
+                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Quantity
+                        </th>
+
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Unit Price
+                        </th>
+
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Amount
+                        </th>
+
+                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {items.map(
+                        (item) => {
+                          const amount =
+                            Number(
+                              item.quantity,
+                            ) *
+                            Number(
+                              item.unitPrice,
+                            );
+
+                          return (
+                            <tr
+                              key={
+                                item.productId
+                              }
+                              className="hover:bg-slate-50"
+                            >
+                              <td className="px-4 py-4">
+                                <div className="font-medium text-slate-900">
+                                  {
+                                    item.productName
+                                  }
+                                </div>
+                              </td>
+
+                              <td className="px-4 py-4 text-sm text-slate-500">
+                                {item.productCode ??
+                                  "-"}
+                              </td>
+
+                              <td className="px-4 py-4">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={
+                                    item.quantity
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) =>
+                                    updateQuantity(
+                                      item.productId,
+                                      event.target
+                                        .value,
+                                    )
+                                  }
+                                  className="mx-auto block w-24 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                                />
+                              </td>
+
+                              <td className="px-4 py-4">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={
+                                    item.unitPrice
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) =>
+                                    updateUnitPrice(
+                                      item.productId,
+                                      event.target
+                                        .value,
+                                    )
+                                  }
+                                  className="ml-auto block w-32 rounded-lg border border-slate-300 px-3 py-2 text-right text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                                />
+                              </td>
+
+                              <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">
+                                {formatCurrency(
+                                  amount,
+                                )}
+                              </td>
+
+                              <td className="px-4 py-4 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleRemoveItem(
+                                      item.productId,
+                                    )
+                                  }
+                                  className="inline-flex rounded-lg p-2 text-red-500 transition hover:bg-red-50 hover:text-red-700"
+                                  title="Remove item"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        },
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* =================================================
+              NOTES
+          ================================================= */}
+
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-6 py-5">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Additional Notes
+              </h2>
+            </div>
+
+            <div className="p-6">
+              <textarea
+                value={notes}
+                onChange={(event) =>
+                  setNotes(
+                    event.target.value,
+                  )
+                }
+                rows={4}
+                placeholder="Enter any additional notes..."
+                className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              />
+            </div>
+          </div>
+
+          {/* =================================================
+              ORDER SUMMARY
+          ================================================= */}
+
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-6 py-5">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Order Summary
+              </h2>
+            </div>
+
+            <div className="p-6">
+              <div className="ml-auto max-w-md space-y-4">
+
+                {/* SUBTOTAL */}
 
                 <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600">
+                    Subtotal
+                  </span>
 
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(
+                      subtotal,
+                    )}
+                  </span>
+                </div>
+
+                {/* DISCOUNT */}
+
+                <div className="flex items-center justify-between gap-6 text-sm">
+                  <label
+                    htmlFor="discount"
+                    className="text-slate-600"
+                  >
+                    Discount
+                  </label>
+
+                  <input
+                    id="discount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={discount}
+                    onChange={(event) =>
+                      setDiscount(
+                        event.target.value,
+                      )
+                    }
+                    className="w-36 rounded-lg border border-slate-300 px-3 py-2 text-right text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  />
+                </div>
+
+                {/* TAX */}
+
+                <div className="flex items-center justify-between gap-6 text-sm">
                   <label
                     htmlFor="tax"
-                    className="text-gray-500"
+                    className="text-slate-600"
                   >
                     Tax
                   </label>
 
-                  <div className="flex items-center">
-
-                    <span className="mr-1 text-gray-500">
-                      Rs.
-                    </span>
-
-                    <input
-                      id="tax"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={tax}
-                      onChange={(
-                        event
-                      ) =>
-                        setTax(
-                          Number(
-                            event.target.value
-                          )
-                        )
-                      }
-                      className="h-9 w-28 rounded-lg border border-gray-300 px-2 text-right text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-
-                  </div>
-
+                  <input
+                    id="tax"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tax}
+                    onChange={(event) =>
+                      setTax(
+                        event.target.value,
+                      )
+                    }
+                    className="w-36 rounded-lg border border-slate-300 px-3 py-2 text-right text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  />
                 </div>
 
-                <div className="border-t border-gray-100 pt-4">
-
+                <div className="border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between">
-
-                    <span className="font-semibold text-gray-900">
+                    <span className="text-base font-semibold text-slate-900">
                       Total Amount
                     </span>
 
-                    <span className="text-xl font-semibold text-blue-600">
-                      Rs.{" "}
+                    <span className="text-xl font-bold text-slate-900">
                       {formatCurrency(
-                        totalAmount
+                        totalAmount,
                       )}
                     </span>
-
                   </div>
-
                 </div>
-
               </div>
-
             </div>
-
           </div>
 
           {/* =================================================
               ACTIONS
           ================================================= */}
 
-          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:justify-end">
-
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Link
               href="/dashboard/purchasing/orders"
-              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               Cancel
             </Link>
@@ -2048,32 +1637,28 @@ export default function CreatePurchaseOrderPage() {
               type="submit"
               disabled={
                 submitting ||
-                items.length === 0 ||
-                !requisitionId ||
-                !selectedSupplierId ||
-                !expectedDeliveryDate
+                !selectedRequisition ||
+                !selectedSupplier ||
+                items.length === 0
               }
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-
               {submitting ? (
                 <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
+
                   Creating...
                 </>
               ) : (
                 <>
-                  <Save size={17} />
+                  <CheckCircle2 className="h-4 w-4" />
+
                   Create Purchase Order
                 </>
               )}
-
             </button>
-
           </div>
-
         </form>
-
       </div>
     </div>
   );

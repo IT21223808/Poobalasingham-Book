@@ -24,10 +24,82 @@ import {
   useState,
 } from "react";
 
-import {
-  purchasingService,
-  GRN,
-} from "@/services/purchasing.service";
+import api from "@/services/api";
+
+/* =========================================================
+   TYPES
+========================================================= */
+
+interface Product {
+  id: string;
+  productName?: string;
+  name?: string;
+  productCode?: string;
+}
+
+interface GRNItem {
+  id?: number;
+  grnId?: number;
+  productId: string;
+  orderedQuantity: number;
+  receivedQuantity: number;
+  product?: Product;
+}
+
+interface GRN {
+  id: number;
+  grnNumber: string;
+  purchaseOrderId: number;
+  locationId?: string;
+  status: string;
+  items: GRNItem[];
+  createdAt: string;
+}
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function getErrorMessage(err: any): string {
+  const responseData = err?.response?.data;
+
+  const message =
+    responseData?.message ??
+    responseData?.error ??
+    err?.message;
+
+  if (Array.isArray(message)) {
+    return message.join(", ");
+  }
+
+  if (typeof message === "string") {
+    return message;
+  }
+
+  return "Something went wrong. Please try again.";
+}
+
+function formatDate(date?: string) {
+  if (!date) {
+    return "—";
+  }
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "—";
+  }
+
+  return parsedDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 export default function GRNPage() {
   // =========================================================
@@ -83,28 +155,56 @@ export default function GRNPage() {
 
         setError(null);
 
-        const data =
-          await purchasingService.getGRNs();
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT use:
+         * localStorage.getItem("accessToken")
+         *
+         * Do NOT use raw fetch().
+         *
+         * Shared api.ts is responsible for:
+         * authToken cookie
+         * Authorization header
+         */
 
-        setGrns(
-          Array.isArray(data)
-            ? data
-            : []
+        const response = await api.get(
+          "/purchasing/grn"
         );
+
+        const data = response.data;
+
+        /*
+         * Support both:
+         *
+         * [
+         *   {...}
+         * ]
+         *
+         * and
+         *
+         * {
+         *   data: [...]
+         * }
+         */
+
+        const result: GRN[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+          ? data.items
+          : [];
+
+        setGrns(result);
       } catch (err: any) {
         console.error(
           "Failed to load GRNs:",
           err
         );
 
-        const message =
-          err?.response?.data?.message;
-
         setError(
-          Array.isArray(message)
-            ? message.join(", ")
-            : message ||
-                "Failed to load goods received notes"
+          getErrorMessage(err)
         );
       } finally {
         setLoading(false);
@@ -127,6 +227,9 @@ export default function GRNPage() {
   // =========================================================
 
   const filteredGRNs = useMemo(() => {
+    const searchValue =
+      search.trim().toLowerCase();
+
     return grns.filter((grn) => {
       const normalizedStatus =
         grn.status?.toUpperCase();
@@ -136,12 +239,10 @@ export default function GRNPage() {
       // -------------------------------------------------------
 
       const matchesSearch =
-        !search ||
+        !searchValue ||
         grn.grnNumber
           ?.toLowerCase()
-          .includes(
-            search.toLowerCase()
-          );
+          .includes(searchValue);
 
       // -------------------------------------------------------
       // STATUS
@@ -155,20 +256,20 @@ export default function GRNPage() {
       // DATE
       // -------------------------------------------------------
 
-      const dateValue =
-        grn.createdAt;
-
       const parsedDate =
-        new Date(dateValue);
+        grn.createdAt
+          ? new Date(grn.createdAt)
+          : null;
 
       const grnDate =
-        Number.isNaN(
+        parsedDate &&
+        !Number.isNaN(
           parsedDate.getTime()
         )
-          ? ""
-          : parsedDate
+          ? parsedDate
               .toISOString()
-              .split("T")[0];
+              .split("T")[0]
+          : "";
 
       const matchesFromDate =
         !fromDate ||
@@ -302,17 +403,28 @@ export default function GRNPage() {
       setCancelling(grn.id);
       setError(null);
 
-      await purchasingService.cancelGrn(
-        grn.id
-      );
+      /*
+       * PATCH using shared api
+       */
+      const response =
+        await api.patch(
+          `/purchasing/grn/${grn.id}/cancel`
+        );
+
+      const updatedGRN =
+        response.data;
 
       setGrns((previous) =>
         previous.map((item) =>
           item.id === grn.id
             ? {
                 ...item,
-                status:
-                  "CANCELLED",
+                ...(updatedGRN &&
+                typeof updatedGRN ===
+                  "object"
+                  ? updatedGRN
+                  : {}),
+                status: "CANCELLED",
               }
             : item
         )
@@ -328,14 +440,9 @@ export default function GRNPage() {
       );
 
       const message =
-        err?.response?.data?.message;
+        getErrorMessage(err);
 
-      alert(
-        Array.isArray(message)
-          ? message.join(", ")
-          : message ||
-              "Failed to cancel GRN"
-      );
+      alert(message);
     } finally {
       setCancelling(null);
     }
@@ -348,6 +455,15 @@ export default function GRNPage() {
   const handleDelete = async (
     grn: GRN
   ) => {
+    const normalizedStatus =
+      grn.status?.toUpperCase();
+
+    /*
+     * Optional safety:
+     * If backend allows deletion of cancelled GRNs,
+     * this still works.
+     */
+
     const confirmed =
       window.confirm(
         `Are you sure you want to delete ${grn.grnNumber}?\n\nThis action cannot be undone and received stock will be reversed.`
@@ -361,8 +477,11 @@ export default function GRNPage() {
       setDeleting(grn.id);
       setError(null);
 
-      await purchasingService.deleteGRN(
-        grn.id
+      /*
+       * DELETE using shared api
+       */
+      await api.delete(
+        `/purchasing/grn/${grn.id}`
       );
 
       setGrns((previous) =>
@@ -382,14 +501,9 @@ export default function GRNPage() {
       );
 
       const message =
-        err?.response?.data?.message;
+        getErrorMessage(err);
 
-      alert(
-        Array.isArray(message)
-          ? message.join(", ")
-          : message ||
-              "Failed to delete GRN"
-      );
+      alert(message);
     } finally {
       setDeleting(null);
     }
@@ -535,8 +649,6 @@ export default function GRNPage() {
               Refresh
             </button>
 
-            {/* ONLY CREATE GRN BUTTON */}
-
             <Link
               href="/dashboard/purchasing/grn/create"
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
@@ -595,8 +707,7 @@ export default function GRNPage() {
 
             {/* SEARCH */}
 
-            <div className="lg:col-span-1">
-
+            <div>
               <label className="mb-2 block text-sm font-medium text-gray-700">
                 Search GRN Number
               </label>
@@ -621,7 +732,6 @@ export default function GRNPage() {
                 />
 
               </div>
-
             </div>
 
             {/* STATUS */}
@@ -729,24 +839,22 @@ export default function GRNPage() {
           <div className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
 
             <p className="text-sm text-gray-500">
-
               Showing{" "}
-
               <span className="font-medium text-gray-900">
                 {filteredGRNs.length}
               </span>{" "}
-
               result
               {filteredGRNs.length !==
               1
                 ? "s"
                 : ""}
-
             </p>
 
             <button
               type="button"
-              onClick={clearFilters}
+              onClick={
+                clearFilters
+              }
               className="text-sm font-medium text-blue-600 hover:text-blue-700"
             >
               Clear Filters
@@ -757,12 +865,10 @@ export default function GRNPage() {
         </div>
 
         {/* =================================================
-            GRN TABLE
+            TABLE
         ================================================= */}
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-
-          {/* TABLE HEADER */}
 
           <div className="border-b border-gray-100 px-6 py-4">
 
@@ -777,8 +883,6 @@ export default function GRNPage() {
             </div>
 
           </div>
-
-          {/* TABLE */}
 
           <div className="overflow-x-auto">
 
@@ -855,22 +959,29 @@ export default function GRNPage() {
                     (grn) => {
 
                       const itemCount =
-                        grn.items?.length ||
-                        0;
+                        Array.isArray(
+                          grn.items
+                        )
+                          ? grn.items.length
+                          : 0;
 
                       const totalReceived =
-                        grn.items?.reduce(
-                          (
-                            total,
-                            item
-                          ) =>
-                            total +
-                            Number(
-                              item.receivedQuantity ||
-                                0
-                            ),
-                          0
-                        ) || 0;
+                        Array.isArray(
+                          grn.items
+                        )
+                          ? grn.items.reduce(
+                              (
+                                total,
+                                item
+                              ) =>
+                                total +
+                                Number(
+                                  item.receivedQuantity ??
+                                    0
+                                ),
+                              0
+                            )
+                          : 0;
 
                       const normalizedStatus =
                         grn.status?.toUpperCase();
@@ -894,9 +1005,7 @@ export default function GRNPage() {
                               href={`/dashboard/purchasing/grn/${grn.id}`}
                               className="font-semibold text-blue-600 hover:text-blue-700"
                             >
-                              {
-                                grn.grnNumber
-                              }
+                              {grn.grnNumber}
                             </Link>
 
                             <p className="mt-1 text-xs text-gray-400">
@@ -905,7 +1014,7 @@ export default function GRNPage() {
 
                           </td>
 
-                          {/* PURCHASE ORDER */}
+                          {/* PO */}
 
                           <td className="px-6 py-4">
 
@@ -913,16 +1022,13 @@ export default function GRNPage() {
                               href={`/dashboard/purchasing/orders/${grn.purchaseOrderId}`}
                               className="font-medium text-blue-600 hover:underline"
                             >
-
                               PO-
-
                               {String(
                                 grn.purchaseOrderId
                               ).padStart(
                                 5,
                                 "0"
                               )}
-
                             </Link>
 
                           </td>
@@ -932,14 +1038,11 @@ export default function GRNPage() {
                           <td className="px-6 py-4">
 
                             <p className="font-medium text-gray-900">
-
                               {itemCount}{" "}
-
                               {itemCount ===
                               1
                                 ? "item"
                                 : "items"}
-
                             </p>
 
                           </td>
@@ -949,9 +1052,7 @@ export default function GRNPage() {
                           <td className="px-6 py-4">
 
                             <p className="font-semibold text-gray-900">
-                              {
-                                totalReceived
-                              }
+                              {totalReceived}
                             </p>
 
                             <p className="mt-0.5 text-xs text-gray-400">
@@ -975,11 +1076,9 @@ export default function GRNPage() {
                           {/* DATE */}
 
                           <td className="px-6 py-4 text-gray-500">
-
                             {formatDate(
                               grn.createdAt
                             )}
-
                           </td>
 
                           {/* ACTIONS */}
@@ -1019,7 +1118,6 @@ export default function GRNPage() {
                               {/* CANCEL */}
 
                               {!isCancelled && (
-
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1037,22 +1135,17 @@ export default function GRNPage() {
 
                                   {cancelling ===
                                   grn.id ? (
-
                                     <RefreshCw
                                       size={17}
                                       className="animate-spin"
                                     />
-
                                   ) : (
-
                                     <XCircle
                                       size={17}
                                     />
-
                                   )}
 
                                 </button>
-
                               )}
 
                               {/* DELETE */}
@@ -1074,18 +1167,14 @@ export default function GRNPage() {
 
                                 {deleting ===
                                 grn.id ? (
-
                                   <RefreshCw
                                     size={17}
                                     className="animate-spin"
                                   />
-
                                 ) : (
-
                                   <Trash2
                                     size={17}
                                   />
-
                                 )}
 
                               </button>
@@ -1249,8 +1338,11 @@ function SummaryCard({
 function StatusBadge({
   status,
 }: {
-  status: string;
+  status?: string;
 }) {
+  const normalized =
+    status?.toUpperCase() || "";
+
   const styles: Record<
     string,
     string
@@ -1270,54 +1362,20 @@ function StatusBadge({
     string
   > = {
     PARTIAL: "Partial",
-
     RECEIVED: "Received",
-
     CANCELLED: "Cancelled",
   };
 
   return (
     <span
       className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
-        styles[status] ||
+        styles[normalized] ||
         "border-gray-200 bg-gray-100 text-gray-600"
       }`}
     >
-      {labels[status] ||
-        status ||
+      {labels[normalized] ||
+        normalized ||
         "Unknown"}
     </span>
-  );
-}
-
-/* =========================================================
-   DATE FORMAT
-========================================================= */
-
-function formatDate(
-  date: string
-) {
-  if (!date) {
-    return "—";
-  }
-
-  const parsedDate =
-    new Date(date);
-
-  if (
-    Number.isNaN(
-      parsedDate.getTime()
-    )
-  ) {
-    return "—";
-  }
-
-  return parsedDate.toLocaleDateString(
-    "en-GB",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }
   );
 }
