@@ -1,665 +1,488 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle,
-  Ban,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Edit,
-  Eye,
-  Mail,
-  MapPin,
-  Plus,
-  RefreshCw,
   Search,
+  Plus,
+  Eye,
+  Pencil,
   UserCheck,
-  UserRound,
-  Users,
   UserX,
   X,
-  XCircle,
   Phone,
+  Mail,
+  MapPin,
+  Users,
+  UserRoundCheck,
+  UserRoundX,
 } from "lucide-react";
-import {
-  FormEvent,
-  ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
+import api from "@/services/api";
 
-const CUSTOMERS_API = `${API_URL}/customers`;
+/* =========================================================
+   TYPES
+========================================================= */
 
-const PAGE_SIZE = 10;
-
-type StatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
-
-// =========================================================
-// CUSTOMER INTERFACE
-// =========================================================
-
-export interface Customer {
+interface Customer {
   id: number;
-
-  customerCode?: string | null;
-
-  customerName: string;
-
+  customerCode: string;
+  name: string;
   phone?: string | null;
-
   email?: string | null;
-
   address?: string | null;
-
   city?: string | null;
-
+  country?: string | null;
   isActive: boolean;
-
   createdAt?: string;
-
   updatedAt?: string;
 }
 
-// =========================================================
-// CUSTOMER FORM
-// =========================================================
-
 interface CustomerForm {
-  customerName: string;
+  customerCode: string;
+  name: string;
   phone: string;
   email: string;
   address: string;
   city: string;
-  isActive: boolean;
+  country: string;
 }
 
+/* =========================================================
+   INITIAL FORM
+========================================================= */
+
 const EMPTY_FORM: CustomerForm = {
-  customerName: "",
+  customerCode: "",
+  name: "",
   phone: "",
   email: "",
   address: "",
   city: "",
-  isActive: true,
+  country: "",
 };
 
-// =========================================================
-// PAGE
-// =========================================================
+/* =========================================================
+   PAGE
+========================================================= */
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>(
-    [],
-  );
+  /* =======================================================
+     STATE
+  ======================================================= */
 
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [saving, setSaving] = useState(false);
-
   const [search, setSearch] = useState("");
-
-  const [statusFilter, setStatusFilter] =
-    useState<StatusFilter>("ALL");
+  const [status, setStatus] = useState<"all" | "active" | "inactive">(
+    "all",
+  );
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
-  // Create / Edit modal
-  const [showForm, setShowForm] =
-    useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
 
   const [editingCustomer, setEditingCustomer] =
     useState<Customer | null>(null);
 
-  // View modal
-  const [selectedCustomer, setSelectedCustomer] =
+  const [viewingCustomer, setViewingCustomer] =
     useState<Customer | null>(null);
 
   const [form, setForm] =
     useState<CustomerForm>(EMPTY_FORM);
 
-  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // =========================================================
-  // LOAD CUSTOMERS
-  // =========================================================
+  /* =======================================================
+     ERROR HELPER
+  ======================================================= */
 
-  const loadCustomers = useCallback(
-    async (showRefresh = false) => {
-      try {
-        setError("");
+  const getErrorMessage = (error: any) => {
+    const data = error?.response?.data;
 
-        if (showRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
+    if (Array.isArray(data?.message)) {
+      return data.message.join(", ");
+    }
 
-        const response = await fetch(
-          CUSTOMERS_API,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            cache: "no-store",
-          },
-        );
+    if (typeof data?.message === "string") {
+      return data.message;
+    }
 
-        const data = await response
-          .json()
-          .catch(() => null);
+    if (typeof error?.message === "string") {
+      return error.message;
+    }
 
-        if (!response.ok) {
-          const message =
-            Array.isArray(data?.message)
-              ? data.message.join(", ")
-              : typeof data?.message === "string"
-                ? data.message
-                : undefined;
+    return "Something went wrong. Please try again.";
+  };
 
-          throw new Error(
-            message ||
-              `Failed to load customers (${response.status})`,
-          );
-        }
+  /* =======================================================
+     LOAD CUSTOMERS
+  ======================================================= */
 
-        let customerData: Customer[] = [];
+  const loadCustomers = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-        if (Array.isArray(data)) {
-          customerData = data;
-        } else if (
-          Array.isArray(data?.customers)
-        ) {
-          customerData = data.customers;
-        } else if (
-          Array.isArray(data?.data)
-        ) {
-          customerData = data.data;
-        } else if (
-          Array.isArray(
-            data?.data?.customers,
-          )
-        ) {
-          customerData =
-            data.data.customers;
-        }
+      /*
+       * IMPORTANT:
+       * Do NOT use fetch() here.
+       *
+       * api.get() automatically adds:
+       * Authorization: Bearer <JWT>
+       */
 
-        setCustomers(customerData);
-      } catch (err) {
-        console.error(
-          "Load customers error:",
-          err,
-        );
+      const response = await api.get("/customers");
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load customers.",
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
+      const data = response.data;
+
+      if (Array.isArray(data)) {
+        setCustomers(data);
+      } else if (Array.isArray(data?.data)) {
+        setCustomers(data.data);
+      } else {
+        setCustomers([]);
       }
-    },
-    [],
-  );
+    } catch (error: any) {
+      console.error(
+        "❌ Failed to load customers:",
+        error,
+      );
 
-  // =========================================================
-  // INITIAL LOAD
-  // =========================================================
+      setError(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* =======================================================
+     INITIAL LOAD
+  ======================================================= */
 
   useEffect(() => {
     loadCustomers();
-  }, [loadCustomers]);
+  }, []);
 
-  // =========================================================
-  // REFRESH
-  // =========================================================
-
-  const handleRefresh = async () => {
-    await loadCustomers(true);
-  };
-
-  // =========================================================
-  // SUMMARY
-  // =========================================================
-
-  const totalCustomers =
-    customers.length;
-
-  const activeCustomers =
-    customers.filter(
-      (customer) =>
-        customer.isActive,
-    ).length;
-
-  const inactiveCustomers =
-    customers.filter(
-      (customer) =>
-        !customer.isActive,
-    ).length;
-
-  // =========================================================
-  // FILTER
-  // =========================================================
+  /* =======================================================
+     FILTER CUSTOMERS
+  ======================================================= */
 
   const filteredCustomers = useMemo(() => {
-    const query = search
+    const searchValue = search
       .trim()
       .toLowerCase();
 
-    return customers.filter(
-      (customer) => {
-        const matchesSearch =
-          !query ||
-          customer.customerName
-            ?.toLowerCase()
-            .includes(query) ||
-          customer.customerCode
-            ?.toLowerCase()
-            .includes(query) ||
-          customer.phone
-            ?.toLowerCase()
-            .includes(query) ||
-          customer.email
-            ?.toLowerCase()
-            .includes(query) ||
-          customer.city
-            ?.toLowerCase()
-            .includes(query);
+    return customers.filter((customer) => {
+      const matchesSearch =
+        !searchValue ||
+        customer.customerCode
+          ?.toLowerCase()
+          .includes(searchValue) ||
+        customer.name
+          ?.toLowerCase()
+          .includes(searchValue) ||
+        customer.phone
+          ?.toLowerCase()
+          .includes(searchValue) ||
+        customer.email
+          ?.toLowerCase()
+          .includes(searchValue) ||
+        customer.city
+          ?.toLowerCase()
+          .includes(searchValue);
 
-        const matchesStatus =
-          statusFilter === "ALL" ||
-          (statusFilter ===
-            "ACTIVE" &&
-            customer.isActive) ||
-          (statusFilter ===
-            "INACTIVE" &&
-            !customer.isActive);
+      const matchesStatus =
+        status === "all" ||
+        (status === "active" &&
+          customer.isActive) ||
+        (status === "inactive" &&
+          !customer.isActive);
 
-        return (
-          matchesSearch &&
-          matchesStatus
-        );
-      },
-    );
-  }, [
-    customers,
-    search,
-    statusFilter,
-  ]);
+      return matchesSearch && matchesStatus;
+    });
+  }, [customers, search, status]);
 
-  // =========================================================
-  // PAGINATION
-  // =========================================================
+  /* =======================================================
+     PAGINATION
+  ======================================================= */
 
   const totalPages = Math.max(
     1,
     Math.ceil(
-      filteredCustomers.length /
-        PAGE_SIZE,
+      filteredCustomers.length / itemsPerPage,
     ),
   );
 
-  const paginatedCustomers =
-    filteredCustomers.slice(
-      (currentPage - 1) *
-        PAGE_SIZE,
-      currentPage * PAGE_SIZE,
+  const paginatedCustomers = useMemo(() => {
+    const start =
+      (currentPage - 1) * itemsPerPage;
+
+    return filteredCustomers.slice(
+      start,
+      start + itemsPerPage,
     );
+  }, [
+    filteredCustomers,
+    currentPage,
+    itemsPerPage,
+  ]);
 
   useEffect(() => {
-    if (
-      currentPage > totalPages
-    ) {
+    if (currentPage > totalPages) {
       setCurrentPage(totalPages);
     }
-  }, [
-    currentPage,
-    totalPages,
-  ]);
+  }, [currentPage, totalPages]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [
-    search,
-    statusFilter,
-  ]);
+  /* =======================================================
+     SUMMARY
+  ======================================================= */
 
-  // =========================================================
-  // INITIAL
-  // =========================================================
+  const totalCustomers = customers.length;
 
-  const getInitial = (
-    name?: string,
-  ) => {
-    return (
-      name
-        ?.trim()
-        .charAt(0)
-        .toUpperCase() || "C"
-    );
-  };
+  const activeCustomers = customers.filter(
+    (customer) => customer.isActive,
+  ).length;
 
-  // =========================================================
-  // OPEN CREATE
-  // =========================================================
+  const inactiveCustomers =
+    customers.filter(
+      (customer) => !customer.isActive,
+    ).length;
 
-  const openCreate = () => {
+  /* =======================================================
+     OPEN CREATE
+  ======================================================= */
+
+  const openCreateModal = () => {
     setEditingCustomer(null);
-    setSelectedCustomer(null);
-
-    setForm({
-      ...EMPTY_FORM,
-    });
-
+    setForm(EMPTY_FORM);
     setError("");
     setSuccess("");
-
-    setShowForm(true);
+    setShowModal(true);
   };
 
-  // =========================================================
-  // OPEN EDIT
-  // =========================================================
+  /* =======================================================
+     OPEN EDIT
+  ======================================================= */
 
-  const openEdit = (
+  const openEditModal = (
     customer: Customer,
   ) => {
-    setSelectedCustomer(null);
-
     setEditingCustomer(customer);
 
     setForm({
-      customerName:
-        customer.customerName || "",
-
-      phone:
-        customer.phone || "",
-
-      email:
-        customer.email || "",
-
-      address:
-        customer.address || "",
-
-      city:
-        customer.city || "",
-
-      isActive:
-        customer.isActive,
+      customerCode:
+        customer.customerCode || "",
+      name: customer.name || "",
+      phone: customer.phone || "",
+      email: customer.email || "",
+      address: customer.address || "",
+      city: customer.city || "",
+      country: customer.country || "",
     });
 
     setError("");
     setSuccess("");
-
-    setShowForm(true);
+    setShowModal(true);
   };
 
-  // =========================================================
-  // CLOSE FORM
-  // =========================================================
+  /* =======================================================
+     OPEN VIEW
+  ======================================================= */
 
-  const closeForm = () => {
+  const openViewModal = (
+    customer: Customer,
+  ) => {
+    setViewingCustomer(customer);
+    setShowViewModal(true);
+  };
+
+  /* =======================================================
+     CLOSE FORM MODAL
+  ======================================================= */
+
+  const closeModal = () => {
     if (saving) return;
 
-    setShowForm(false);
-
+    setShowModal(false);
     setEditingCustomer(null);
-
-    setForm({
-      ...EMPTY_FORM,
-    });
+    setForm(EMPTY_FORM);
+    setError("");
+    setSuccess("");
   };
 
-  // =========================================================
-  // UPDATE FIELD
-  // =========================================================
+  /* =======================================================
+     CLOSE VIEW MODAL
+  ======================================================= */
 
-  const updateField = (
+  const closeViewModal = () => {
+    setShowViewModal(false);
+    setViewingCustomer(null);
+  };
+
+  /* =======================================================
+     FORM CHANGE
+  ======================================================= */
+
+  const handleChange = (
     field: keyof CustomerForm,
-    value: string | boolean,
+    value: string,
   ) => {
-    setForm((previous) => ({
-      ...previous,
+    setForm((prev) => ({
+      ...prev,
       [field]: value,
     }));
   };
 
-  // =========================================================
-  // CREATE / UPDATE
-  // =========================================================
+  /* =======================================================
+     SAVE CUSTOMER
+  ======================================================= */
 
   const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>,
+    event: React.FormEvent,
   ) => {
     event.preventDefault();
 
     setError("");
     setSuccess("");
 
-    // -------------------------------------------------------
-    // VALIDATION
-    // -------------------------------------------------------
-
-    if (
-      !form.customerName.trim()
-    ) {
-      setError(
-        "Customer name is required.",
-      );
+    if (!form.name.trim()) {
+      setError("Customer name is required.");
       return;
     }
 
     try {
       setSaving(true);
 
-      const isEdit =
-        editingCustomer !== null;
-
-      // -----------------------------------------------------
-      // IMPORTANT
-      // -----------------------------------------------------
-      // Only send fields accepted by backend DTO.
-      //
-      // customerCode
-      // contactPerson
-      // country
-      // taxNumber
-      // vatNumber
-      // paymentTerms
-      // creditLimit
-      // customerType
-      //
-      // are NOT sent.
-      // -----------------------------------------------------
-
       const payload = {
-        customerName:
-          form.customerName.trim(),
+        customerCode:
+          form.customerCode.trim() || undefined,
+
+        name: form.name.trim(),
 
         phone:
-          form.phone.trim() ||
-          undefined,
+          form.phone.trim() || undefined,
 
         email:
-          form.email.trim() ||
-          undefined,
+          form.email.trim() || undefined,
 
         address:
-          form.address.trim() ||
-          undefined,
+          form.address.trim() || undefined,
 
         city:
-          form.city.trim() ||
-          undefined,
+          form.city.trim() || undefined,
 
-        isActive:
-          form.isActive,
+        country:
+          form.country.trim() || undefined,
       };
 
-      const url = isEdit
-        ? `${CUSTOMERS_API}/${editingCustomer.id}`
-        : CUSTOMERS_API;
+      let response;
 
-      const response = await fetch(
-        url,
-        {
-          method: isEdit
-            ? "PATCH"
-            : "POST",
+      /* =====================================================
+         EDIT
+      ===================================================== */
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify(
-            payload,
-          ),
-        },
-      );
-
-      const data = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok) {
-        let message =
-          "Something went wrong.";
-
-        if (
-          Array.isArray(
-            data?.message,
-          )
-        ) {
-          message =
-            data.message.join(
-              ", ",
-            );
-        } else if (
-          typeof data?.message ===
-          "string"
-        ) {
-          message = data.message;
-        } else if (
-          typeof data?.error ===
-          "string"
-        ) {
-          message = data.error;
-        }
-
-        throw new Error(message);
+      if (editingCustomer) {
+        response = await api.patch(
+          `/customers/${editingCustomer.id}`,
+          payload,
+        );
       }
 
+      /* =====================================================
+         CREATE
+      ===================================================== */
+
+      else {
+        response = await api.post(
+          "/customers",
+          payload,
+        );
+      }
+
+      console.log(
+        "✅ Customer saved:",
+        response.data,
+      );
+
       setSuccess(
-        isEdit
+        editingCustomer
           ? "Customer updated successfully."
           : "Customer created successfully.",
       );
 
-      setShowForm(false);
-
-      setEditingCustomer(null);
-
-      setForm({
-        ...EMPTY_FORM,
-      });
-
       await loadCustomers();
-    } catch (err) {
+
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingCustomer(null);
+        setForm(EMPTY_FORM);
+        setSuccess("");
+      }, 700);
+    } catch (error: any) {
       console.error(
-        "Save customer error:",
-        err,
+        "❌ Failed to save customer:",
+        error,
       );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to save customer.",
-      );
+      setError(getErrorMessage(error));
     } finally {
       setSaving(false);
     }
   };
 
-  // =========================================================
-  // DEACTIVATE
-  // =========================================================
+  /* =======================================================
+     DEACTIVATE
+  ======================================================= */
 
   const handleDeactivate = async (
     customer: Customer,
   ) => {
-    const confirmed =
-      window.confirm(
-        `Deactivate customer "${customer.customerName}"?`,
-      );
+    const confirmed = window.confirm(
+      `Are you sure you want to deactivate ${customer.name}?`,
+    );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
       setError("");
       setSuccess("");
 
-      const response = await fetch(
-        `${CUSTOMERS_API}/${customer.id}`,
-        {
-          method: "DELETE",
-        },
+      const response = await api.delete(
+        `/customers/${customer.id}`,
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok) {
-        const message =
-          Array.isArray(
-            data?.message,
-          )
-            ? data.message.join(", ")
-            : typeof data?.message ===
-                "string"
-              ? data.message
-              : "Failed to deactivate customer.";
-
-        throw new Error(message);
-      }
+      console.log(
+        "✅ Customer deactivated:",
+        response.data,
+      );
 
       setSuccess(
         "Customer deactivated successfully.",
       );
 
       await loadCustomers();
-    } catch (err) {
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 1500);
+    } catch (error: any) {
       console.error(
-        "Deactivate customer error:",
-        err,
+        "❌ Failed to deactivate customer:",
+        error,
       );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to deactivate customer.",
-      );
+      setError(getErrorMessage(error));
     }
   };
 
-  // =========================================================
-  // ACTIVATE
-  // =========================================================
+  /* =======================================================
+     ACTIVATE
+  ======================================================= */
 
   const handleActivate = async (
     customer: Customer,
@@ -668,964 +491,737 @@ export default function CustomersPage() {
       setError("");
       setSuccess("");
 
-      const response = await fetch(
-        `${CUSTOMERS_API}/${customer.id}/activate`,
-        {
-          method: "PATCH",
-        },
+      const response = await api.patch(
+        `/customers/${customer.id}/activate`,
       );
 
-      const data = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok) {
-        const message =
-          Array.isArray(
-            data?.message,
-          )
-            ? data.message.join(", ")
-            : typeof data?.message ===
-                "string"
-              ? data.message
-              : "Failed to activate customer.";
-
-        throw new Error(message);
-      }
+      console.log(
+        "✅ Customer activated:",
+        response.data,
+      );
 
       setSuccess(
         "Customer activated successfully.",
       );
 
       await loadCustomers();
-    } catch (err) {
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 1500);
+    } catch (error: any) {
       console.error(
-        "Activate customer error:",
-        err,
+        "❌ Failed to activate customer:",
+        error,
       );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to activate customer.",
-      );
+      setError(getErrorMessage(error));
     }
   };
 
-  // =========================================================
-  // VIEW DETAILS
-  // =========================================================
+  /* =======================================================
+     SEARCH RESET
+  ======================================================= */
 
-  const openDetails = (
-    customer: Customer,
+  const handleSearchChange = (
+    value: string,
   ) => {
-    setShowForm(false);
-    setEditingCustomer(null);
-
-    setSelectedCustomer(customer);
+    setSearch(value);
+    setCurrentPage(1);
   };
 
-  // =========================================================
-  // CLOSE VIEW
-  // =========================================================
-
-  const closeDetails = () => {
-    setSelectedCustomer(null);
+  const handleStatusChange = (
+    value:
+      | "all"
+      | "active"
+      | "inactive",
+  ) => {
+    setStatus(value);
+    setCurrentPage(1);
   };
 
-  // =========================================================
-  // LOADING
-  // =========================================================
+  /* =======================================================
+     FORMAT DATE
+  ======================================================= */
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="mx-auto max-w-7xl">
-          <div className="flex min-h-[500px] items-center justify-center">
-            <div className="flex items-center gap-3 text-gray-600">
-              <RefreshCw className="h-5 w-5 animate-spin" />
+  const formatDate = (
+    value?: string,
+  ) => {
+    if (!value) return "-";
 
-              <span>
-                Loading customers...
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    const date = new Date(value);
 
-  // =========================================================
-  // PAGE
-  // =========================================================
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+
+    return date.toLocaleDateString();
+  };
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-full space-y-6">
+      {/* ===================================================
+          HEADER
+      =================================================== */}
 
-        {/* =====================================================
-            HEADER
-        ===================================================== */}
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Customers
+          </h1>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="mt-1 text-sm text-gray-500">
+            Manage your customers
+          </p>
+        </div>
 
-          <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={openCreateModal}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+        >
+          <Plus size={18} />
+          Add Customer
+        </button>
+      </div>
 
-            <div className="rounded-xl bg-blue-100 p-3">
-              <Users className="h-6 w-6 text-blue-600" />
-            </div>
+      {/* ===================================================
+          ERROR
+      =================================================== */}
 
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Customer Management
-              </h1>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Manage customer profiles and contact information
-              </p>
-            </div>
-
-          </div>
+      {error && (
+        <div className="mb-5 flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
 
           <button
             type="button"
-            onClick={openCreate}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            onClick={() => setError("")}
+            className="shrink-0"
           >
-            <Plus className="h-4 w-4" />
-
-            Add Customer
+            <X size={18} />
           </button>
-
         </div>
+      )}
 
-        {/* =====================================================
-            ALERTS
-        ===================================================== */}
+      {/* ===================================================
+          SUCCESS
+      =================================================== */}
 
-        {error && (
-          <div className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-            <div className="flex items-start gap-2">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-
-              <span>
-                {error}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setError("")
-              }
-              className="text-red-500 transition hover:text-red-700"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-          </div>
-        )}
-
-        {success && (
-          <div className="flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-
-              <span>
-                {success}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setSuccess("")
-              }
-              className="text-green-500 transition hover:text-green-700"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-          </div>
-        )}
-
-        {/* =====================================================
-            SUMMARY
-        ===================================================== */}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-
-          <SummaryCard
-            title="Total Customers"
-            value={totalCustomers}
-            icon={
-              <Users className="h-5 w-5" />
-            }
-          />
-
-          <SummaryCard
-            title="Active Customers"
-            value={activeCustomers}
-            icon={
-              <UserCheck className="h-5 w-5" />
-            }
-          />
-
-          <SummaryCard
-            title="Inactive Customers"
-            value={inactiveCustomers}
-            icon={
-              <UserX className="h-5 w-5" />
-            }
-          />
-
+      {success && (
+        <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {success}
         </div>
+      )}
 
-        {/* =====================================================
-            TABLE
-        ===================================================== */}
+      {/* ===================================================
+          SUMMARY CARDS
+      =================================================== */}
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-
-          {/* FILTER */}
-
-          <div className="border-b border-gray-200 p-4">
-
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-
-              {/* SEARCH */}
-
-              <div className="relative w-full lg:max-w-md">
-
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(
-                      event.target.value,
-                    )
-                  }
-                  placeholder="Search customer..."
-                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-
-              </div>
-
-              {/* FILTERS */}
-
-              <div className="flex flex-wrap items-center gap-2">
-
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(
-                      event.target
-                        .value as StatusFilter,
-                    )
-                  }
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option value="ALL">
-                    All Status
-                  </option>
-
-                  <option value="ACTIVE">
-                    Active
-                  </option>
-
-                  <option value="INACTIVE">
-                    Inactive
-                  </option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={handleRefresh}
-                  disabled={refreshing}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <RefreshCw
-                    className={
-                      refreshing
-                        ? "h-4 w-4 animate-spin"
-                        : "h-4 w-4"
-                    }
-                  />
-
-                  Refresh
-                </button>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* ===================================================
-              EMPTY
-          =================================================== */}
-
-          {paginatedCustomers.length ===
-          0 ? (
-            <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
-
-              <div className="rounded-full bg-gray-100 p-4">
-                <Users className="h-7 w-7 text-gray-400" />
-              </div>
-
-              <h3 className="mt-4 text-sm font-semibold text-gray-900">
-                No customers found
-              </h3>
-
-              <p className="mt-1 text-sm text-gray-500">
-                {search
-                  ? "Try changing your search or filter."
-                  : "Add your first customer to get started."}
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">
+                Total Customers
               </p>
 
-              {!search && (
-                <button
-                  type="button"
-                  onClick={openCreate}
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-                >
-                  <Plus className="h-4 w-4" />
-
-                  Add Customer
-                </button>
-              )}
-
+              <p className="mt-2 text-2xl font-bold text-gray-900">
+                {totalCustomers}
+              </p>
             </div>
-          ) : (
-            <>
-              {/* =================================================
-                  TABLE
-              ================================================= */}
 
-              <div className="overflow-x-auto">
-
-                <table className="w-full min-w-[950px]">
-
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50">
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Customer
-                      </th>
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Contact
-                      </th>
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Phone
-                      </th>
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Location
-                      </th>
-
-                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Status
-                      </th>
-
-                      <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Actions
-                      </th>
-
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-gray-100">
-
-                    {paginatedCustomers.map(
-                      (customer) => (
-                        <tr
-                          key={customer.id}
-                          className="transition hover:bg-gray-50"
-                        >
-
-                          {/* CUSTOMER */}
-
-                          <td className="px-5 py-4">
-
-                            <div className="flex items-center gap-3">
-
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-sm font-bold text-blue-600">
-                                {getInitial(
-                                  customer.customerName,
-                                )}
-                              </div>
-
-                              <div>
-
-                                <p className="font-semibold text-gray-900">
-                                  {
-                                    customer.customerName
-                                  }
-                                </p>
-
-                                <p className="mt-0.5 text-xs text-gray-500">
-                                  {customer.customerCode ||
-                                    `Customer #${customer.id}`}
-                                </p>
-
-                              </div>
-
-                            </div>
-
-                          </td>
-
-                          {/* CONTACT */}
-
-                          <td className="px-5 py-4">
-
-                            <div className="space-y-1">
-
-                              <div className="flex items-center gap-2 text-sm text-gray-700">
-
-                                <UserRound className="h-3.5 w-3.5 text-gray-400" />
-
-                                <span>
-                                  {
-                                    customer.customerName
-                                  }
-                                </span>
-
-                              </div>
-
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
-
-                                <Mail className="h-3.5 w-3.5 text-gray-400" />
-
-                                <span>
-                                  {customer.email ||
-                                    "No email"}
-                                </span>
-
-                              </div>
-
-                            </div>
-
-                          </td>
-
-                          {/* PHONE */}
-
-                          <td className="px-5 py-4">
-
-                            <div className="flex items-center gap-2 text-sm text-gray-700">
-
-                              <Phone className="h-4 w-4 text-gray-400" />
-
-                              <span>
-                                {customer.phone ||
-                                  "—"}
-                              </span>
-
-                            </div>
-
-                          </td>
-
-                          {/* LOCATION */}
-
-                          <td className="px-5 py-4">
-
-                            <div className="flex items-start gap-2 text-sm text-gray-700">
-
-                              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-
-                              <div>
-
-                                <p>
-                                  {customer.city ||
-                                    "—"}
-                                </p>
-
-                                {customer.address &&
-                                  customer.address !==
-                                    customer.city && (
-                                    <p className="mt-0.5 max-w-[220px] truncate text-xs text-gray-400">
-                                      {
-                                        customer.address
-                                      }
-                                    </p>
-                                  )}
-
-                              </div>
-
-                            </div>
-
-                          </td>
-
-                          {/* STATUS */}
-
-                          <td className="px-5 py-4">
-
-                            {customer.isActive ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
-
-                                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-
-                                Active
-
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
-
-                                <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
-
-                                Inactive
-
-                              </span>
-                            )}
-
-                          </td>
-
-                          {/* ACTIONS */}
-
-                          <td className="px-5 py-4">
-
-                            <div className="flex justify-end gap-1">
-
-                              {/* VIEW */}
-
-                              <button
-                                type="button"
-                                title="View customer"
-                                onClick={() =>
-                                  openDetails(
-                                    customer,
-                                  )
-                                }
-                                className="rounded-lg p-2 text-gray-500 transition hover:bg-blue-50 hover:text-blue-600"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </button>
-
-                              {/* EDIT */}
-
-                              <button
-                                type="button"
-                                title="Edit customer"
-                                onClick={() =>
-                                  openEdit(
-                                    customer,
-                                  )
-                                }
-                                className="rounded-lg p-2 text-gray-500 transition hover:bg-amber-50 hover:text-amber-600"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-
-                              {/* ACTIVE / INACTIVE */}
-
-                              {customer.isActive ? (
-                                <button
-                                  type="button"
-                                  title="Deactivate customer"
-                                  onClick={() =>
-                                    handleDeactivate(
-                                      customer,
-                                    )
-                                  }
-                                  className="rounded-lg p-2 text-gray-500 transition hover:bg-red-50 hover:text-red-600"
-                                >
-                                  <Ban className="h-4 w-4" />
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  title="Activate customer"
-                                  onClick={() =>
-                                    handleActivate(
-                                      customer,
-                                    )
-                                  }
-                                  className="rounded-lg p-2 text-gray-500 transition hover:bg-green-50 hover:text-green-600"
-                                >
-                                  <CheckCircle2 className="h-4 w-4" />
-                                </button>
-                              )}
-
-                            </div>
-
-                          </td>
-
-                        </tr>
-                      ),
-                    )}
-
-                  </tbody>
-
-                </table>
-
-              </div>
-
-              {/* =================================================
-                  PAGINATION
-              ================================================= */}
-
-              <div className="flex flex-col gap-3 border-t border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-
-                <p className="text-sm text-gray-500">
-
-                  Showing{" "}
-
-                  <span className="font-medium text-gray-700">
-                    {filteredCustomers.length ===
-                    0
-                      ? 0
-                      : (currentPage -
-                          1) *
-                          PAGE_SIZE +
-                        1}
-                  </span>
-
-                  {" "}to{" "}
-
-                  <span className="font-medium text-gray-700">
-                    {Math.min(
-                      currentPage *
-                        PAGE_SIZE,
-                      filteredCustomers.length,
-                    )}
-                  </span>
-
-                  {" "}of{" "}
-
-                  <span className="font-medium text-gray-700">
-                    {filteredCustomers.length}
-                  </span>
-
-                  {" "}customers
-
-                </p>
-
-                <div className="flex items-center gap-2">
-
-                  <button
-                    type="button"
-                    disabled={
-                      currentPage ===
-                      1
-                    }
-                    onClick={() =>
-                      setCurrentPage(
-                        (page) =>
-                          Math.max(
-                            1,
-                            page - 1,
-                          ),
-                      )
-                    }
-                    className="rounded-lg border border-gray-300 p-2 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-
-                  <span className="min-w-[80px] text-center text-sm text-gray-600">
-
-                    Page{" "}
-
-                    <span className="font-semibold text-gray-900">
-                      {currentPage}
-                    </span>
-
-                    {" "}of{" "}
-
-                    <span className="font-semibold text-gray-900">
-                      {totalPages}
-                    </span>
-
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={
-                      currentPage ===
-                      totalPages
-                    }
-                    onClick={() =>
-                      setCurrentPage(
-                        (page) =>
-                          Math.min(
-                            totalPages,
-                            page + 1,
-                          ),
-                      )
-                    }
-                    className="rounded-lg border border-gray-300 p-2 text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-
-                </div>
-
-              </div>
-            </>
-          )}
-
+            <div className="rounded-lg bg-blue-50 p-3 text-blue-600">
+              <Users size={22} />
+            </div>
+          </div>
         </div>
 
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">
+                Active Customers
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-green-600">
+                {activeCustomers}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-green-50 p-3 text-green-600">
+              <UserRoundCheck size={22} />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">
+                Inactive Customers
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-red-600">
+                {inactiveCustomers}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-red-50 p-3 text-red-600">
+              <UserRoundX size={22} />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* =======================================================
-          CREATE / EDIT MODAL
-      ======================================================= */}
+      {/* ===================================================
+          FILTERS
+      =================================================== */}
 
-      {showForm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
-              closeForm();
+      <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row">
+          <div className="relative flex-1">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+
+            <input
+              type="text"
+              value={search}
+              onChange={(event) =>
+                handleSearchChange(
+                  event.target.value,
+                )
+              }
+              placeholder="Search customers..."
+              className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <select
+            value={status}
+            onChange={(event) =>
+              handleStatusChange(
+                event.target.value as
+                  | "all"
+                  | "active"
+                  | "inactive",
+              )
             }
-          }}
-        >
+            className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="all">
+              All Status
+            </option>
 
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <option value="active">
+              Active
+            </option>
 
-            {/* HEADER */}
+            <option value="inactive">
+              Inactive
+            </option>
+          </select>
+        </div>
+      </div>
 
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-5">
+      {/* ===================================================
+          TABLE
+      =================================================== */}
 
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        {loading ? (
+          <div className="flex min-h-[300px] items-center justify-center">
+            <div className="text-sm text-gray-500">
+              Loading customers...
+            </div>
+          </div>
+        ) : paginatedCustomers.length === 0 ? (
+          <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+            <Users
+              size={40}
+              className="mb-3 text-gray-300"
+            />
+
+            <h3 className="text-base font-semibold text-gray-700">
+              No customers found
+            </h3>
+
+            <p className="mt-1 text-sm text-gray-500">
+              Try changing your search or filters.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead className="bg-gray-50">
+                  <tr className="border-b border-gray-200">
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Code
+                    </th>
+
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Customer
+                    </th>
+
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Phone
+                    </th>
+
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Email
+                    </th>
+
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Location
+                    </th>
+
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Status
+                    </th>
+
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedCustomers.map(
+                    (customer) => (
+                      <tr
+                        key={customer.id}
+                        className="transition hover:bg-gray-50"
+                      >
+                        <td className="px-5 py-4 text-sm font-medium text-gray-700">
+                          {customer.customerCode ||
+                            "-"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                              <Users size={17} />
+                            </div>
+
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {customer.name}
+                              </p>
+
+                              <p className="text-xs text-gray-400">
+                                ID: {customer.id}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4 text-sm text-gray-600">
+                          {customer.phone || "-"}
+                        </td>
+
+                        <td className="px-5 py-4 text-sm text-gray-600">
+                          {customer.email || "-"}
+                        </td>
+
+                        <td className="px-5 py-4 text-sm text-gray-600">
+                          {[
+                            customer.city,
+                            customer.country,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") ||
+                            "-"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {customer.isActive ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              title="View"
+                              onClick={() =>
+                                openViewModal(
+                                  customer,
+                                )
+                              }
+                              className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+                            >
+                              <Eye size={17} />
+                            </button>
+
+                            <button
+                              type="button"
+                              title="Edit"
+                              onClick={() =>
+                                openEditModal(
+                                  customer,
+                                )
+                              }
+                              className="rounded-lg p-2 text-blue-500 transition hover:bg-blue-50 hover:text-blue-700"
+                            >
+                              <Pencil size={17} />
+                            </button>
+
+                            {customer.isActive ? (
+                              <button
+                                type="button"
+                                title="Deactivate"
+                                onClick={() =>
+                                  handleDeactivate(
+                                    customer,
+                                  )
+                                }
+                                className="rounded-lg p-2 text-red-500 transition hover:bg-red-50 hover:text-red-700"
+                              >
+                                <UserX
+                                  size={17}
+                                />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                title="Activate"
+                                onClick={() =>
+                                  handleActivate(
+                                    customer,
+                                  )
+                                }
+                                className="rounded-lg p-2 text-green-500 transition hover:bg-green-50 hover:text-green-700"
+                              >
+                                <UserCheck
+                                  size={17}
+                                />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* =================================================
+                PAGINATION
+            ================================================= */}
+
+            <div className="flex flex-col gap-3 border-t border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-500">
+                Showing{" "}
+                {filteredCustomers.length === 0
+                  ? 0
+                  : (currentPage - 1) *
+                      itemsPerPage +
+                    1}{" "}
+                to{" "}
+                {Math.min(
+                  currentPage *
+                    itemsPerPage,
+                  filteredCustomers.length,
+                )}{" "}
+                of{" "}
+                {filteredCustomers.length}{" "}
+                customers
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() =>
+                    setCurrentPage(
+                      (page) =>
+                        Math.max(1, page - 1),
+                    )
+                  }
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                <span className="px-2 text-sm text-gray-600">
+                  Page {currentPage} of{" "}
+                  {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={
+                    currentPage >= totalPages
+                  }
+                  onClick={() =>
+                    setCurrentPage(
+                      (page) =>
+                        Math.min(
+                          totalPages,
+                          page + 1,
+                        ),
+                    )
+                  }
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* =====================================================
+          CREATE / EDIT MODAL
+      ===================================================== */}
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
-
                 <h2 className="text-lg font-bold text-gray-900">
                   {editingCustomer
                     ? "Edit Customer"
                     : "Add Customer"}
                 </h2>
 
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="mt-1 text-xs text-gray-500">
                   {editingCustomer
-                    ? "Update customer information."
-                    : "Create a new customer profile."}
+                    ? "Update customer information"
+                    : "Create a new customer"}
                 </p>
-
               </div>
 
               <button
                 type="button"
-                onClick={closeForm}
+                onClick={closeModal}
                 disabled={saving}
-                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50"
               >
-                <X className="h-5 w-5" />
+                <X size={20} />
               </button>
-
             </div>
-
-            {/* FORM */}
 
             <form
               onSubmit={handleSubmit}
-              className="min-h-0 flex-1 overflow-y-auto"
+              className="max-h-[75vh] overflow-y-auto"
             >
-
-              <div className="p-6">
-
-                {/* =================================================
-                    CUSTOMER INFORMATION
-                ================================================= */}
+              <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
+                {/* CUSTOMER CODE */}
 
                 <div>
-
-                  <div className="mb-4">
-
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Customer Information
-                    </h3>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      Basic customer profile details
-                    </p>
-
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4">
-
-                    <FormInput
-                      label="Customer Name"
-                      required
-                      value={
-                        form.customerName
-                      }
-                      onChange={(
-                        value,
-                      ) =>
-                        updateField(
-                          "customerName",
-                          value,
-                        )
-                      }
-                      placeholder="ABC Customer"
-                    />
-
-                  </div>
-
-                </div>
-
-                {/* =================================================
-                    CONTACT INFORMATION
-                ================================================= */}
-
-                <div className="mt-7 border-t border-gray-100 pt-6">
-
-                  <div className="mb-4">
-
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Contact Information
-                    </h3>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      Customer contact details
-                    </p>
-
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-                    <FormInput
-                      label="Phone"
-                      value={
-                        form.phone
-                      }
-                      onChange={(
-                        value,
-                      ) =>
-                        updateField(
-                          "phone",
-                          value,
-                        )
-                      }
-                      placeholder="+94 77 123 4567"
-                    />
-
-                    <FormInput
-                      label="Email"
-                      type="email"
-                      value={
-                        form.email
-                      }
-                      onChange={(
-                        value,
-                      ) =>
-                        updateField(
-                          "email",
-                          value,
-                        )
-                      }
-                      placeholder="customer@example.com"
-                    />
-
-                    <FormInput
-                      label="City"
-                      value={
-                        form.city
-                      }
-                      onChange={(
-                        value,
-                      ) =>
-                        updateField(
-                          "city",
-                          value,
-                        )
-                      }
-                      placeholder="Colombo"
-                    />
-
-                    <div className="md:col-span-2">
-
-                      <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                        Address
-                      </label>
-
-                      <textarea
-                        value={
-                          form.address
-                        }
-                        onChange={(
-                          event,
-                        ) =>
-                          updateField(
-                            "address",
-                            event.target
-                              .value,
-                          )
-                        }
-                        rows={3}
-                        placeholder="Customer address"
-                        className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
-
-                    </div>
-
-                  </div>
-
-                </div>
-
-                {/* =================================================
-                    STATUS
-                ================================================= */}
-
-                <div className="mt-7 border-t border-gray-100 pt-6">
-
-                  <label className="flex cursor-pointer items-center gap-3">
-
-                    <input
-                      type="checkbox"
-                      checked={
-                        form.isActive
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        updateField(
-                          "isActive",
-                          event.target
-                            .checked,
-                        )
-                      }
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-
-                    <span>
-
-                      <span className="block text-sm font-medium text-gray-800">
-                        Active Customer
-                      </span>
-
-                      <span className="block text-xs text-gray-500">
-                        Customer can be used in sales and billing.
-                      </span>
-
-                    </span>
-
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Customer Code
                   </label>
 
+                  <input
+                    type="text"
+                    value={form.customerCode}
+                    onChange={(event) =>
+                      handleChange(
+                        "customerCode",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Auto / optional"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
                 </div>
 
+                {/* NAME */}
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Customer Name
+                    <span className="ml-1 text-red-500">
+                      *
+                    </span>
+                  </label>
+
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(event) =>
+                      handleChange(
+                        "name",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Enter customer name"
+                    required
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+
+                {/* PHONE */}
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Phone
+                  </label>
+
+                  <div className="relative">
+                    <Phone
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+
+                    <input
+                      type="text"
+                      value={form.phone}
+                      onChange={(event) =>
+                        handleChange(
+                          "phone",
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Enter phone number"
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+                </div>
+
+                {/* EMAIL */}
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Email
+                  </label>
+
+                  <div className="relative">
+                    <Mail
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(event) =>
+                        handleChange(
+                          "email",
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Enter email"
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+                </div>
+
+                {/* ADDRESS */}
+
+                <div className="md:col-span-2">
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Address
+                  </label>
+
+                  <textarea
+                    value={form.address}
+                    onChange={(event) =>
+                      handleChange(
+                        "address",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Enter address"
+                    rows={3}
+                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+
+                {/* CITY */}
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    City
+                  </label>
+
+                  <div className="relative">
+                    <MapPin
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+
+                    <input
+                      type="text"
+                      value={form.city}
+                      onChange={(event) =>
+                        handleChange(
+                          "city",
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Enter city"
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+                </div>
+
+                {/* COUNTRY */}
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Country
+                  </label>
+
+                  <input
+                    type="text"
+                    value={form.country}
+                    onChange={(event) =>
+                      handleChange(
+                        "country",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Enter country"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+
+                {/* FORM ERROR */}
+
+                {error && (
+                  <div className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
+
+                {/* FORM SUCCESS */}
+
+                {success && (
+                  <div className="md:col-span-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    {success}
+                  </div>
+                )}
               </div>
 
-              {/* =================================================
-                  FORM FOOTER
-              ================================================= */}
+              {/* FOOTER */}
 
-              <div className="sticky bottom-0 flex shrink-0 justify-end gap-3 border-t border-gray-200 bg-white px-6 py-4">
-
+              <div className="flex items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
                 <button
                   type="button"
-                  onClick={closeForm}
+                  onClick={closeModal}
                   disabled={saving}
-                  className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -1633,434 +1229,214 @@ export default function CustomersPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-
-                  {saving && (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  )}
-
-                  {editingCustomer
-                    ? "Update Customer"
-                    : "Create Customer"}
-
+                  {saving
+                    ? "Saving..."
+                    : editingCustomer
+                      ? "Update Customer"
+                      : "Create Customer"}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
       )}
 
-      {/* =======================================================
-          VIEW CUSTOMER MODAL
-      ======================================================= */}
+      {/* =====================================================
+          VIEW MODAL
+      ===================================================== */}
 
-      {selectedCustomer && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
-              closeDetails();
-            }
-          }}
-        >
-
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-
-            {/* HEADER */}
-
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-5">
-
-              <div className="flex items-center gap-4">
-
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-lg font-bold text-blue-600">
-                  {getInitial(
-                    selectedCustomer.customerName,
-                  )}
-                </div>
-
+      {showViewModal &&
+        viewingCustomer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                 <div>
-
                   <h2 className="text-lg font-bold text-gray-900">
-                    {
-                      selectedCustomer.customerName
-                    }
+                    Customer Details
                   </h2>
 
-                  <p className="text-sm text-gray-500">
-                    {selectedCustomer.customerCode ||
-                      `Customer #${selectedCustomer.id}`}
+                  <p className="mt-1 text-xs text-gray-500">
+                    View customer information
                   </p>
-
                 </div>
 
+                <button
+                  type="button"
+                  onClick={closeViewModal}
+                  className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                >
+                  <X size={20} />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={
-                  closeDetails
-                }
-                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="space-y-5 p-6">
+                {/* NAME */}
 
-            </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                    <Users size={25} />
+                  </div>
 
-            {/* CONTENT */}
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">
+                      {viewingCustomer.name}
+                    </h3>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
-
-              <div className="space-y-6 p-6">
+                    <p className="text-sm text-gray-500">
+                      {viewingCustomer.customerCode ||
+                        "-"}
+                    </p>
+                  </div>
+                </div>
 
                 {/* STATUS */}
 
-                <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+                    Status
+                  </p>
 
-                  <div>
-
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                      Customer Status
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-gray-900">
-                      {selectedCustomer.isActive
-                        ? "Active"
-                        : "Inactive"}
-                    </p>
-
-                  </div>
-
-                  {selectedCustomer.isActive ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
-
-                      <CheckCircle2 className="h-4 w-4" />
-
+                  {viewingCustomer.isActive ? (
+                    <span className="inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
                       Active
-
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600">
-
-                      <XCircle className="h-4 w-4" />
-
+                    <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
                       Inactive
-
                     </span>
                   )}
-
                 </div>
 
-                {/* CUSTOMER INFORMATION */}
+                {/* PHONE */}
 
-                <div>
+                <div className="flex items-start gap-3">
+                  <Phone
+                    size={18}
+                    className="mt-0.5 text-gray-400"
+                  />
 
-                  <h3 className="mb-4 text-sm font-semibold text-gray-900">
-                    Customer Information
-                  </h3>
+                  <div>
+                    <p className="text-xs text-gray-400">
+                      Phone
+                    </p>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-                    <InfoItem
-                      label="Customer Code"
-                      value={
-                        selectedCustomer.customerCode ||
-                        `Customer #${selectedCustomer.id}`
-                      }
-                    />
-
-                    <InfoItem
-                      label="Customer Name"
-                      value={
-                        selectedCustomer.customerName
-                      }
-                    />
-
+                    <p className="text-sm font-medium text-gray-800">
+                      {viewingCustomer.phone ||
+                        "-"}
+                    </p>
                   </div>
-
                 </div>
 
-                {/* CONTACT INFORMATION */}
+                {/* EMAIL */}
 
-                <div>
+                <div className="flex items-start gap-3">
+                  <Mail
+                    size={18}
+                    className="mt-0.5 text-gray-400"
+                  />
 
-                  <h3 className="mb-4 text-sm font-semibold text-gray-900">
-                    Contact Information
-                  </h3>
+                  <div>
+                    <p className="text-xs text-gray-400">
+                      Email
+                    </p>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <p className="break-all text-sm font-medium text-gray-800">
+                      {viewingCustomer.email ||
+                        "-"}
+                    </p>
+                  </div>
+                </div>
 
-                    <InfoItem
-                      icon={
-                        <Phone className="h-4 w-4" />
-                      }
-                      label="Phone"
-                      value={
-                        selectedCustomer.phone ||
-                        "Not provided"
-                      }
-                    />
+                {/* ADDRESS */}
 
-                    <InfoItem
-                      icon={
-                        <Mail className="h-4 w-4" />
-                      }
-                      label="Email"
-                      value={
-                        selectedCustomer.email ||
-                        "Not provided"
-                      }
-                    />
+                <div className="flex items-start gap-3">
+                  <MapPin
+                    size={18}
+                    className="mt-0.5 text-gray-400"
+                  />
 
-                    <InfoItem
-                      icon={
-                        <MapPin className="h-4 w-4" />
-                      }
-                      label="City"
-                      value={
-                        selectedCustomer.city ||
-                        "Not provided"
-                      }
-                    />
+                  <div>
+                    <p className="text-xs text-gray-400">
+                      Address
+                    </p>
 
-                    <div className="md:col-span-2">
+                    <p className="text-sm font-medium text-gray-800">
+                      {viewingCustomer.address ||
+                        "-"}
+                    </p>
 
-                      <InfoItem
-                        icon={
-                          <MapPin className="h-4 w-4" />
-                        }
-                        label="Address"
-                        value={
-                          selectedCustomer.address ||
-                          "Not provided"
-                        }
-                      />
+                    <p className="text-sm text-gray-600">
+                      {[
+                        viewingCustomer.city,
+                        viewingCustomer.country,
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </p>
+                  </div>
+                </div>
 
+                {/* CREATED */}
+
+                <div className="border-t border-gray-100 pt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-400">
+                        Created
+                      </p>
+
+                      <p className="mt-1 text-sm text-gray-700">
+                        {formatDate(
+                          viewingCustomer.createdAt,
+                        )}
+                      </p>
                     </div>
 
+                    <div>
+                      <p className="text-xs text-gray-400">
+                        Updated
+                      </p>
+
+                      <p className="mt-1 text-sm text-gray-700">
+                        {formatDate(
+                          viewingCustomer.updatedAt,
+                        )}
+                      </p>
+                    </div>
                   </div>
-
                 </div>
-
-                {/* FUTURE */}
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-
-                  <FeaturePlaceholder
-                    title="Sales History"
-                    description="Customer sales history can be connected with sales and invoice data."
-                  />
-
-                  <FeaturePlaceholder
-                    title="Outstanding Receivables"
-                    description="Customer outstanding balances can be connected with invoices and payments."
-                  />
-
-                  <FeaturePlaceholder
-                    title="Customer Performance"
-                    description="Customer performance can be connected with sales metrics."
-                  />
-
-                </div>
-
               </div>
 
+              {/* VIEW FOOTER */}
+
+              <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeViewModal}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeViewModal();
+                    openEditModal(
+                      viewingCustomer,
+                    );
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  <Pencil size={16} />
+                  Edit
+                </button>
+              </div>
             </div>
-
-            {/* FOOTER */}
-
-            <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 bg-white px-6 py-4">
-
-              <button
-                type="button"
-                onClick={() =>
-                  openEdit(
-                    selectedCustomer,
-                  )
-                }
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-              >
-                <Edit className="h-4 w-4" />
-
-                Edit Customer
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  closeDetails
-                }
-                className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                Close
-              </button>
-
-            </div>
-
           </div>
-
-        </div>
-      )}
-
-    </div>
-  );
-}
-
-// =========================================================
-// SUMMARY CARD
-// =========================================================
-
-function SummaryCard({
-  title,
-  value,
-  icon,
-}: {
-  title: string;
-  value: number;
-  icon: ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-
-      <div className="flex items-center justify-between">
-
-        <div>
-
-          <p className="text-sm font-medium text-gray-500">
-            {title}
-          </p>
-
-          <p className="mt-2 text-2xl font-bold text-gray-900">
-            {value}
-          </p>
-
-        </div>
-
-        <div className="rounded-lg bg-blue-50 p-3 text-blue-600">
-          {icon}
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-// =========================================================
-// FORM INPUT
-// =========================================================
-
-function FormInput({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  required = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (
-    value: string,
-  ) => void;
-  placeholder?: string;
-  type?: string;
-  required?: boolean;
-}) {
-  return (
-    <div>
-
-      <label className="mb-1.5 block text-sm font-medium text-gray-700">
-
-        {label}
-
-        {required && (
-          <span className="ml-1 text-red-500">
-            *
-          </span>
         )}
-
-      </label>
-
-      <input
-        type={type}
-        value={value}
-        onChange={(event) =>
-          onChange(
-            event.target.value,
-          )
-        }
-        placeholder={placeholder}
-        required={required}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-      />
-
-    </div>
-  );
-}
-
-// =========================================================
-// INFO ITEM
-// =========================================================
-
-function InfoItem({
-  icon,
-  label,
-  value,
-}: {
-  icon?: ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl border border-gray-200 p-4">
-
-      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-
-        {icon}
-
-        {label}
-
-      </div>
-
-      <p className="mt-2 break-words text-sm font-medium text-gray-800">
-        {value}
-      </p>
-
-    </div>
-  );
-}
-
-// =========================================================
-// FEATURE PLACEHOLDER
-// =========================================================
-
-function FeaturePlaceholder({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
-
-      <h4 className="text-sm font-semibold text-gray-800">
-        {title}
-      </h4>
-
-      <p className="mt-2 text-xs leading-5 text-gray-500">
-        {description}
-      </p>
-
     </div>
   );
 }

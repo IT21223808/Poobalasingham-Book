@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 
 import { CustomersService } from './customers.service';
@@ -15,16 +16,29 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+
+import {
+  AppPermission,
+} from '../common/permissions/permissions';
+
+import {
+  RequirePermissions,
+} from '../common/decorators/permissions.decorator';
+
 @Controller('customers')
+@UseGuards(
+  JwtAuthGuard,
+  // PermissionsGuard,
+)
+@RequirePermissions(AppPermission.CUSTOMERS)
 export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
   ) {}
 
-  // =========================================================
   // CREATE
-  // POST /api/customers
-  // =========================================================
 
   @Post()
   create(
@@ -33,12 +47,7 @@ export class CustomersController {
     return this.customersService.create(dto);
   }
 
-  // =========================================================
   // LIST / SEARCH
-  // GET /api/customers
-  // GET /api/customers?search=John
-  // GET /api/customers?status=ACTIVE
-  // =========================================================
 
   @Get()
   findAll(
@@ -51,10 +60,7 @@ export class CustomersController {
     );
   }
 
-  // =========================================================
   // VIEW
-  // GET /api/customers/:id
-  // =========================================================
 
   @Get(':id')
   findOne(
@@ -63,10 +69,7 @@ export class CustomersController {
     return this.customersService.findOne(id);
   }
 
-  // =========================================================
   // UPDATE
-  // PATCH /api/customers/:id
-  // =========================================================
 
   @Patch(':id')
   update(
@@ -79,10 +82,7 @@ export class CustomersController {
     );
   }
 
-  // =========================================================
   // DEACTIVATE
-  // DELETE /api/customers/:id
-  // =========================================================
 
   @Delete(':id')
   remove(
@@ -91,10 +91,7 @@ export class CustomersController {
     return this.customersService.remove(id);
   }
 
-  // =========================================================
   // ACTIVATE
-  // PATCH /api/customers/:id/activate
-  // =========================================================
 
   @Patch(':id/activate')
   activate(

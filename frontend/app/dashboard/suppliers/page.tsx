@@ -1,7 +1,33 @@
 "use client";
 
-import {Ban,Building2,CheckCircle2,ChevronLeft,ChevronRight,Edit,Eye,Mail,MapPin,Phone,Plus,RefreshCw,Search,UserRound,X,XCircle} from "lucide-react";
-import {FormEvent,useCallback,useEffect,useMemo,useState} from "react";
+import {
+  Ban,
+  Building2,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Edit,
+  Eye,
+  Mail,
+  MapPin,
+  Phone,
+  Plus,
+  RefreshCw,
+  Search,
+  UserRound,
+  X,
+  XCircle,
+} from "lucide-react";
+
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import api from "@/services/api";
 
 interface Supplier {
   id: number;
@@ -45,12 +71,6 @@ interface SupplierForm {
   bankBranch: string;
   isActive: boolean;
 }
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:3000/api";
-
-const SUPPLIERS_API = `${API_URL}/suppliers`;
 
 const EMPTY_FORM: SupplierForm = {
   supplierCode: "",
@@ -118,35 +138,28 @@ export default function SuppliersPage() {
           setLoading(true);
         }
 
-        const response = await fetch(
-          SUPPLIERS_API,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            cache: "no-store",
-          },
-        );
+        const response = await api.get("/suppliers");
 
-        if (!response.ok) {
-          throw new Error(
-            `Failed to load suppliers (${response.status})`,
-          );
-        }
-
-        const data = await response.json();
+        const data = response.data;
 
         setSuppliers(
           Array.isArray(data) ? data : [],
         );
-      } catch (err) {
-        console.error(err);
+      } catch (err: any) {
+        console.error(
+          "Failed to load suppliers:",
+          err,
+        );
+
+        const message =
+          err?.response?.data?.message;
 
         setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load suppliers",
+          Array.isArray(message)
+            ? message.join(", ")
+            : message ||
+                err?.message ||
+                "Failed to load suppliers",
         );
       } finally {
         setLoading(false);
@@ -271,35 +284,55 @@ export default function SuppliersPage() {
     setForm({
       supplierCode:
         supplier.supplierCode || "",
+
       supplierName:
         supplier.supplierName || "",
+
       contactPerson:
         supplier.contactPerson || "",
-      phone: supplier.phone || "",
-      email: supplier.email || "",
-      address: supplier.address || "",
-      city: supplier.city || "",
+
+      phone:
+        supplier.phone || "",
+
+      email:
+        supplier.email || "",
+
+      address:
+        supplier.address || "",
+
+      city:
+        supplier.city || "",
+
       country:
         supplier.country || "",
+
       taxNumber:
         supplier.taxNumber || "",
+
       vatNumber:
         supplier.vatNumber || "",
+
       paymentTerms:
         supplier.paymentTerms || "",
+
       creditLimit:
         supplier.creditLimit !== undefined &&
         supplier.creditLimit !== null
           ? String(supplier.creditLimit)
           : "",
+
       bankName:
         supplier.bankName || "",
+
       bankAccountName:
         supplier.bankAccountName || "",
+
       bankAccountNumber:
         supplier.bankAccountNumber || "",
+
       bankBranch:
         supplier.bankBranch || "",
+
       isActive: supplier.isActive,
     });
 
@@ -366,93 +399,92 @@ export default function SuppliersPage() {
       const payload = {
         supplierCode:
           form.supplierCode.trim(),
+
         supplierName:
           form.supplierName.trim(),
+
         contactPerson:
           form.contactPerson.trim() ||
           undefined,
+
         phone:
           form.phone.trim() ||
           undefined,
+
         email:
           form.email.trim() ||
           undefined,
+
         address:
           form.address.trim() ||
           undefined,
+
         city:
           form.city.trim() ||
           undefined,
+
         country:
           form.country.trim() ||
           undefined,
+
         taxNumber:
           form.taxNumber.trim() ||
           undefined,
+
         vatNumber:
           form.vatNumber.trim() ||
           undefined,
+
         paymentTerms:
           form.paymentTerms.trim() ||
           undefined,
+
         creditLimit:
           form.creditLimit.trim()
             ? Number(form.creditLimit)
             : 0,
+
         bankName:
           form.bankName.trim() ||
           undefined,
+
         bankAccountName:
           form.bankAccountName.trim() ||
           undefined,
+
         bankAccountNumber:
           form.bankAccountNumber.trim() ||
           undefined,
+
         bankBranch:
           form.bankBranch.trim() ||
           undefined,
+
         isActive: form.isActive,
       };
 
       const isEdit =
         editingSupplier !== null;
 
-      const url = isEdit
-        ? `${SUPPLIERS_API}/${editingSupplier.id}`
-        : SUPPLIERS_API;
+      // =====================================================
+      // UPDATE
+      // =====================================================
 
-      const response = await fetch(url, {
-        method: isEdit
-          ? "PATCH"
-          : "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      if (isEdit) {
+        await api.patch(
+          `/suppliers/${editingSupplier.id}`,
+          payload,
+        );
+      }
 
-      const data = await response
-        .json()
-        .catch(() => null);
+      // =====================================================
+      // CREATE
+      // =====================================================
 
-      if (!response.ok) {
-        const message =
-          data?.message;
-
-        if (Array.isArray(message)) {
-          throw new Error(
-            message.join(", "),
-          );
-        }
-
-        throw new Error(
-          message ||
-            `Failed to ${
-              isEdit
-                ? "update"
-                : "create"
-            } supplier`,
+      else {
+        await api.post(
+          "/suppliers",
+          payload,
         );
       }
 
@@ -467,13 +499,25 @@ export default function SuppliersPage() {
       setForm(EMPTY_FORM);
 
       await fetchSuppliers();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error(
+        "Supplier save error:",
+        err,
+      );
+
+      const message =
+        err?.response?.data?.message;
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong.",
+        Array.isArray(message)
+          ? message.join(", ")
+          : message ||
+              err?.message ||
+              `Failed to ${
+                editingSupplier
+                  ? "update"
+                  : "create"
+              } supplier.`,
       );
     } finally {
       setSaving(false);
@@ -498,36 +542,29 @@ export default function SuppliersPage() {
       setError("");
       setSuccess("");
 
-      const response = await fetch(
-        `${SUPPLIERS_API}/${supplier.id}`,
-        {
-          method: "DELETE",
-        },
+      await api.delete(
+        `/suppliers/${supplier.id}`,
       );
-
-      const data = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message ||
-            "Failed to deactivate supplier.",
-        );
-      }
 
       setSuccess(
         "Supplier deactivated successfully.",
       );
 
       await fetchSuppliers();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error(
+        "Failed to deactivate supplier:",
+        err,
+      );
+
+      const message =
+        err?.response?.data?.message;
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to deactivate supplier.",
+        Array.isArray(message)
+          ? message.join(", ")
+          : message ||
+              "Failed to deactivate supplier.",
       );
     }
   };
@@ -543,36 +580,29 @@ export default function SuppliersPage() {
       setError("");
       setSuccess("");
 
-      const response = await fetch(
-        `${SUPPLIERS_API}/${supplier.id}/activate`,
-        {
-          method: "PATCH",
-        },
+      await api.patch(
+        `/suppliers/${supplier.id}/activate`,
       );
-
-      const data = await response
-        .json()
-        .catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message ||
-            "Failed to activate supplier.",
-        );
-      }
 
       setSuccess(
         "Supplier activated successfully.",
       );
 
       await fetchSuppliers();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error(
+        "Failed to activate supplier:",
+        err,
+      );
+
+      const message =
+        err?.response?.data?.message;
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to activate supplier.",
+        Array.isArray(message)
+          ? message.join(", ")
+          : message ||
+              "Failed to activate supplier.",
       );
     }
   };
@@ -599,6 +629,7 @@ export default function SuppliersPage() {
           <div className="flex min-h-[500px] items-center justify-center">
             <div className="flex items-center gap-3 text-gray-600">
               <RefreshCw className="h-5 w-5 animate-spin" />
+
               <span>
                 Loading suppliers...
               </span>
@@ -654,6 +685,7 @@ export default function SuppliersPage() {
           <div className="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <div className="flex gap-2">
               <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
               <span>{error}</span>
             </div>
 
@@ -671,6 +703,7 @@ export default function SuppliersPage() {
           <div className="flex items-start justify-between gap-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
             <div className="flex gap-2">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+
               <span>{success}</span>
             </div>
 
@@ -778,6 +811,7 @@ export default function SuppliersPage() {
                         : "h-4 w-4"
                     }
                   />
+
                   Refresh
                 </button>
               </div>
@@ -925,11 +959,13 @@ export default function SuppliersPage() {
                             {supplier.isActive ? (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
                                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+
                                 Active
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
                                 <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+
                                 Inactive
                               </span>
                             )}
@@ -1093,10 +1129,9 @@ export default function SuppliersPage() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
 
-            {/* HEADER - FIXED */}
+            {/* HEADER */}
 
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
               <div>
@@ -1123,7 +1158,7 @@ export default function SuppliersPage() {
               </button>
             </div>
 
-            {/* FORM CONTENT */}
+            {/* FORM */}
 
             <form
               onSubmit={handleSubmit}
@@ -1145,7 +1180,6 @@ export default function SuppliersPage() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
                     <FormInput
                       label="Supplier Code"
                       required
@@ -1175,14 +1209,12 @@ export default function SuppliersPage() {
                       }
                       placeholder="ABC Suppliers"
                     />
-
                   </div>
                 </div>
 
                 {/* CONTACT */}
 
                 <div className="mt-7 border-t border-gray-100 pt-6">
-
                   <div className="mb-4">
                     <h3 className="text-sm font-semibold text-gray-900">
                       Contact Information
@@ -1279,14 +1311,12 @@ export default function SuppliersPage() {
                         className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
-
                   </div>
                 </div>
 
-                {/* TAX / PAYMENT INFORMATION */}
+                {/* TAX / PAYMENT */}
 
                 <div className="mt-7 border-t border-gray-100 pt-6">
-
                   <div className="mb-4">
                     <h3 className="text-sm font-semibold text-gray-900">
                       Tax & Payment Information
@@ -1303,7 +1333,10 @@ export default function SuppliersPage() {
                       label="Tax Number"
                       value={form.taxNumber}
                       onChange={(value) =>
-                        updateField("taxNumber", value)
+                        updateField(
+                          "taxNumber",
+                          value,
+                        )
                       }
                       placeholder="TIN / Tax Number"
                     />
@@ -1312,16 +1345,24 @@ export default function SuppliersPage() {
                       label="VAT Number"
                       value={form.vatNumber}
                       onChange={(value) =>
-                        updateField("vatNumber", value)
+                        updateField(
+                          "vatNumber",
+                          value,
+                        )
                       }
                       placeholder="VAT Number"
                     />
 
                     <FormInput
                       label="Payment Terms"
-                      value={form.paymentTerms}
+                      value={
+                        form.paymentTerms
+                      }
                       onChange={(value) =>
-                        updateField("paymentTerms", value)
+                        updateField(
+                          "paymentTerms",
+                          value,
+                        )
                       }
                       placeholder="e.g. Net 30"
                     />
@@ -1329,20 +1370,23 @@ export default function SuppliersPage() {
                     <FormInput
                       label="Credit Limit"
                       type="number"
-                      value={form.creditLimit}
+                      value={
+                        form.creditLimit
+                      }
                       onChange={(value) =>
-                        updateField("creditLimit", value)
+                        updateField(
+                          "creditLimit",
+                          value,
+                        )
                       }
                       placeholder="0.00"
                     />
-
                   </div>
                 </div>
 
                 {/* BANK INFORMATION */}
 
                 <div className="mt-7 border-t border-gray-100 pt-6">
-
                   <div className="mb-4">
                     <h3 className="text-sm font-semibold text-gray-900">
                       Bank Information
@@ -1357,47 +1401,65 @@ export default function SuppliersPage() {
 
                     <FormInput
                       label="Bank Name"
-                      value={form.bankName}
+                      value={
+                        form.bankName
+                      }
                       onChange={(value) =>
-                        updateField("bankName", value)
+                        updateField(
+                          "bankName",
+                          value,
+                        )
                       }
                       placeholder="Commercial Bank"
                     />
 
                     <FormInput
                       label="Account Name"
-                      value={form.bankAccountName}
+                      value={
+                        form.bankAccountName
+                      }
                       onChange={(value) =>
-                        updateField("bankAccountName", value)
+                        updateField(
+                          "bankAccountName",
+                          value,
+                        )
                       }
                       placeholder="Supplier account name"
                     />
 
                     <FormInput
                       label="Account Number"
-                      value={form.bankAccountNumber}
+                      value={
+                        form.bankAccountNumber
+                      }
                       onChange={(value) =>
-                        updateField("bankAccountNumber", value)
+                        updateField(
+                          "bankAccountNumber",
+                          value,
+                        )
                       }
                       placeholder="Account number"
                     />
 
                     <FormInput
                       label="Branch"
-                      value={form.bankBranch}
+                      value={
+                        form.bankBranch
+                      }
                       onChange={(value) =>
-                        updateField("bankBranch", value)
+                        updateField(
+                          "bankBranch",
+                          value,
+                        )
                       }
                       placeholder="Colombo Branch"
                     />
-
                   </div>
                 </div>
 
                 {/* STATUS */}
 
                 <div className="mt-7 border-t border-gray-100 pt-6">
-
                   <label className="flex cursor-pointer items-center gap-3">
                     <input
                       type="checkbox"
@@ -1424,12 +1486,10 @@ export default function SuppliersPage() {
                       </span>
                     </span>
                   </label>
-
                 </div>
-
               </div>
 
-              {/* FOOTER - FIXED */}
+              {/* FOOTER */}
 
               <div className="sticky bottom-0 flex shrink-0 justify-end gap-3 border-t border-gray-200 bg-white px-6 py-4">
 
@@ -1455,7 +1515,6 @@ export default function SuppliersPage() {
                     ? "Update Supplier"
                     : "Create Supplier"}
                 </button>
-
               </div>
             </form>
           </div>
@@ -1468,7 +1527,6 @@ export default function SuppliersPage() {
 
       {selectedSupplier && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
 
             {/* HEADER */}
@@ -1513,7 +1571,6 @@ export default function SuppliersPage() {
             {/* VIEW CONTENT */}
 
             <div className="scrollbar-hide min-h-0 flex-1 overflow-y-auto">
-
               <div className="space-y-6 p-6">
 
                 {/* STATUS */}
@@ -1543,13 +1600,11 @@ export default function SuppliersPage() {
                       Inactive
                     </span>
                   )}
-
                 </div>
 
                 {/* CONTACT */}
 
                 <div>
-
                   <h3 className="mb-4 text-sm font-semibold text-gray-900">
                     Contact Information
                   </h3>
@@ -1617,11 +1672,10 @@ export default function SuppliersPage() {
                         }
                       />
                     </div>
-
                   </div>
                 </div>
 
-                {/* TAX / PAYMENT INFORMATION */}
+                {/* TAX / PAYMENT */}
 
                 <div>
                   <h3 className="mb-4 text-sm font-semibold text-gray-900">
@@ -1629,6 +1683,7 @@ export default function SuppliersPage() {
                   </h3>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
                     <InfoItem
                       label="Tax Number"
                       value={
@@ -1656,12 +1711,19 @@ export default function SuppliersPage() {
                     <InfoItem
                       label="Credit Limit"
                       value={
-                        selectedSupplier.creditLimit !== undefined &&
-                        selectedSupplier.creditLimit !== null
-                          ? `Rs. ${Number(selectedSupplier.creditLimit).toLocaleString("en-LK", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}`
+                        selectedSupplier.creditLimit !==
+                          undefined &&
+                        selectedSupplier.creditLimit !==
+                          null
+                          ? `Rs. ${Number(
+                              selectedSupplier.creditLimit,
+                            ).toLocaleString(
+                              "en-LK",
+                              {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              },
+                            )}`
                           : "Rs. 0.00"
                       }
                     />
@@ -1676,6 +1738,7 @@ export default function SuppliersPage() {
                   </h3>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
                     <InfoItem
                       label="Bank Name"
                       value={
@@ -1728,9 +1791,7 @@ export default function SuppliersPage() {
                     title="Supplier Performance"
                     description="Supplier performance will be connected with purchasing metrics."
                   />
-
                 </div>
-
               </div>
             </div>
 
@@ -1762,7 +1823,6 @@ export default function SuppliersPage() {
               >
                 Close
               </button>
-
             </div>
           </div>
         </div>
@@ -1801,7 +1861,6 @@ function SummaryCard({
         <div className="rounded-lg bg-blue-50 p-3 text-blue-600">
           {icon}
         </div>
-
       </div>
     </div>
   );
@@ -1828,7 +1887,6 @@ function FormInput({
 }) {
   return (
     <div>
-
       <label className="mb-1.5 block text-sm font-medium text-gray-700">
         {label}
 
@@ -1851,7 +1909,6 @@ function FormInput({
         required={required}
         className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
       />
-
     </div>
   );
 }
@@ -1880,7 +1937,6 @@ function InfoItem({
       <p className="mt-2 text-sm font-medium text-gray-800">
         {value}
       </p>
-
     </div>
   );
 }
@@ -1906,7 +1962,6 @@ function FeaturePlaceholder({
       <p className="mt-2 text-xs leading-5 text-gray-500">
         {description}
       </p>
-
     </div>
   );
 }
