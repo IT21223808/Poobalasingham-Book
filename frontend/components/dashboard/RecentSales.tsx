@@ -1,110 +1,146 @@
-import { Eye } from "lucide-react";
+"use client";
 
-const sales = [
-  {
-    id: "INV-1001",
-    customer: "Kamal Perera",
-    book: "The Psychology of Money",
-    amount: "Rs. 4,250",
-    status: "Completed",
-  },
-  {
-    id: "INV-1002",
-    customer: "Nimal Silva",
-    book: "Atomic Habits",
-    amount: "Rs. 3,100",
-    status: "Completed",
-  },
-  {
-    id: "INV-1003",
-    customer: "John David",
-    book: "Rich Dad Poor Dad",
-    amount: "Rs. 2,950",
-    status: "Pending",
-  },
-  {
-    id: "INV-1004",
-    customer: "Ayesha Fernando",
-    book: "Deep Work",
-    amount: "Rs. 5,600",
-    status: "Completed",
-  },
-];
+interface DashboardSale {
+  id: string | number;
+  invoiceNumber?: string;
+  customerName?: string | null;
+  grandTotal: number | string;
+  createdAt: string;
+  status?: string;
+}
 
-export default function RecentSales() {
+interface RecentSalesProps {
+  sales: DashboardSale[];
+}
+
+export default function RecentSales({
+  sales,
+}: RecentSalesProps) {
+  const formatCurrency = (value: number | string) => {
+    return `Rs. ${Number(value || 0).toLocaleString("en-LK")}`;
+  };
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString(
+      "en-LK",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      },
+    );
+  };
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-      <div className="flex items-center justify-between border-b p-6">
+    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+      {/* Header */}
+      <div className="border-b border-slate-100 p-6">
         <div>
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold text-slate-800">
             Recent Sales
           </h2>
-          <p className="text-sm text-slate-500">
+
+          <p className="mt-1 text-sm text-slate-500">
             Latest bookstore transactions
           </p>
         </div>
       </div>
+
+      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-6 py-4 text-left text-sm">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-slate-50/70">
+              <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Invoice
               </th>
-              <th className="px-6 py-4 text-left text-sm">
+
+              <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Customer
               </th>
-              <th className="px-6 py-4 text-left text-sm">
-                Book
+
+              <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Date
               </th>
-              <th className="px-6 py-4 text-left text-sm">
+
+              <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Amount
               </th>
-              <th className="px-6 py-4 text-left text-sm">
+
+              <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Status
-              </th>
-              <th className="px-6 py-4 text-center text-sm">
-                Action
               </th>
             </tr>
           </thead>
+
           <tbody>
-            {sales.map((sale) => (
-              <tr
-                key={sale.id}
-                className="border-t hover:bg-slate-50"
-              >
-                <td className="px-6 py-4 font-medium">
-                  {sale.id}
-                </td>
-                <td className="px-6 py-4">
-                  {sale.customer}
-                </td>
-                <td className="px-6 py-4">
-                  {sale.book}
-                </td>
-                <td className="px-6 py-4 font-semibold text-blue-600">
-                  {sale.amount}
-                </td>
-                <td className="px-6 py-4">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      sale.status === "Completed"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700"
-                    }`}
-                  >
-                    {sale.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <button className="rounded-lg p-2 hover:bg-slate-100">
-                    <Eye size={18} />
-                  </button>
+            {sales.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="px-6 py-10 text-center text-sm text-slate-400"
+                >
+                  No recent sales found.
                 </td>
               </tr>
-            ))}
+            ) : (
+              sales.map((sale) => {
+                const status =
+                  sale.status ?? "UNKNOWN";
+
+                const normalizedStatus =
+                  status.toUpperCase();
+
+                const isCompleted =
+                  normalizedStatus === "COMPLETED";
+
+                return (
+                  <tr
+                    key={sale.id}
+                    className="border-t border-slate-100 transition-colors hover:bg-slate-50/60"
+                  >
+                    {/* Invoice */}
+                    <td className="px-6 py-4 text-sm font-medium text-slate-700">
+                      {sale.invoiceNumber ??
+                        `#${sale.id}`}
+                    </td>
+
+                    {/* Customer */}
+                    <td className="px-6 py-4 text-sm text-slate-600">
+                      {sale.customerName ??
+                        "Walk-in Customer"}
+                    </td>
+
+                    {/* Date */}
+                    <td className="px-6 py-4 text-sm text-slate-500">
+                      {formatDate(
+                        sale.createdAt,
+                      )}
+                    </td>
+
+                    {/* Amount */}
+                    <td className="px-6 py-4 text-sm font-semibold text-blue-600">
+                      {formatCurrency(
+                        sale.grandTotal,
+                      )}
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                          isCompleted
+                            ? "bg-green-50 text-green-600"
+                            : "bg-yellow-50 text-yellow-600"
+                        }`}
+                      >
+                        {status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

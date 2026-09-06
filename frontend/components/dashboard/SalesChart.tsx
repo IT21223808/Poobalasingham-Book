@@ -10,43 +10,62 @@ import {
   YAxis,
 } from "recharts";
 
-const data = [
-  { month: "Jan", sales: 42000 },
-  { month: "Feb", sales: 38000 },
-  { month: "Mar", sales: 52000 },
-  { month: "Apr", sales: 48000 },
-  { month: "May", sales: 61000 },
-  { month: "Jun", sales: 57000 },
-  { month: "Jul", sales: 72000 },
-];
+interface SalesChartItem {
+  date: string;
+  sales: number;
+}
 
-export default function SalesChart() {
+interface SalesChartProps {
+  data: SalesChartItem[];
+}
+
+export default function SalesChart({
+  data,
+}: SalesChartProps) {
+  const chartData = data.map((item) => ({
+    date: new Date(item.date).toLocaleDateString(
+      "en-LK",
+      {
+        day: "2-digit",
+        month: "short",
+      },
+    ),
+    sales: Number(item.sales || 0),
+  }));
+
+  const formatCurrency = (value: number) => {
+    return `Rs. ${value.toLocaleString("en-LK")}`;
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
       <div className="mb-6">
-
         <h2 className="text-xl font-semibold">
           Sales Overview
         </h2>
 
         <p className="text-sm text-slate-500">
-          Monthly sales performance
+          Last 7 days sales performance
         </p>
-
       </div>
 
       <ResponsiveContainer width="100%" height={320}>
-
-        <AreaChart data={data}>
-
+        <AreaChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
 
-          <XAxis dataKey="month" />
+          <XAxis dataKey="date" />
 
-          <YAxis />
+          <YAxis
+            tickFormatter={(value) =>
+              `Rs. ${Number(value).toLocaleString("en-LK")}`
+            }
+          />
 
-          <Tooltip />
+          <Tooltip
+            formatter={(value) =>
+              formatCurrency(Number(value || 0))
+            }
+          />
 
           <Area
             type="monotone"
@@ -54,11 +73,8 @@ export default function SalesChart() {
             stroke="#2563EB"
             fill="#93C5FD"
           />
-
         </AreaChart>
-
       </ResponsiveContainer>
-
     </div>
   );
 }
