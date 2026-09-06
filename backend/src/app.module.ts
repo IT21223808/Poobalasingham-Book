@@ -17,6 +17,9 @@ import { CustomersModule } from './customers/customers.module';
 import { FinanceModule } from './finance/finance.module';
 import { PosModule } from './pos/pos.module';
 import { ReportsModule } from './reports/reports.module';
+import { TillsModule } from './tills/tills.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -26,7 +29,7 @@ import { ReportsModule } from './reports/reports.module';
     }),
 
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule, UsersModule, AuthModule],
+      imports: [ConfigModule, UsersModule, AuthModule, DashboardModule,],
       inject: [ConfigService],
 
       useFactory: (configService: ConfigService) => ({
@@ -50,6 +53,8 @@ import { ReportsModule } from './reports/reports.module';
     FinanceModule,
     PosModule,
     ReportsModule,
+    TillsModule,
+    MailModule,
   ],
 
   controllers: [AppController],
