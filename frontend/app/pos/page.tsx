@@ -277,6 +277,10 @@ export default function PosPage() {
     setIsShortcutGuideOpen,
   ] = useState<boolean>(false);
 
+  /* =======================================================
+     COMPLETED SALE / RECEIPT
+  ======================================================= */
+
   const [
     completedSaleInvoice,
     setCompletedSaleInvoice,
@@ -288,6 +292,19 @@ export default function PosPage() {
     lastCompletedInvoice,
     setLastCompletedInvoice,
   ] = useState<SaleInvoice | null>(
+    null,
+  );
+
+  /*
+   * IMPORTANT:
+   * selectedCustomer is cleared after sale completion.
+   * Therefore the customer email must be stored separately
+   * before selectedCustomer becomes null.
+   */
+  const [
+    completedCustomerEmail,
+    setCompletedCustomerEmail,
+  ] = useState<string | null>(
     null,
   );
 
@@ -411,6 +428,7 @@ export default function PosPage() {
        * Never replace existing POS master data with
        * empty arrays because the browser is offline.
        */
+
       if (
         typeof window !== "undefined" &&
         !navigator.onLine
@@ -525,6 +543,7 @@ export default function PosPage() {
         /*
          * Only show error while actually online.
          */
+
         if (
           typeof window === "undefined" ||
           navigator.onLine
@@ -563,6 +582,7 @@ export default function PosPage() {
        * Wait until the network is available,
        * then refresh master data.
        */
+
       if (navigator.onLine) {
         void loadData();
       }
@@ -997,33 +1017,186 @@ export default function PosPage() {
   ======================================================= */
 
   const handleEmailReceipt =
-    () => {
+    async () => {
+      /*
+       * IMPORTANT:
+       * Do NOT use selectedCustomer here.
+       *
+       * selectedCustomer is cleared immediately after
+       * successful sale. The completed customer email is
+       * stored separately in completedCustomerEmail.
+       */
+
       if (
-        !selectedCustomer
+        !lastCompletedInvoice
       ) {
         toast.error(
-          "Please select a customer with an email address to send a receipt.",
+          "Complete a sale first before sending the receipt.",
         );
 
         return;
       }
 
       if (
-        !selectedCustomer.email
+        !completedCustomerEmail
       ) {
         toast.error(
-          "Customer email is not available. Please select a customer with an email address.",
+          "Customer email is not available for this receipt.",
         );
 
         return;
       }
 
-      toast(
-        "Email receipt functionality requires backend email support — coming soon.",
-        {
-          icon: "ℹ️",
-        },
-      );
+      if (
+        typeof window !== "undefined" &&
+        !navigator.onLine
+      ) {
+        toast.error(
+          "Email receipt requires an internet connection.",
+        );
+
+        return;
+      }
+
+      const email =
+        completedCustomerEmail.trim();
+
+      if (!email) {
+        toast.error(
+          "Customer email is not available for this receipt.",
+        );
+
+        return;
+      }
+
+      const emailRegex =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (
+        !emailRegex.test(email)
+      ) {
+        toast.error(
+          "Please provide a valid customer email address.",
+        );
+
+        return;
+      }
+
+      try {
+        toast.loading(
+          "Sending receipt...",
+          {
+            id: "email-receipt",
+          },
+        );
+
+        /* -----------------------------------------------
+           AUTH TOKEN
+        ------------------------------------------------ */
+
+        const token =
+          typeof window !==
+          "undefined"
+            ? localStorage.getItem(
+                "authToken",
+              ) ||
+              localStorage.getItem(
+                "accessToken",
+              ) ||
+              localStorage.getItem(
+                "access_token",
+              ) ||
+              localStorage.getItem(
+                "token",
+              ) ||
+              sessionStorage.getItem(
+                "authToken",
+              ) ||
+              sessionStorage.getItem(
+                "accessToken",
+              ) ||
+              sessionStorage.getItem(
+                "access_token",
+              ) ||
+              sessionStorage.getItem(
+                "token",
+              )
+            : null;
+
+        if (!token) {
+          throw new Error(
+            "Authentication token not found. Please login again.",
+          );
+        }
+
+        /* -----------------------------------------------
+           SEND TO BACKEND
+        ------------------------------------------------ */
+
+        const response =
+          await fetch(
+            `${API_URL}/pos/sales/${lastCompletedInvoice.id}/email-receipt`,
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              body: JSON.stringify({
+                email,
+              }),
+            },
+          );
+
+        const result =
+          await response
+            .json()
+            .catch(
+              () => null,
+            );
+
+        if (!response.ok) {
+          const message =
+            Array.isArray(
+              result?.message,
+            )
+              ? result.message.join(
+                  ", ",
+                )
+              : result?.message ||
+                "Failed to send email receipt.";
+
+          throw new Error(
+            message,
+          );
+        }
+
+        toast.success(
+          `Receipt sent successfully to ${email}`,
+          {
+            id: "email-receipt",
+          },
+        );
+      } catch (error) {
+        console.error(
+          "Failed to send email receipt:",
+          error,
+        );
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to send email receipt. Please try again.",
+          {
+            id: "email-receipt",
+          },
+        );
+      }
     };
 
   /* =======================================================
@@ -1069,6 +1242,7 @@ export default function PosPage() {
       /*
        * Hold bill currently needs backend.
        */
+
       if (
         typeof window !==
           "undefined" &&
@@ -1085,34 +1259,36 @@ export default function PosPage() {
 
       try {
         const held =
-          await posService.holdBill({
-            customerId:
-              selectedCustomer?.id ||
-              undefined,
+          await posService.holdBill(
+            {
+              customerId:
+                selectedCustomer?.id ||
+                undefined,
 
-            customerName:
-              selectedCustomer?.customerName ||
-              undefined,
+              customerName:
+                selectedCustomer?.customerName ||
+                undefined,
 
-            cartData: {
-              items: cart,
+              cartData: {
+                items: cart,
 
-              customer:
-                selectedCustomer,
+                customer:
+                  selectedCustomer,
+
+                discountAmount,
+
+                discountType,
+
+                discountValue,
+              },
+
+              subtotal,
 
               discountAmount,
 
-              discountType,
-
-              discountValue,
+              grandTotal,
             },
-
-            subtotal,
-
-            discountAmount,
-
-            grandTotal,
-          });
+          );
 
         toast.success(
           `Bill held successfully as #${held.holdNumber}`,
@@ -1541,6 +1717,7 @@ export default function PosPage() {
 
       <main className="flex min-w-0 flex-1 overflow-hidden">
         {/* LEFT */}
+
         <section className="flex min-w-0 flex-1 flex-col space-y-3 overflow-hidden p-3">
           <CategoryFilter
             categories={
@@ -1571,6 +1748,7 @@ export default function PosPage() {
         </section>
 
         {/* RIGHT */}
+
         <section className="h-full w-80 shrink-0 sm:w-96 md:w-[400px] xl:w-[440px]">
           <PosCart
             cartItems={cart}
@@ -1752,6 +1930,19 @@ export default function PosPage() {
           );
 
           /* -----------------------------------------------
+             SAVE CUSTOMER EMAIL
+             
+             IMPORTANT:
+             This MUST happen BEFORE selectedCustomer
+             is cleared below.
+          ------------------------------------------------ */
+
+          setCompletedCustomerEmail(
+            selectedCustomer?.email?.trim() ||
+              null,
+          );
+
+          /* -----------------------------------------------
              OFFLINE LOCAL STOCK
           ------------------------------------------------ */
 
@@ -1770,6 +1961,12 @@ export default function PosPage() {
           ------------------------------------------------ */
 
           handleClearCart();
+
+          /*
+           * Customer is cleared from the active POS cart,
+           * but completedCustomerEmail remains available
+           * for the receipt modal.
+           */
 
           setSelectedCustomer(
             null,
@@ -1805,16 +2002,41 @@ export default function PosPage() {
           completedSaleInvoice !==
           null
         }
-        onClose={() =>
+
+        onClose={() => {
           setCompletedSaleInvoice(
             null,
-          )
-        }
+          );
+        }}
+
         saleInvoice={
           completedSaleInvoice
         }
+
+        /*
+         * Customer email is stored separately because
+         * selectedCustomer is cleared after sale.
+         */
+
+        customerEmail={
+          completedCustomerEmail
+        }
+
+        /*
+         * Email is sent only when the user clicks
+         * Email Receipt inside ReceiptModal.
+         */
+
+        onEmailReceipt={
+          handleEmailReceipt
+        }
+
         onNewSale={() => {
           setCompletedSaleInvoice(
+            null,
+          );
+
+          setCompletedCustomerEmail(
             null,
           );
 

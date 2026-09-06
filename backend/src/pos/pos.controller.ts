@@ -8,138 +8,164 @@ import {
   Query,
   Req,
   UseGuards,
-} from "@nestjs/common";
+} from '@nestjs/common';
 
-import { AuthGuard } from "@nestjs/passport";
+import { PosService } from './pos.service';
 
-import { PosService } from "./pos.service";
+import { CreatePosSaleDto } from './dto/create-pos-sale.dto';
+import { HoldBillDto } from './dto/hold-bill.dto';
+import { ReturnSaleDto } from './dto/return-sale.dto';
 
-import { CreatePosSaleDto } from "./dto/create-pos-sale.dto";
-import { HoldBillDto } from "./dto/hold-bill.dto";
-import { ReturnSaleDto } from "./dto/return-sale.dto";
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 
-@Controller("pos")
-@UseGuards(AuthGuard("jwt"))
+import { AppPermission } from '../common/permissions/permissions';
+import { RequirePermissions } from '../common/decorators/permissions.decorator';
+
+@Controller('pos')
+@UseGuards(
+  JwtAuthGuard,
+  PermissionsGuard,
+)
+@RequirePermissions(AppPermission.POS)
 export class PosController {
   constructor(
     private readonly posService: PosService,
   ) {}
 
-  /* =========================================================
-     SALES
-  ========================================================= */
+  // ============================================================
+  // CREATE SALE
+  // ============================================================
 
-  @Post("sales")
+  @Post('sales')
   async createSale(
     @Body() dto: CreatePosSaleDto,
     @Req() req: any,
   ) {
-    const cashierId =
-      req?.user?.id != null
-        ? String(req.user.id)
-        : req?.user?.email ||
-          req?.user?.username ||
-          "System";
-
-    return await this.posService.createSale(
+    return this.posService.createSale(
       dto,
-      cashierId,
+      req.user,
     );
   }
 
-  @Get("sales")
-  async getSales(
-    @Query("search") search?: string,
-    @Query("limit") limit?: string,
-  ) {
-    return await this.posService.getSales({
-      search:
-        search?.trim() || undefined,
+  // ============================================================
+  // GET SALES
+  // ============================================================
 
-      limit:
-        limit && !Number.isNaN(Number(limit))
-          ? Number(limit)
-          : undefined,
+  @Get('sales')
+  async getSales(
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit =
+      limit &&
+      !Number.isNaN(Number(limit))
+        ? Number(limit)
+        : undefined;
+
+    return this.posService.getSales({
+      search:
+        search?.trim() ||
+        undefined,
+
+      limit: parsedLimit,
     });
   }
 
-  @Get("sales/:idOrInvoice")
+  // ============================================================
+  // GET SINGLE SALE
+  // ============================================================
+
+  @Get('sales/:idOrInvoice')
   async getSaleById(
-    @Param("idOrInvoice")
+    @Param('idOrInvoice')
     idOrInvoice: string,
   ) {
-    return await this.posService.getSaleById(
+    return this.posService.getSaleById(
       idOrInvoice,
     );
   }
 
-  /* =========================================================
-     HELD BILLS
-  ========================================================= */
+  // ============================================================
+  // SEND EMAIL RECEIPT
+  // ============================================================
 
-  @Post("held-bills")
+  @Post('sales/:id/email-receipt')
+  async sendEmailReceipt(
+    @Param('id') id: string,
+
+    @Body()
+    body: {
+      email: string;
+    },
+  ) {
+    return this.posService.sendEmailReceipt(
+      id,
+      body.email,
+    );
+  }
+
+  // ============================================================
+  // HOLD BILL
+  // ============================================================
+
+  @Post('held-bills')
   async holdBill(
     @Body() dto: HoldBillDto,
     @Req() req: any,
   ) {
-    const cashierId =
-      req?.user?.id != null
-        ? String(req.user.id)
-        : req?.user?.email ||
-          req?.user?.username ||
-          "System";
-
-    return await this.posService.holdBill(
+    return this.posService.holdBill(
       dto,
-      cashierId,
+      req.user?.id,
     );
   }
 
-  @Get("held-bills")
+  // ============================================================
+  // GET HELD BILLS
+  // ============================================================
+
+  @Get('held-bills')
   async getHeldBills() {
-    return await this.posService.getHeldBills();
+    return this.posService.getHeldBills();
   }
 
-  @Delete("held-bills/:id")
+  // ============================================================
+  // DELETE HELD BILL
+  // ============================================================
+
+  @Delete('held-bills/:id')
   async deleteHeldBill(
-    @Param("id") id: string,
+    @Param('id') id: string,
   ) {
-    return await this.posService.deleteHeldBill(
+    return this.posService.deleteHeldBill(
       id,
     );
   }
 
-  /* =========================================================
-     RETURNS
-  ========================================================= */
+  // ============================================================
+  // CREATE RETURN
+  // ============================================================
 
-  @Post("returns")
+  @Post('returns')
   async createReturn(
     @Body() dto: ReturnSaleDto,
     @Req() req: any,
   ) {
-    const cashierId =
-      req?.user?.id != null
-        ? String(req.user.id)
-        : req?.user?.email ||
-          req?.user?.username ||
-          "System";
-
-    return await this.posService.createReturn(
+    return this.posService.createReturn(
       dto,
-      cashierId,
+      req.user?.id,
     );
   }
 
-  /* =========================================================
-     CASH CLOSING
-  ========================================================= */
+  // ============================================================
+  // CASH CLOSING SUMMARY
+  // ============================================================
 
-  @Get("cash-closing-summary")
+  @Get('cash-closing-summary')
   async getCashClosingSummary(
-    @Query("date") date?: string,
+    @Query('date') date?: string,
   ) {
-    return await this.posService.getCashClosingSummary(
+    return this.posService.getCashClosingSummary(
       date,
     );
   }

@@ -20,17 +20,26 @@ import { PosPayment } from "./entities/pos-payment.entity";
 import { PosHeldBill } from "./entities/pos-held-bill.entity";
 import { PosReturn } from "./entities/pos-return.entity";
 import { PosReturnItem } from "./entities/pos-return-item.entity";
-
 import { Product } from "../products/entities/product.entity";
 
 import { CreatePosSaleDto } from "./dto/create-pos-sale.dto";
 import { HoldBillDto } from "./dto/hold-bill.dto";
 import { ReturnSaleDto } from "./dto/return-sale.dto";
 
+/* =========================================================
+   MAIL SERVICE
+========================================================= */
+import { MailService } from "../mail/mail.service";
+
 @Injectable()
 export class PosService {
   constructor(
     private readonly dataSource: DataSource,
+
+    /* =====================================================
+       MAIL SERVICE
+    ===================================================== */
+    private readonly mailService: MailService,
   ) {}
 
   /* =========================================================
@@ -49,32 +58,20 @@ export class PosService {
 
     const lastSale = await manager
       .createQueryBuilder(PosSale, "sale")
-      .where(
-        "sale.invoiceNumber LIKE :prefix",
-        {
-          prefix: `${prefix}%`,
-        },
-      )
-      .orderBy(
-        "sale.invoiceNumber",
-        "DESC",
-      )
+      .where("sale.invoiceNumber LIKE :prefix", {
+        prefix: `${prefix}%`,
+      })
+      .orderBy("sale.invoiceNumber", "DESC")
       .setLock("pessimistic_write")
       .getOne();
 
     let seq = 1;
 
-    if (
-      lastSale?.invoiceNumber
-    ) {
-      const parts =
-        lastSale.invoiceNumber.split("-");
+    if (lastSale?.invoiceNumber) {
+      const parts = lastSale.invoiceNumber.split("-");
 
       if (parts.length === 3) {
-        const parsedSeq = parseInt(
-          parts[2],
-          10,
-        );
+        const parsedSeq = parseInt(parts[2], 10);
 
         if (!Number.isNaN(parsedSeq)) {
           seq = parsedSeq + 1;
@@ -82,9 +79,7 @@ export class PosService {
       }
     }
 
-    return `${prefix}${seq
-      .toString()
-      .padStart(4, "0")}`;
+    return `${prefix}${seq.toString().padStart(4, "0")}`;
   }
 
   /* =========================================================
@@ -99,33 +94,22 @@ export class PosService {
 
     const prefix = `HOLD-${todayStr}-`;
 
-    const lastHold =
-      await this.dataSource
-        .getRepository(PosHeldBill)
-        .createQueryBuilder("hold")
-        .where(
-          "hold.holdNumber LIKE :prefix",
-          {
-            prefix: `${prefix}%`,
-          },
-        )
-        .orderBy(
-          "hold.holdNumber",
-          "DESC",
-        )
-        .getOne();
+    const lastHold = await this.dataSource
+      .getRepository(PosHeldBill)
+      .createQueryBuilder("hold")
+      .where("hold.holdNumber LIKE :prefix", {
+        prefix: `${prefix}%`,
+      })
+      .orderBy("hold.holdNumber", "DESC")
+      .getOne();
 
     let seq = 1;
 
     if (lastHold?.holdNumber) {
-      const parts =
-        lastHold.holdNumber.split("-");
+      const parts = lastHold.holdNumber.split("-");
 
       if (parts.length === 3) {
-        const parsedSeq = parseInt(
-          parts[2],
-          10,
-        );
+        const parsedSeq = parseInt(parts[2], 10);
 
         if (!Number.isNaN(parsedSeq)) {
           seq = parsedSeq + 1;
@@ -133,9 +117,7 @@ export class PosService {
       }
     }
 
-    return `${prefix}${seq
-      .toString()
-      .padStart(4, "0")}`;
+    return `${prefix}${seq.toString().padStart(4, "0")}`;
   }
 
   /* =========================================================
@@ -153,38 +135,21 @@ export class PosService {
     const prefix = `RET-${todayStr}-`;
 
     const lastReturn = await manager
-      .createQueryBuilder(
-        PosReturn,
-        "ret",
-      )
-      .where(
-        "ret.returnNumber LIKE :prefix",
-        {
-          prefix: `${prefix}%`,
-        },
-      )
-      .orderBy(
-        "ret.returnNumber",
-        "DESC",
-      )
+      .createQueryBuilder(PosReturn, "ret")
+      .where("ret.returnNumber LIKE :prefix", {
+        prefix: `${prefix}%`,
+      })
+      .orderBy("ret.returnNumber", "DESC")
       .setLock("pessimistic_write")
       .getOne();
 
     let seq = 1;
 
-    if (
-      lastReturn?.returnNumber
-    ) {
-      const parts =
-        lastReturn.returnNumber.split(
-          "-",
-        );
+    if (lastReturn?.returnNumber) {
+      const parts = lastReturn.returnNumber.split("-");
 
       if (parts.length === 3) {
-        const parsedSeq = parseInt(
-          parts[2],
-          10,
-        );
+        const parsedSeq = parseInt(parts[2], 10);
 
         if (!Number.isNaN(parsedSeq)) {
           seq = parsedSeq + 1;
@@ -192,9 +157,7 @@ export class PosService {
       }
     }
 
-    return `${prefix}${seq
-      .toString()
-      .padStart(4, "0")}`;
+    return `${prefix}${seq.toString().padStart(4, "0")}`;
   }
 
   /* =========================================================
@@ -211,24 +174,12 @@ export class PosService {
     return await this.dataSource
       .getRepository(PosSale)
       .createQueryBuilder("sale")
-      .leftJoinAndSelect(
-        "sale.items",
-        "items",
-      )
-      .leftJoinAndSelect(
-        "sale.payments",
-        "payments",
-      )
-      .leftJoinAndSelect(
-        "sale.location",
-        "location",
-      )
-      .where(
-        "sale.clientSaleId = :clientSaleId",
-        {
-          clientSaleId,
-        },
-      )
+      .leftJoinAndSelect("sale.items", "items")
+      .leftJoinAndSelect("sale.payments", "payments")
+      .leftJoinAndSelect("sale.location", "location")
+      .where("sale.clientSaleId = :clientSaleId", {
+        clientSaleId,
+      })
       .getOne();
   }
 
@@ -240,19 +191,13 @@ export class PosService {
     dto: CreatePosSaleDto,
     cashierId?: string,
   ): Promise<PosSale> {
-    if (
-      !dto.items ||
-      dto.items.length === 0
-    ) {
+    if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException(
         "Cannot process sale with empty cart.",
       );
     }
 
-    if (
-      !dto.payments ||
-      dto.payments.length === 0
-    ) {
+    if (!dto.payments || dto.payments.length === 0) {
       throw new BadRequestException(
         "At least one payment method is required.",
       );
@@ -262,24 +207,16 @@ export class PosService {
        Validate payment total
     ------------------------------------------------------- */
 
-    const totalPayment =
-      dto.payments.reduce(
-        (sum, payment) =>
-          sum +
-          Number(
-            payment.amount || 0,
-          ),
-        0,
-      );
-
-    const grandTotal = Number(
-      dto.grandTotal || 0,
+    const totalPayment = dto.payments.reduce(
+      (sum, payment) =>
+        sum + Number(payment.amount || 0),
+      0,
     );
 
+    const grandTotal = Number(dto.grandTotal || 0);
+
     if (
-      Math.abs(
-        totalPayment - grandTotal,
-      ) > 0.01
+      Math.abs(totalPayment - grandTotal) > 0.01
     ) {
       throw new BadRequestException(
         `Payment total (Rs. ${totalPayment.toFixed(
@@ -319,14 +256,8 @@ export class PosService {
       if (dto.clientSaleId) {
         const existingSale =
           await queryRunner.manager
-            .createQueryBuilder(
-              PosSale,
-              "sale",
-            )
-            .leftJoinAndSelect(
-              "sale.items",
-              "items",
-            )
+            .createQueryBuilder(PosSale, "sale")
+            .leftJoinAndSelect("sale.items", "items")
             .leftJoinAndSelect(
               "sale.payments",
               "payments",
@@ -352,7 +283,7 @@ export class PosService {
 
       /* -----------------------------------------------------
          Aggregate product quantities
-         Prevent duplicate product IDs in a malicious payload
+         Prevent duplicate product IDs in payload
       ----------------------------------------------------- */
 
       const requestedQuantityMap =
@@ -405,14 +336,16 @@ export class PosService {
             );
 
           throw new BadRequestException(
-            `Product "${originalItem?.productName || productId}" (ID: ${productId}) not found.`,
+            `Product "${
+              originalItem?.productName ||
+              productId
+            }" (ID: ${productId}) not found.`,
           );
         }
 
         if (
-          Number(
-            product.stockQuantity,
-          ) < requestedQuantity
+          Number(product.stockQuantity) <
+          requestedQuantity
         ) {
           throw new BadRequestException(
             `Insufficient stock for "${product.productName}". Available: ${product.stockQuantity}, Requested: ${requestedQuantity}`,
@@ -443,8 +376,7 @@ export class PosService {
           PosSale,
           {
             clientSaleId:
-              dto.clientSaleId ||
-              null,
+              dto.clientSaleId || null,
 
             invoiceNumber,
 
@@ -461,24 +393,19 @@ export class PosService {
               SaleStatus.COMPLETED,
 
             customerId:
-              dto.customerId ||
-              null,
+              dto.customerId || null,
 
             customerName:
-              dto.customerName ||
-              null,
+              dto.customerName || null,
 
             cashierId:
-              cashierId ||
-              "System",
+              cashierId || "System",
 
             notes:
-              dto.notes ||
-              null,
+              dto.notes || null,
 
             locationId:
-              dto.locationId ||
-              null,
+              dto.locationId || null,
           },
         );
 
@@ -489,15 +416,12 @@ export class PosService {
         );
 
       /* -----------------------------------------------------
-         Sale items + stock deduction
+         Sale items
       ----------------------------------------------------- */
 
-      const saleItems: PosSaleItem[] =
-        [];
+      const saleItems: PosSaleItem[] = [];
 
-      for (
-        const itemDto of dto.items
-      ) {
+      for (const itemDto of dto.items) {
         const saleItem =
           queryRunner.manager.create(
             PosSaleItem,
@@ -514,8 +438,7 @@ export class PosService {
                 itemDto.productName,
 
               barcode:
-                itemDto.barcode ||
-                null,
+                itemDto.barcode || null,
 
               unitPrice:
                 itemDto.unitPrice,
@@ -524,17 +447,14 @@ export class PosService {
                 itemDto.quantity,
 
               discountAmount:
-                itemDto.discountAmount ||
-                0,
+                itemDto.discountAmount || 0,
 
               lineTotal:
                 itemDto.lineTotal,
             },
           );
 
-        saleItems.push(
-          saleItem,
-        );
+        saleItems.push(saleItem);
       }
 
       await queryRunner.manager.save(
@@ -543,7 +463,7 @@ export class PosService {
       );
 
       /* -----------------------------------------------------
-         Deduct each product once using the locked entity
+         Deduct each product once
       ----------------------------------------------------- */
 
       for (
@@ -553,9 +473,7 @@ export class PosService {
         ] of requestedQuantityMap
       ) {
         const product =
-          lockedProducts.get(
-            productId,
-          );
+          lockedProducts.get(productId);
 
         if (!product) {
           continue;
@@ -564,9 +482,7 @@ export class PosService {
         product.stockQuantity =
           Math.max(
             0,
-            Number(
-              product.stockQuantity,
-            ) -
+            Number(product.stockQuantity) -
               requestedQuantity,
           );
 
@@ -580,12 +496,9 @@ export class PosService {
          Payments
       ----------------------------------------------------- */
 
-      const salePayments: PosPayment[] =
-        [];
+      const salePayments: PosPayment[] = [];
 
-      for (
-        const payDto of dto.payments
-      ) {
+      for (const payDto of dto.payments) {
         const payment =
           queryRunner.manager.create(
             PosPayment,
@@ -612,9 +525,7 @@ export class PosService {
             },
           );
 
-        salePayments.push(
-          payment,
-        );
+        salePayments.push(payment);
       }
 
       await queryRunner.manager.save(
@@ -641,11 +552,8 @@ export class PosService {
 
       await queryRunner.commitTransaction();
 
-      savedSale.items =
-        saleItems;
-
-      savedSale.payments =
-        salePayments;
+      savedSale.items = saleItems;
+      savedSale.payments = salePayments;
 
       return savedSale;
     } catch (err: any) {
@@ -660,8 +568,7 @@ export class PosService {
          Exact-once retry protection
       ----------------------------------------------------- */
 
-      const errorCode =
-        err?.code;
+      const errorCode = err?.code;
 
       const errorText = String(
         err?.detail ||
@@ -770,14 +677,43 @@ export class PosService {
 
   /* =========================================================
      GET SINGLE SALE
+     
+     IMPORTANT:
+     sale.id       = UUID
+     invoiceNumber = VARCHAR
+
+     Do NOT compare both columns using the same parameter
+     because PostgreSQL can try:
+     
+     varchar = uuid
+     
+     which causes:
+     operator does not exist: character varying = uuid
   ========================================================= */
 
   async getSaleById(
     idOrInvoice: string,
   ): Promise<PosSale> {
-    const sale =
-      await this.dataSource
-        .getRepository(PosSale)
+    const repo =
+      this.dataSource.getRepository(
+        PosSale,
+      );
+
+    let sale: PosSale | null = null;
+
+    /* -------------------------------------------------------
+       UUID validation
+    ------------------------------------------------------- */
+
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    /* -------------------------------------------------------
+       If input is UUID, search only by sale.id
+    ------------------------------------------------------- */
+
+    if (uuidRegex.test(idOrInvoice)) {
+      sale = await repo
         .createQueryBuilder("sale")
         .leftJoinAndSelect(
           "sale.items",
@@ -792,15 +728,42 @@ export class PosService {
           "location",
         )
         .where(
-          `
-          sale.id = :idOrInvoice
-          OR sale.invoiceNumber = :idOrInvoice
-          `,
+          "sale.id = :saleId",
           {
-            idOrInvoice,
+            saleId: idOrInvoice,
           },
         )
         .getOne();
+    }
+
+    /* -------------------------------------------------------
+       If not found / input is invoice number,
+       search only by invoiceNumber
+    ------------------------------------------------------- */
+
+    if (!sale) {
+      sale = await repo
+        .createQueryBuilder("sale")
+        .leftJoinAndSelect(
+          "sale.items",
+          "items",
+        )
+        .leftJoinAndSelect(
+          "sale.payments",
+          "payments",
+        )
+        .leftJoinAndSelect(
+          "sale.location",
+          "location",
+        )
+        .where(
+          "sale.invoiceNumber = :invoiceNumber",
+          {
+            invoiceNumber: idOrInvoice,
+          },
+        )
+        .getOne();
+    }
 
     if (!sale) {
       throw new NotFoundException(
@@ -809,6 +772,256 @@ export class PosService {
     }
 
     return sale;
+  }
+
+  /* =========================================================
+     SEND EMAIL RECEIPT
+  ========================================================= */
+
+  async sendEmailReceipt(
+    idOrInvoice: string,
+    customerEmail: string,
+  ) {
+    /* -------------------------------------------------------
+       Validate email
+    ------------------------------------------------------- */
+
+    if (
+      !customerEmail ||
+      !customerEmail.trim()
+    ) {
+      throw new BadRequestException(
+        "Customer email is required.",
+      );
+    }
+
+    const email =
+      customerEmail.trim();
+
+    /* -------------------------------------------------------
+       Basic email format validation
+
+       FIXED:
+       Old:
+       /^[^\s@]+@[^\s@]+**\.**[^\s@]+$/
+
+       New:
+       /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    ------------------------------------------------------- */
+
+    const emailRegex =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
+      throw new BadRequestException(
+        "Please provide a valid customer email address.",
+      );
+    }
+
+    /* -------------------------------------------------------
+       Get sale
+    ------------------------------------------------------- */
+
+    let sale: PosSale;
+
+    try {
+      sale =
+        await this.getSaleById(
+          idOrInvoice,
+        );
+    } catch (error) {
+      console.error(
+        "Error loading sale for email receipt:",
+        error,
+      );
+
+      throw error;
+    }
+
+    /* -------------------------------------------------------
+       Make sure sale has items
+    ------------------------------------------------------- */
+
+    if (
+      !sale.items ||
+      sale.items.length === 0
+    ) {
+      throw new BadRequestException(
+        "Sale does not contain any items.",
+      );
+    }
+
+    /* -------------------------------------------------------
+       Prepare payment information
+    ------------------------------------------------------- */
+
+    const payments =
+      (sale.payments || []).map(
+        (payment) => ({
+          paymentMethod:
+            String(
+              payment.paymentMethod,
+            ),
+
+          amount:
+            Number(
+              payment.amount || 0,
+            ),
+        }),
+      );
+
+    /* -------------------------------------------------------
+       Prepare receipt data
+    ------------------------------------------------------- */
+
+    const receiptData = {
+      invoiceNumber:
+        String(
+          sale.invoiceNumber,
+        ),
+
+      customerName:
+        sale.customerName ||
+        "Valued Customer",
+
+      items:
+        sale.items.map(
+          (item) => ({
+            productName:
+              String(
+                item.productName ||
+                  "",
+              ),
+
+            quantity:
+              Number(
+                item.quantity || 0,
+              ),
+
+            unitPrice:
+              Number(
+                item.unitPrice || 0,
+              ),
+
+            lineTotal:
+              Number(
+                item.lineTotal || 0,
+              ),
+          }),
+        ),
+
+      subtotal:
+        Number(
+          sale.subtotal || 0,
+        ),
+
+      discountAmount:
+        Number(
+          sale.discountAmount || 0,
+        ),
+
+      grandTotal:
+        Number(
+          sale.grandTotal || 0,
+        ),
+
+      payments,
+
+      createdAt:
+        new Date(
+          sale.createdAt,
+        ),
+    };
+
+    /* -------------------------------------------------------
+       Debug information
+    ------------------------------------------------------- */
+
+    console.log(
+      "=================================",
+    );
+
+    console.log(
+      "POS EMAIL RECEIPT",
+    );
+
+    console.log(
+      "Invoice:",
+      receiptData.invoiceNumber,
+    );
+
+    console.log(
+      "Customer:",
+      receiptData.customerName,
+    );
+
+    console.log(
+      "Email:",
+      email,
+    );
+
+    console.log(
+      "Items:",
+      receiptData.items.length,
+    );
+
+    console.log(
+      "Grand Total:",
+      receiptData.grandTotal,
+    );
+
+    console.log(
+      "=================================",
+    );
+
+    /* -------------------------------------------------------
+       Send email
+    ------------------------------------------------------- */
+
+    try {
+      await this.mailService.sendReceiptEmail(
+        email,
+        receiptData,
+      );
+
+      console.log(
+        `POS receipt email sent successfully to ${email}`,
+      );
+    } catch (error) {
+      console.error(
+        "=================================",
+      );
+
+      console.error(
+        "POS EMAIL RECEIPT FAILED",
+      );
+
+      console.error(error);
+
+      console.error(
+        "=================================",
+      );
+
+      throw new BadRequestException(
+        "Failed to send receipt email. Please check the email configuration and try again.",
+      );
+    }
+
+    /* -------------------------------------------------------
+       Success response
+    ------------------------------------------------------- */
+
+    return {
+      success: true,
+
+      message:
+        "Receipt sent successfully.",
+
+      email,
+
+      invoiceNumber:
+        sale.invoiceNumber,
+    };
   }
 
   /* =========================================================
@@ -832,12 +1045,10 @@ export class PosService {
         holdNumber,
 
         customerId:
-          dto.customerId ||
-          null,
+          dto.customerId || null,
 
         customerName:
-          dto.customerName ||
-          null,
+          dto.customerName || null,
 
         cartData:
           dto.cartData,
@@ -846,15 +1057,13 @@ export class PosService {
           dto.subtotal,
 
         discountAmount:
-          dto.discountAmount ||
-          0,
+          dto.discountAmount || 0,
 
         grandTotal:
           dto.grandTotal,
 
         cashierId:
-          cashierId ||
-          "System",
+          cashierId || "System",
       });
 
     return await repo.save(
@@ -870,9 +1079,7 @@ export class PosService {
     PosHeldBill[]
   > {
     return await this.dataSource
-      .getRepository(
-        PosHeldBill,
-      )
+      .getRepository(PosHeldBill)
       .find({
         order: {
           createdAt: "DESC",
@@ -937,7 +1144,8 @@ export class PosService {
             },
 
             lock: {
-              mode: "pessimistic_write",
+              mode:
+                "pessimistic_write",
             },
           },
         );
@@ -1339,9 +1547,7 @@ export class PosService {
 
     const returns =
       await this.dataSource
-        .getRepository(
-          PosReturn,
-        )
+        .getRepository(PosReturn)
         .createQueryBuilder("ret")
         .where(
           "ret.createdAt BETWEEN :start AND :end",
@@ -1381,7 +1587,6 @@ export class PosService {
       openingCash,
 
       cashSales:
-
         Number(
           cashSales.toFixed(2),
         ),
