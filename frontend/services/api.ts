@@ -20,26 +20,40 @@ function getAuthToken(): string | undefined {
     return undefined;
   }
 
-  let token =
+  // 1. Cookies
+  const cookieToken =
     Cookies.get("authToken") ||
     Cookies.get("access_token") ||
     Cookies.get("accessToken") ||
     Cookies.get("token");
 
-  if (!token) {
-    token =
-      localStorage.getItem("authToken") ||
-      localStorage.getItem("accessToken") ||
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("authToken") ||
-      sessionStorage.getItem("accessToken") ||
-      sessionStorage.getItem("access_token") ||
-      sessionStorage.getItem("token") ||
-      undefined;
+  if (cookieToken) {
+    return cookieToken;
   }
 
-  return token || undefined;
+  // 2. localStorage
+  const localToken =
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("token");
+
+  if (localToken) {
+    return localToken;
+  }
+
+  // 3. sessionStorage
+  const sessionToken =
+    sessionStorage.getItem("authToken") ||
+    sessionStorage.getItem("access_token") ||
+    sessionStorage.getItem("accessToken") ||
+    sessionStorage.getItem("token");
+
+  if (sessionToken) {
+    return sessionToken;
+  }
+
+  return undefined;
 }
 
 /* =========================================================
@@ -50,9 +64,21 @@ api.interceptors.request.use(
   (config) => {
     const token = getAuthToken();
 
+    config.headers = config.headers ?? {};
+
     if (token) {
-      config.headers = config.headers ?? {};
       config.headers.Authorization = `Bearer ${token}`;
+
+      console.log("🔐 API Request:", {
+        url: config.url,
+        method: config.method,
+        hasToken: true,
+      });
+    } else {
+      console.warn("⚠️ API Request WITHOUT JWT:", {
+        url: config.url,
+        method: config.method,
+      });
     }
 
     return config;
@@ -67,17 +93,20 @@ api.interceptors.request.use(
 ========================================================= */
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
 
   (error) => {
-    if (error.response?.status === 401) {
-      console.error(
-        "JWT authentication failed:",
-        {
-          url: error.config?.url,
-          method: error.config?.method,
-        },
-      );
+    const status = error.response?.status;
+
+    if (status === 401) {
+      console.error("❌ JWT authentication failed:", {
+        url: error.config?.url,
+        method: error.config?.method,
+        hasAuthorizationHeader:
+          !!error.config?.headers?.Authorization,
+      });
     }
 
     return Promise.reject(error);

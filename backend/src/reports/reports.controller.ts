@@ -2,7 +2,7 @@ import {
   Controller,
   Get,
   Query,
-  Res,
+  Res,UseGuards
 } from '@nestjs/common';
 
 import type { Response } from 'express';
@@ -20,7 +20,23 @@ import {
 import { ReportQueryDto } from './dto/report-query.dto';
 import { FinanceService } from '../finance/finance.service';
 
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+
+import {
+  AppPermission,
+} from '../common/permissions/permissions';
+
+import {
+  RequirePermissions,
+} from '../common/decorators/permissions.decorator';
+
 @Controller('reports')
+@UseGuards(
+  JwtAuthGuard,
+  PermissionsGuard,
+)
+@RequirePermissions(AppPermission.REPORTS)
 export class ReportsController {
   constructor(
     private readonly reportsService: ReportsService,

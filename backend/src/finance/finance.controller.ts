@@ -29,8 +29,23 @@ import { CreateCustomerPaymentDto } from './dto/create-customer-payment.dto';
 
 import { FinanceQueryDto } from './dto/finance-query.dto';
 
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+
+import {
+  AppPermission,
+} from '../common/permissions/permissions';
+
+import {
+  RequirePermissions,
+} from '../common/decorators/permissions.decorator';
+
 @Controller('finance')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(
+  JwtAuthGuard,
+  PermissionsGuard,
+)
+@RequirePermissions(AppPermission.FINANCE)
 export class FinanceController {
   constructor(
     private readonly financeService: FinanceService,
