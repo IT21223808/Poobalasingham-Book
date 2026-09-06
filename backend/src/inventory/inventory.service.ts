@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import {
   DataSource,
+  EntityManager,
   Repository,
 } from 'typeorm';
 
@@ -28,15 +30,34 @@ import { Location } from './entities/location.entity';
 import { InventoryStock } from './entities/inventory-stock.entity';
 
 import { StockTransferDto } from './dto/stock-transfer.dto';
-
 import { StockAdjustmentDto } from './dto/stock-adjustment.dto';
-
 import { PhysicalStockCountDto } from './dto/physical-stock-count.dto';
 
 import {
   DamagedLostDto,
   DamagedLostType,
 } from './dto/damaged-lost.dto';
+
+import { UserRole } from '../users/user-role.enum';
+
+/* ============================================================
+   ACCESS CONTEXT
+   ============================================================ */
+
+export interface InventoryAccessContext {
+  userId?: string;
+  role?: UserRole | string;
+  locationId?: string | null;
+}
+
+type InventoryContextInput =
+  | InventoryAccessContext
+  | string
+  | undefined;
+
+/* ============================================================
+   SERVICE
+   ============================================================ */
 
 @Injectable()
 export class InventoryService {
@@ -56,38 +77,261 @@ export class InventoryService {
     private readonly dataSource: DataSource,
   ) {}
 
-  // ======================================================
-  // STOCK IN
-  // ======================================================
+  /* ==========================================================
+     CONTEXT NORMALIZER
+     ========================================================== */
+
+  private normalizeContext(
+    input?: InventoryContextInput,
+  ): InventoryAccessContext {
+    /*
+     * New controller:
+     *
+     * {
+     *   userId,
+     *   role,
+     *   locationId
+     * }
+     */
+    if (
+      input &&
+      typeof input === 'object'
+    ) {
+      return input;
+    }
+
+    /*
+     * Legacy internal call:
+     *
+     * stockIn(dto, userId)
+     * stockOut(dto, userId)
+     *
+     * Do NOT give this OWNER access.
+     *
+     * This is only retained for compatibility.
+     */
+    if (typeof input === 'string') {
+      return {
+        userId: input,
+        role: undefined,
+        locationId: null,
+      };
+    }
+
+    /*
+     * Internal system operation.
+     *
+     * Purchasing / GRN / Purchase Return
+     * currently call stockIn(dto) / stockOut(dto).
+     */
+    return {
+      userId: undefined,
+      role: UserRole.OWNER,
+      locationId: null,
+    };
+  }
+
+  /* ==========================================================
+     GLOBAL ACCESS
+     ========================================================== */
+
+  private isGlobalAccess(
+    context: InventoryAccessContext,
+  ): boolean {
+    return (
+      context.role === UserRole.OWNER ||
+      context.role === UserRole.ADMIN ||
+      context.role === 'OWNER' ||
+      context.role === 'ADMIN'
+    );
+  }
+
+  /* ==========================================================
+     RESOLVE LOCATION
+     ========================================================== */
+
+  private resolveLocationId(
+    context: InventoryAccessContext,
+    requestedLocationId?: string | null,
+  ): string | null {
+    /*
+     * OWNER / ADMIN
+     *
+     * Can operate on any branch.
+     */
+    if (this.isGlobalAccess(context)) {
+      return requestedLocationId ?? null;
+    }
+
+    /*
+     * MANAGER
+     *
+     * Only assigned branch.
+     */
+    if (
+      context.role === UserRole.MANAGER ||
+      context.role === 'MANAGER'
+    ) {
+      if (!context.locationId) {
+        throw new ForbiddenException(
+          'Manager is not assigned to a branch',
+        );
+      }
+
+      if (
+        requestedLocationId &&
+        requestedLocationId !== context.locationId
+      ) {
+        throw new ForbiddenException(
+          'You can only access your assigned branch',
+        );
+      }
+
+      return context.locationId;
+    }
+
+    throw new ForbiddenException(
+      'You do not have permission to perform this inventory operation',
+    );
+  }
+
+  /* ==========================================================
+     TRANSFER ACCESS
+     ========================================================== */
+
+  private validateTransferAccess(
+    context: InventoryAccessContext,
+    fromLocationId: string,
+  ): void {
+    if (this.isGlobalAccess(context)) {
+      return;
+    }
+
+    if (
+      context.role === UserRole.MANAGER ||
+      context.role === 'MANAGER'
+    ) {
+      if (!context.locationId) {
+        throw new ForbiddenException(
+          'Manager is not assigned to a branch',
+        );
+      }
+
+      if (
+        fromLocationId !== context.locationId
+      ) {
+        throw new ForbiddenException(
+          'You can only transfer stock from your assigned branch',
+        );
+      }
+
+      return;
+    }
+
+    throw new ForbiddenException(
+      'You do not have permission to transfer stock',
+    );
+  }
+
+  /* ==========================================================
+     RECALCULATE TOTAL PRODUCT STOCK
+     ========================================================== */
+
+  private async recalculateProductTotalStock(
+    manager: EntityManager,
+    productId: string,
+  ): Promise<number> {
+    const stocks =
+      await manager.find(InventoryStock, {
+        where: {
+          product: {
+            id: productId,
+          },
+        },
+      });
+
+    const totalStock =
+      stocks.reduce(
+        (total, stock) =>
+          total +
+          Number(stock.quantity ?? 0),
+        0,
+      );
+
+    const product =
+      await manager.findOne(Product, {
+        where: {
+          id: productId,
+        },
+      });
+
+    if (product) {
+      product.stockQuantity =
+        totalStock;
+
+      await manager.save(
+        Product,
+        product,
+      );
+    }
+
+    return totalStock;
+  }
+
+  /* ==========================================================
+     STOCK IN
+     ========================================================== */
 
   async stockIn(
     stockInDto: StockInDto,
-    userId?: string,
+    contextInput?: InventoryContextInput,
   ) {
+    const context =
+      this.normalizeContext(contextInput);
+
     const {
       productId,
       quantity,
-      locationId,
     } = stockInDto;
 
-    if (quantity <= 0) {
+    const requestedLocationId =
+      (stockInDto as StockInDto & {
+        locationId?: string | null;
+      }).locationId;
+
+    if (!productId) {
+      throw new BadRequestException(
+        'Product is required',
+      );
+    }
+
+    if (
+      quantity === undefined ||
+      quantity === null ||
+      quantity <= 0
+    ) {
       throw new BadRequestException(
         'Quantity must be greater than 0',
       );
     }
 
+    const locationId =
+      this.resolveLocationId(
+        context,
+        requestedLocationId,
+      );
+
     return this.dataSource.transaction(
       async (manager) => {
-        // ----------------------------------------
-        // PRODUCT
-        // ----------------------------------------
-
         const product =
-          await manager.findOne(Product, {
-            where: {
-              id: productId,
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
             },
-          });
+          );
 
         if (!product) {
           throw new NotFoundException(
@@ -95,20 +339,21 @@ export class InventoryService {
           );
         }
 
-        // ----------------------------------------
-        // LOCATION
-        // ----------------------------------------
-
-        let location: Location | null = null;
+        let location:
+          | Location
+          | null = null;
 
         if (locationId) {
           location =
-            await manager.findOne(Location, {
-              where: {
-                id: locationId,
-                isActive: true,
+            await manager.findOne(
+              Location,
+              {
+                where: {
+                  id: locationId,
+                  isActive: true,
+                },
               },
-            });
+            );
 
           if (!location) {
             throw new NotFoundException(
@@ -117,31 +362,23 @@ export class InventoryService {
           }
         }
 
-        // ----------------------------------------
-        // PRODUCT TOTAL STOCK
-        // ----------------------------------------
+        const previousGlobalStock =
+          Number(
+            product.stockQuantity ?? 0,
+          );
 
-        const previousStock =
-          Number(product.stockQuantity ?? 0);
+        let previousStock =
+          previousGlobalStock;
 
-        const newStock =
-          previousStock + quantity;
-
-        product.stockQuantity =
-          newStock;
-
-        await manager.save(
-          Product,
-          product,
-        );
-
-        // ----------------------------------------
-        // LOCATION STOCK
-        // ----------------------------------------
+        let newStock =
+          previousGlobalStock;
 
         let locationPreviousStock = 0;
         let locationNewStock = 0;
 
+        /*
+         * BRANCH STOCK
+         */
         if (location) {
           let inventoryStock =
             await manager.findOne(
@@ -152,7 +389,7 @@ export class InventoryService {
                     id: productId,
                   },
                   location: {
-                    id: locationId,
+                    id: location.id,
                   },
                 },
               },
@@ -186,11 +423,35 @@ export class InventoryService {
             InventoryStock,
             inventoryStock,
           );
+
+          previousStock =
+            locationPreviousStock;
+
+          newStock =
+            locationNewStock;
+
+          await this.recalculateProductTotalStock(
+            manager,
+            productId,
+          );
         }
 
-        // ----------------------------------------
-        // MOVEMENT
-        // ----------------------------------------
+        /*
+         * GLOBAL / LEGACY STOCK
+         */
+        else {
+          newStock =
+            previousGlobalStock +
+            quantity;
+
+          product.stockQuantity =
+            newStock;
+
+          await manager.save(
+            Product,
+            product,
+          );
+        }
 
         const movement =
           manager.create(
@@ -208,15 +469,14 @@ export class InventoryService {
               newStock,
 
               userId:
-                userId ?? null,
+                context.userId ?? null,
 
               reason: null,
 
-              // Stock In = destination only
               fromLocation: null,
 
               toLocation:
-                location ?? null,
+                location,
             },
           );
 
@@ -224,6 +484,16 @@ export class InventoryService {
           StockMovement,
           movement,
         );
+
+        const latestProduct =
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
+            },
+          );
 
         return {
           success: true,
@@ -255,6 +525,12 @@ export class InventoryService {
 
             locationNewStock,
 
+            totalStock:
+              Number(
+                latestProduct?.stockQuantity ??
+                  newStock,
+              ),
+
             movementId:
               movement.id,
           },
@@ -263,38 +539,60 @@ export class InventoryService {
     );
   }
 
-  // ======================================================
-  // STOCK OUT
-  // ======================================================
+  /* ==========================================================
+     STOCK OUT
+     ========================================================== */
 
   async stockOut(
     stockOutDto: StockOutDto,
-    userId?: string,
+    contextInput?: InventoryContextInput,
   ) {
+    const context =
+      this.normalizeContext(contextInput);
+
     const {
       productId,
       quantity,
-      locationId,
     } = stockOutDto;
 
-    if (quantity <= 0) {
+    const requestedLocationId =
+      (stockOutDto as StockOutDto & {
+        locationId?: string | null;
+      }).locationId;
+
+    if (!productId) {
+      throw new BadRequestException(
+        'Product is required',
+      );
+    }
+
+    if (
+      quantity === undefined ||
+      quantity === null ||
+      quantity <= 0
+    ) {
       throw new BadRequestException(
         'Quantity must be greater than 0',
       );
     }
 
+    const locationId =
+      this.resolveLocationId(
+        context,
+        requestedLocationId,
+      );
+
     return this.dataSource.transaction(
       async (manager) => {
-        // ----------------------------------------
-        // PRODUCT
-        // ----------------------------------------
-
         const product =
-          await manager.findOne(Product, {
-            where: {
-              id: productId,
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
             },
-          });
+          );
 
         if (!product) {
           throw new NotFoundException(
@@ -302,20 +600,21 @@ export class InventoryService {
           );
         }
 
-        // ----------------------------------------
-        // LOCATION
-        // ----------------------------------------
-
-        let location: Location | null = null;
+        let location:
+          | Location
+          | null = null;
 
         if (locationId) {
           location =
-            await manager.findOne(Location, {
-              where: {
-                id: locationId,
-                isActive: true,
+            await manager.findOne(
+              Location,
+              {
+                where: {
+                  id: locationId,
+                  isActive: true,
+                },
               },
-            });
+            );
 
           if (!location) {
             throw new NotFoundException(
@@ -324,26 +623,23 @@ export class InventoryService {
           }
         }
 
-        // ----------------------------------------
-        // PRODUCT TOTAL STOCK
-        // ----------------------------------------
-
-        const previousStock =
-          Number(product.stockQuantity ?? 0);
-
-        if (quantity > previousStock) {
-          throw new BadRequestException(
-            `Insufficient stock. Available stock: ${previousStock}`,
+        const previousGlobalStock =
+          Number(
+            product.stockQuantity ?? 0,
           );
-        }
 
-        // ----------------------------------------
-        // LOCATION STOCK
-        // ----------------------------------------
+        let previousStock =
+          previousGlobalStock;
+
+        let newStock =
+          previousGlobalStock;
 
         let locationPreviousStock = 0;
         let locationNewStock = 0;
 
+        /*
+         * BRANCH STOCK
+         */
         if (location) {
           const inventoryStock =
             await manager.findOne(
@@ -354,7 +650,7 @@ export class InventoryService {
                     id: productId,
                   },
                   location: {
-                    id: locationId,
+                    id: location.id,
                   },
                 },
               },
@@ -376,7 +672,7 @@ export class InventoryService {
             locationPreviousStock
           ) {
             throw new BadRequestException(
-              `Insufficient location stock. Available stock at ${location.name}: ${locationPreviousStock}`,
+              `Insufficient stock at ${location.name}. Available stock: ${locationPreviousStock}`,
             );
           }
 
@@ -391,26 +687,44 @@ export class InventoryService {
             InventoryStock,
             inventoryStock,
           );
+
+          previousStock =
+            locationPreviousStock;
+
+          newStock =
+            locationNewStock;
+
+          await this.recalculateProductTotalStock(
+            manager,
+            productId,
+          );
         }
 
-        // ----------------------------------------
-        // UPDATE PRODUCT TOTAL
-        // ----------------------------------------
+        /*
+         * GLOBAL STOCK
+         */
+        else {
+          if (
+            quantity >
+            previousGlobalStock
+          ) {
+            throw new BadRequestException(
+              `Insufficient stock. Available stock: ${previousGlobalStock}`,
+            );
+          }
 
-        const newStock =
-          previousStock - quantity;
+          newStock =
+            previousGlobalStock -
+            quantity;
 
-        product.stockQuantity =
-          newStock;
+          product.stockQuantity =
+            newStock;
 
-        await manager.save(
-          Product,
-          product,
-        );
-
-        // ----------------------------------------
-        // MOVEMENT
-        // ----------------------------------------
+          await manager.save(
+            Product,
+            product,
+          );
+        }
 
         const movement =
           manager.create(
@@ -428,13 +742,12 @@ export class InventoryService {
               newStock,
 
               userId:
-                userId ?? null,
+                context.userId ?? null,
 
               reason: null,
 
-              // Stock Out = source only
               fromLocation:
-                location ?? null,
+                location,
 
               toLocation: null,
             },
@@ -444,6 +757,16 @@ export class InventoryService {
           StockMovement,
           movement,
         );
+
+        const latestProduct =
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
+            },
+          );
 
         return {
           success: true,
@@ -475,6 +798,12 @@ export class InventoryService {
 
             locationNewStock,
 
+            totalStock:
+              Number(
+                latestProduct?.stockQuantity ??
+                  newStock,
+              ),
+
             movementId:
               movement.id,
           },
@@ -483,24 +812,23 @@ export class InventoryService {
     );
   }
 
-  // ======================================================
-  // STOCK TRANSFER
-  // ======================================================
+  /* ==========================================================
+     STOCK TRANSFER
+     ========================================================== */
 
   async stockTransfer(
     dto: StockTransferDto,
-    userId?: string,
+    contextInput?: InventoryContextInput,
   ) {
+    const context =
+      this.normalizeContext(contextInput);
+
     const {
       productId,
+      quantity,
       fromLocationId,
       toLocationId,
-      quantity,
     } = dto;
-
-    // ----------------------------------------
-    // BASIC VALIDATION
-    // ----------------------------------------
 
     if (!productId) {
       throw new BadRequestException(
@@ -539,28 +867,28 @@ export class InventoryService {
       );
     }
 
+    this.validateTransferAccess(
+      context,
+      fromLocationId,
+    );
+
     return this.dataSource.transaction(
       async (manager) => {
-        // ========================================
-        // PRODUCT
-        // ========================================
-
         const product =
-          await manager.findOne(Product, {
-            where: {
-              id: productId,
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
             },
-          });
+          );
 
         if (!product) {
           throw new NotFoundException(
             `Product with ID ${productId} not found`,
           );
         }
-
-        // ========================================
-        // SOURCE LOCATION
-        // ========================================
 
         const fromLocation =
           await manager.findOne(
@@ -579,10 +907,6 @@ export class InventoryService {
           );
         }
 
-        // ========================================
-        // DESTINATION LOCATION
-        // ========================================
-
         const toLocation =
           await manager.findOne(
             Location,
@@ -599,10 +923,6 @@ export class InventoryService {
             `Destination location with ID ${toLocationId} not found`,
           );
         }
-
-        // ========================================
-        // SOURCE STOCK
-        // ========================================
 
         const sourceStock =
           await manager.findOne(
@@ -630,10 +950,6 @@ export class InventoryService {
             sourceStock.quantity ?? 0,
           );
 
-        // ========================================
-        // SOURCE VALIDATION
-        // ========================================
-
         if (
           quantity >
           sourcePrevious
@@ -642,10 +958,6 @@ export class InventoryService {
             `Insufficient stock at ${fromLocation.name}. Available stock: ${sourcePrevious}`,
           );
         }
-
-        // ========================================
-        // DESTINATION STOCK
-        // ========================================
 
         let destinationStock =
           await manager.findOne(
@@ -674,13 +986,10 @@ export class InventoryService {
             );
         }
 
-        // ========================================
-        // CALCULATE
-        // ========================================
-
         const destinationPrevious =
           Number(
-            destinationStock.quantity ?? 0,
+            destinationStock.quantity ??
+              0,
           );
 
         const sourceNew =
@@ -691,10 +1000,6 @@ export class InventoryService {
           destinationPrevious +
           quantity;
 
-        // ========================================
-        // UPDATE SOURCE
-        // ========================================
-
         sourceStock.quantity =
           sourceNew;
 
@@ -702,10 +1007,6 @@ export class InventoryService {
           InventoryStock,
           sourceStock,
         );
-
-        // ========================================
-        // UPDATE DESTINATION
-        // ========================================
 
         destinationStock.quantity =
           destinationNew;
@@ -715,18 +1016,11 @@ export class InventoryService {
           destinationStock,
         );
 
-        // ========================================
-        // PRODUCT TOTAL
-        // ========================================
-
         const productTotalStock =
-          Number(
-            product.stockQuantity ?? 0,
+          await this.recalculateProductTotalStock(
+            manager,
+            productId,
           );
-
-        // ========================================
-        // TRANSFER OUT
-        // ========================================
 
         const transferOutMovement =
           manager.create(
@@ -746,15 +1040,13 @@ export class InventoryService {
                 sourceNew,
 
               userId:
-                userId ?? null,
+                context.userId ?? null,
 
               reason: null,
 
-              fromLocation:
-                fromLocation,
+              fromLocation,
 
-              toLocation:
-                toLocation,
+              toLocation,
             },
           );
 
@@ -762,10 +1054,6 @@ export class InventoryService {
           StockMovement,
           transferOutMovement,
         );
-
-        // ========================================
-        // TRANSFER IN
-        // ========================================
 
         const transferInMovement =
           manager.create(
@@ -785,15 +1073,13 @@ export class InventoryService {
                 destinationNew,
 
               userId:
-                userId ?? null,
+                context.userId ?? null,
 
               reason: null,
 
-              fromLocation:
-                fromLocation,
+              fromLocation,
 
-              toLocation:
-                toLocation,
+              toLocation,
             },
           );
 
@@ -801,10 +1087,6 @@ export class InventoryService {
           StockMovement,
           transferInMovement,
         );
-
-        // ========================================
-        // RESPONSE
-        // ========================================
 
         return {
           success: true,
@@ -866,14 +1148,17 @@ export class InventoryService {
     );
   }
 
-  // ======================================================
-  // STOCK ADJUSTMENT
-  // ======================================================
+  /* ==========================================================
+     STOCK ADJUSTMENT
+     ========================================================== */
 
   async stockAdjustment(
     dto: StockAdjustmentDto,
-    userId?: string,
+    contextInput?: InventoryContextInput,
   ) {
+    const context =
+      this.normalizeContext(contextInput);
+
     const {
       productId,
       quantity,
@@ -881,20 +1166,53 @@ export class InventoryService {
       reason,
     } = dto;
 
-    if (quantity <= 0) {
+    const requestedLocationId =
+      (dto as StockAdjustmentDto & {
+        locationId?: string | null;
+      }).locationId;
+
+    if (!productId) {
+      throw new BadRequestException(
+        'Product is required',
+      );
+    }
+
+    if (
+      quantity === undefined ||
+      quantity === null ||
+      quantity <= 0
+    ) {
       throw new BadRequestException(
         'Quantity must be greater than 0',
       );
     }
 
+    if (
+      adjustmentType !== 'INCREASE' &&
+      adjustmentType !== 'DECREASE'
+    ) {
+      throw new BadRequestException(
+        'Invalid adjustment type',
+      );
+    }
+
+    const locationId =
+      this.resolveLocationId(
+        context,
+        requestedLocationId,
+      );
+
     return this.dataSource.transaction(
       async (manager) => {
         const product =
-          await manager.findOne(Product, {
-            where: {
-              id: productId,
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
             },
-          });
+          );
 
         if (!product) {
           throw new NotFoundException(
@@ -902,49 +1220,159 @@ export class InventoryService {
           );
         }
 
-        const previousStock =
-          Number(
-            product.stockQuantity ?? 0,
-          );
+        let location:
+          | Location
+          | null = null;
 
-        let newStock: number;
-        let movementType: MovementType;
+        if (locationId) {
+          location =
+            await manager.findOne(
+              Location,
+              {
+                where: {
+                  id: locationId,
+                  isActive: true,
+                },
+              },
+            );
 
-        if (
-          adjustmentType ===
-          'INCREASE'
-        ) {
-          newStock =
-            previousStock +
-            quantity;
-
-          movementType =
-            MovementType.ADJUSTMENT_IN;
-        } else {
-          if (
-            quantity >
-            previousStock
-          ) {
-            throw new BadRequestException(
-              `Insufficient stock. Available stock: ${previousStock}`,
+          if (!location) {
+            throw new NotFoundException(
+              `Location with ID ${locationId} not found`,
             );
           }
-
-          newStock =
-            previousStock -
-            quantity;
-
-          movementType =
-            MovementType.ADJUSTMENT_OUT;
         }
 
-        product.stockQuantity =
-          newStock;
+        let previousStock = 0;
+        let newStock = 0;
 
-        await manager.save(
-          Product,
-          product,
-        );
+        let movementType:
+          | MovementType;
+
+        if (location) {
+          let inventoryStock =
+            await manager.findOne(
+              InventoryStock,
+              {
+                where: {
+                  product: {
+                    id: productId,
+                  },
+                  location: {
+                    id: location.id,
+                  },
+                },
+              },
+            );
+
+          if (!inventoryStock) {
+            if (
+              adjustmentType ===
+              'DECREASE'
+            ) {
+              throw new BadRequestException(
+                'Product has no stock in this location',
+              );
+            }
+
+            inventoryStock =
+              manager.create(
+                InventoryStock,
+                {
+                  product,
+                  location,
+                  quantity: 0,
+                },
+              );
+          }
+
+          previousStock =
+            Number(
+              inventoryStock.quantity ?? 0,
+            );
+
+          if (
+            adjustmentType ===
+            'INCREASE'
+          ) {
+            newStock =
+              previousStock +
+              quantity;
+
+            movementType =
+              MovementType.ADJUSTMENT_IN;
+          } else {
+            if (
+              quantity >
+              previousStock
+            ) {
+              throw new BadRequestException(
+                `Insufficient stock at ${location.name}. Available stock: ${previousStock}`,
+              );
+            }
+
+            newStock =
+              previousStock -
+              quantity;
+
+            movementType =
+              MovementType.ADJUSTMENT_OUT;
+          }
+
+          inventoryStock.quantity =
+            newStock;
+
+          await manager.save(
+            InventoryStock,
+            inventoryStock,
+          );
+
+          await this.recalculateProductTotalStock(
+            manager,
+            productId,
+          );
+        } else {
+          previousStock =
+            Number(
+              product.stockQuantity ?? 0,
+            );
+
+          if (
+            adjustmentType ===
+            'INCREASE'
+          ) {
+            newStock =
+              previousStock +
+              quantity;
+
+            movementType =
+              MovementType.ADJUSTMENT_IN;
+          } else {
+            if (
+              quantity >
+              previousStock
+            ) {
+              throw new BadRequestException(
+                `Insufficient stock. Available stock: ${previousStock}`,
+              );
+            }
+
+            newStock =
+              previousStock -
+              quantity;
+
+            movementType =
+              MovementType.ADJUSTMENT_OUT;
+          }
+
+          product.stockQuantity =
+            newStock;
+
+          await manager.save(
+            Product,
+            product,
+          );
+        }
 
         const movement =
           manager.create(
@@ -961,14 +1389,22 @@ export class InventoryService {
               newStock,
 
               userId:
-                userId ?? null,
+                context.userId ?? null,
 
               reason:
                 reason ?? null,
 
-              fromLocation: null,
+              fromLocation:
+                adjustmentType ===
+                'DECREASE'
+                  ? location
+                  : null,
 
-              toLocation: null,
+              toLocation:
+                adjustmentType ===
+                'INCREASE'
+                  ? location
+                  : null,
             },
           );
 
@@ -976,6 +1412,16 @@ export class InventoryService {
           StockMovement,
           movement,
         );
+
+        const latestProduct =
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
+            },
+          );
 
         return {
           success: true,
@@ -990,6 +1436,12 @@ export class InventoryService {
             productName:
               product.productName,
 
+            locationId:
+              location?.id ?? null,
+
+            locationName:
+              location?.name ?? null,
+
             adjustmentType,
 
             quantityAdjusted:
@@ -998,6 +1450,12 @@ export class InventoryService {
             previousStock,
 
             newStock,
+
+            totalStock:
+              Number(
+                latestProduct?.stockQuantity ??
+                  newStock,
+              ),
 
             reason:
               reason ?? null,
@@ -1010,19 +1468,42 @@ export class InventoryService {
     );
   }
 
-  // ======================================================
-  // PHYSICAL STOCK COUNT
-  // ======================================================
+  /* ==========================================================
+     PHYSICAL STOCK COUNT
+     ========================================================== */
 
   async physicalStockCount(
     dto: PhysicalStockCountDto,
-    userId?: string,
+    contextInput?: InventoryContextInput,
   ) {
+    const context =
+      this.normalizeContext(contextInput);
+
     const {
       productId,
       physicalQuantity,
       note,
     } = dto;
+
+    const requestedLocationId =
+      (dto as PhysicalStockCountDto & {
+        locationId?: string | null;
+      }).locationId;
+
+    if (!productId) {
+      throw new BadRequestException(
+        'Product is required',
+      );
+    }
+
+    if (
+      physicalQuantity === undefined ||
+      physicalQuantity === null
+    ) {
+      throw new BadRequestException(
+        'Physical quantity is required',
+      );
+    }
 
     if (physicalQuantity < 0) {
       throw new BadRequestException(
@@ -1030,14 +1511,23 @@ export class InventoryService {
       );
     }
 
+    const locationId =
+      this.resolveLocationId(
+        context,
+        requestedLocationId,
+      );
+
     return this.dataSource.transaction(
       async (manager) => {
         const product =
-          await manager.findOne(Product, {
-            where: {
-              id: productId,
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
             },
-          });
+          );
 
         if (!product) {
           throw new NotFoundException(
@@ -1045,10 +1535,58 @@ export class InventoryService {
           );
         }
 
+        let location:
+          | Location
+          | null = null;
+
+        let inventoryStock:
+          | InventoryStock
+          | null = null;
+
+        if (locationId) {
+          location =
+            await manager.findOne(
+              Location,
+              {
+                where: {
+                  id: locationId,
+                  isActive: true,
+                },
+              },
+            );
+
+          if (!location) {
+            throw new NotFoundException(
+              `Location with ID ${locationId} not found`,
+            );
+          }
+
+          inventoryStock =
+            await manager.findOne(
+              InventoryStock,
+              {
+                where: {
+                  product: {
+                    id: productId,
+                  },
+                  location: {
+                    id: location.id,
+                  },
+                },
+              },
+            );
+        }
+
         const systemStock =
-          Number(
-            product.stockQuantity ?? 0,
-          );
+          location
+            ? Number(
+                inventoryStock?.quantity ??
+                  0,
+              )
+            : Number(
+                product.stockQuantity ??
+                  0,
+              );
 
         const difference =
           physicalQuantity -
@@ -1068,6 +1606,12 @@ export class InventoryService {
               productName:
                 product.productName,
 
+              locationId:
+                location?.id ?? null,
+
+              locationName:
+                location?.name ?? null,
+
               systemStock,
 
               physicalStock:
@@ -1083,13 +1627,40 @@ export class InventoryService {
           };
         }
 
-        product.stockQuantity =
-          physicalQuantity;
+        if (location) {
+          if (!inventoryStock) {
+            inventoryStock =
+              manager.create(
+                InventoryStock,
+                {
+                  product,
+                  location,
+                  quantity: 0,
+                },
+              );
+          }
 
-        await manager.save(
-          Product,
-          product,
-        );
+          inventoryStock.quantity =
+            physicalQuantity;
+
+          await manager.save(
+            InventoryStock,
+            inventoryStock,
+          );
+
+          await this.recalculateProductTotalStock(
+            manager,
+            productId,
+          );
+        } else {
+          product.stockQuantity =
+            physicalQuantity;
+
+          await manager.save(
+            Product,
+            product,
+          );
+        }
 
         const movement =
           manager.create(
@@ -1110,7 +1681,7 @@ export class InventoryService {
                 physicalQuantity,
 
               userId:
-                userId ?? null,
+                context.userId ?? null,
 
               reason:
                 note ??
@@ -1120,9 +1691,15 @@ export class InventoryService {
                     : 'decrease'
                 }`,
 
-              fromLocation: null,
+              fromLocation:
+                difference < 0
+                  ? location
+                  : null,
 
-              toLocation: null,
+              toLocation:
+                difference > 0
+                  ? location
+                  : null,
             },
           );
 
@@ -1130,6 +1707,16 @@ export class InventoryService {
           StockMovement,
           movement,
         );
+
+        const latestProduct =
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
+            },
+          );
 
         return {
           success: true,
@@ -1144,6 +1731,12 @@ export class InventoryService {
             productName:
               product.productName,
 
+            locationId:
+              location?.id ?? null,
+
+            locationName:
+              location?.name ?? null,
+
             systemStock,
 
             physicalStock:
@@ -1154,6 +1747,12 @@ export class InventoryService {
             newStock:
               physicalQuantity,
 
+            totalStock:
+              Number(
+                latestProduct?.stockQuantity ??
+                  physicalQuantity,
+              ),
+
             movementId:
               movement.id,
           },
@@ -1162,14 +1761,17 @@ export class InventoryService {
     );
   }
 
-  // ======================================================
-  // DAMAGED / LOST ITEMS
-  // ======================================================
+  /* ==========================================================
+     DAMAGED / LOST
+     ========================================================== */
 
   async recordDamagedLost(
     dto: DamagedLostDto,
-    userId?: string,
+    contextInput?: InventoryContextInput,
   ) {
+    const context =
+      this.normalizeContext(contextInput);
+
     const {
       productId,
       quantity,
@@ -1177,20 +1779,55 @@ export class InventoryService {
       reason,
     } = dto;
 
-    if (quantity <= 0) {
+    const requestedLocationId =
+      (dto as DamagedLostDto & {
+        locationId?: string | null;
+      }).locationId;
+
+    if (!productId) {
+      throw new BadRequestException(
+        'Product is required',
+      );
+    }
+
+    if (
+      quantity === undefined ||
+      quantity === null ||
+      quantity <= 0
+    ) {
       throw new BadRequestException(
         'Quantity must be greater than 0',
       );
     }
 
+    if (
+      type !==
+        DamagedLostType.DAMAGED &&
+      type !==
+        DamagedLostType.LOST
+    ) {
+      throw new BadRequestException(
+        'Invalid damaged/lost type',
+      );
+    }
+
+    const locationId =
+      this.resolveLocationId(
+        context,
+        requestedLocationId,
+      );
+
     return this.dataSource.transaction(
       async (manager) => {
         const product =
-          await manager.findOne(Product, {
-            where: {
-              id: productId,
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
             },
-          });
+          );
 
         if (!product) {
           throw new NotFoundException(
@@ -1198,31 +1835,111 @@ export class InventoryService {
           );
         }
 
-        const previousStock =
-          Number(
-            product.stockQuantity ?? 0,
-          );
+        let location:
+          | Location
+          | null = null;
 
-        if (
-          quantity >
-          previousStock
-        ) {
-          throw new BadRequestException(
-            `Insufficient stock. Available stock: ${previousStock}`,
-          );
+        if (locationId) {
+          location =
+            await manager.findOne(
+              Location,
+              {
+                where: {
+                  id: locationId,
+                  isActive: true,
+                },
+              },
+            );
+
+          if (!location) {
+            throw new NotFoundException(
+              `Location with ID ${locationId} not found`,
+            );
+          }
         }
 
-        const newStock =
-          previousStock -
-          quantity;
+        let previousStock = 0;
+        let newStock = 0;
 
-        product.stockQuantity =
-          newStock;
+        if (location) {
+          const inventoryStock =
+            await manager.findOne(
+              InventoryStock,
+              {
+                where: {
+                  product: {
+                    id: productId,
+                  },
+                  location: {
+                    id: location.id,
+                  },
+                },
+              },
+            );
 
-        await manager.save(
-          Product,
-          product,
-        );
+          if (!inventoryStock) {
+            throw new BadRequestException(
+              `Product has no stock at ${location.name}`,
+            );
+          }
+
+          previousStock =
+            Number(
+              inventoryStock.quantity ?? 0,
+            );
+
+          if (
+            quantity >
+            previousStock
+          ) {
+            throw new BadRequestException(
+              `Insufficient stock at ${location.name}. Available stock: ${previousStock}`,
+            );
+          }
+
+          newStock =
+            previousStock -
+            quantity;
+
+          inventoryStock.quantity =
+            newStock;
+
+          await manager.save(
+            InventoryStock,
+            inventoryStock,
+          );
+
+          await this.recalculateProductTotalStock(
+            manager,
+            productId,
+          );
+        } else {
+          previousStock =
+            Number(
+              product.stockQuantity ?? 0,
+            );
+
+          if (
+            quantity >
+            previousStock
+          ) {
+            throw new BadRequestException(
+              `Insufficient stock. Available stock: ${previousStock}`,
+            );
+          }
+
+          newStock =
+            previousStock -
+            quantity;
+
+          product.stockQuantity =
+            newStock;
+
+          await manager.save(
+            Product,
+            product,
+          );
+        }
 
         const movementType =
           type ===
@@ -1248,9 +1965,10 @@ export class InventoryService {
                 reason ?? null,
 
               userId:
-                userId ?? null,
+                context.userId ?? null,
 
-              fromLocation: null,
+              fromLocation:
+                location,
 
               toLocation: null,
             },
@@ -1260,6 +1978,16 @@ export class InventoryService {
           StockMovement,
           movement,
         );
+
+        const latestProduct =
+          await manager.findOne(
+            Product,
+            {
+              where: {
+                id: productId,
+              },
+            },
+          );
 
         return {
           success: true,
@@ -1277,6 +2005,12 @@ export class InventoryService {
             productName:
               product.productName,
 
+            locationId:
+              location?.id ?? null,
+
+            locationName:
+              location?.name ?? null,
+
             type,
 
             quantity,
@@ -1284,6 +2018,12 @@ export class InventoryService {
             previousStock,
 
             newStock,
+
+            totalStock:
+              Number(
+                latestProduct?.stockQuantity ??
+                  newStock,
+              ),
 
             reason:
               reason ?? null,
@@ -1296,106 +2036,351 @@ export class InventoryService {
     );
   }
 
-  // ======================================================
-  // MOVEMENT HISTORY
-  // ======================================================
+  /* ==========================================================
+     MOVEMENTS
+     ========================================================== */
 
-  async getMovements() {
+  async getMovements(
+    contextInput?: InventoryContextInput,
+  ) {
+    const context =
+      this.normalizeContext(
+        contextInput,
+      );
+
+    /*
+     * OWNER / ADMIN
+     */
+    if (
+      this.isGlobalAccess(context)
+    ) {
+      const movements =
+        await this.stockMovementRepository.find(
+          {
+            relations: {
+              product: true,
+              fromLocation: true,
+              toLocation: true,
+            },
+
+            order: {
+              createdAt: 'DESC',
+            },
+          },
+        );
+
+      return {
+        success: true,
+        data: movements,
+      };
+    }
+
+    /*
+     * MANAGER
+     */
+    const locationId =
+      this.resolveLocationId(
+        context,
+      );
+
+    if (!locationId) {
+      throw new ForbiddenException(
+        'Manager is not assigned to a branch',
+      );
+    }
+
     const movements =
-      await this.stockMovementRepository.find({
-        relations: {
-          product: true,
+      await this.stockMovementRepository.find(
+        {
+          where: [
+            {
+              fromLocation: {
+                id: locationId,
+              },
+            },
+            {
+              toLocation: {
+                id: locationId,
+              },
+            },
+          ],
 
-          fromLocation: true,
+          relations: {
+            product: true,
+            fromLocation: true,
+            toLocation: true,
+          },
 
-          toLocation: true,
+          order: {
+            createdAt: 'DESC',
+          },
         },
-
-        order: {
-          createdAt: 'DESC',
-        },
-      });
+      );
 
     return {
       success: true,
-
       data: movements,
     };
   }
 
-  // INVENTORY DASHBOARD  
+  /* ==========================================================
+     DASHBOARD
+     ========================================================== */
 
-  async getDashboard() {
-    const products =
-      await this.productRepository.find();
+  async getDashboard(
+    contextInput?: InventoryContextInput,
+  ) {
+    const context =
+      this.normalizeContext(
+        contextInput,
+      );
+
+    /*
+     * OWNER / ADMIN
+     */
+    if (
+      this.isGlobalAccess(context)
+    ) {
+      const products =
+        await this.productRepository.find();
+
+      const totalProducts =
+        products.length;
+
+      const totalStock =
+        products.reduce(
+          (total, product) =>
+            total +
+            Number(
+              product.stockQuantity ?? 0,
+            ),
+          0,
+        );
+
+      const lowStockProducts =
+        products
+          .filter((product) => {
+            const reorderLevel =
+              Number(
+                product.reorderLevel ?? 0,
+              );
+
+            const stock =
+              Number(
+                product.stockQuantity ?? 0,
+              );
+
+            return (
+              reorderLevel > 0 &&
+              stock <= reorderLevel
+            );
+          })
+          .map((product) => ({
+            id: product.id,
+
+            productName:
+              product.productName,
+
+            stockQuantity:
+              Number(
+                product.stockQuantity ?? 0,
+              ),
+
+            reorderLevel:
+              Number(
+                product.reorderLevel ?? 0,
+              ),
+          }));
+
+      const locations =
+        await this.locationRepository.count(
+          {
+            where: {
+              isActive: true,
+            },
+          },
+        );
+
+      const recentMovements =
+        await this.stockMovementRepository.find(
+          {
+            relations: {
+              product: true,
+              fromLocation: true,
+              toLocation: true,
+            },
+
+            order: {
+              createdAt: 'DESC',
+            },
+
+            take: 5,
+          },
+        );
+
+      return {
+        success: true,
+
+        data: {
+          summary: {
+            totalProducts,
+
+            totalStock,
+
+            lowStock:
+              lowStockProducts.length,
+
+            locations,
+          },
+
+          recentMovements,
+
+          lowStockProducts,
+        },
+      };
+    }
+
+    /*
+     * MANAGER
+     */
+    const locationId =
+      this.resolveLocationId(
+        context,
+      );
+
+    if (!locationId) {
+      throw new ForbiddenException(
+        'Manager is not assigned to a branch',
+      );
+    }
+
+    const location =
+      await this.locationRepository.findOne(
+        {
+          where: {
+            id: locationId,
+            isActive: true,
+          },
+        },
+      );
+
+    if (!location) {
+      throw new NotFoundException(
+        'Assigned branch not found or inactive',
+      );
+    }
+
+    const stocks =
+      await this.inventoryStockRepository.find(
+        {
+          where: {
+            location: {
+              id: locationId,
+            },
+          },
+
+          relations: {
+            product: true,
+            location: true,
+          },
+
+          order: {
+            updatedAt: 'DESC',
+          },
+        },
+      );
 
     const totalProducts =
-      products.length;
+      new Set(
+        stocks.map(
+          (stock) =>
+            stock.product.id,
+        ),
+      ).size;
 
     const totalStock =
-      products.reduce(
-        (total, product) =>
+      stocks.reduce(
+        (total, stock) =>
           total +
           Number(
-            product.stockQuantity ?? 0,
+            stock.quantity ?? 0,
           ),
         0,
       );
 
     const lowStockProducts =
-      products
-        .filter(
-          (product) =>
+      stocks
+        .filter((stock) => {
+          const reorderLevel =
             Number(
-              product.reorderLevel ?? 0,
-            ) > 0 &&
+              stock.product.reorderLevel ??
+                0,
+            );
+
+          const quantity =
             Number(
-              product.stockQuantity ?? 0,
-            ) <=
-              Number(
-                product.reorderLevel ?? 0,
-              ),
-        )
-        .map((product) => ({
-          id: product.id,
+              stock.quantity ?? 0,
+            );
+
+          return (
+            reorderLevel > 0 &&
+            quantity <= reorderLevel
+          );
+        })
+        .map((stock) => ({
+          id:
+            stock.product.id,
 
           productName:
-            product.productName,
+            stock.product.productName,
 
           stockQuantity:
             Number(
-              product.stockQuantity ?? 0,
+              stock.quantity ?? 0,
             ),
 
           reorderLevel:
             Number(
-              product.reorderLevel ?? 0,
+              stock.product.reorderLevel ??
+                0,
             ),
+
+          locationId:
+            location.id,
+
+          locationName:
+            location.name,
         }));
 
-    const locations =
-      await this.locationRepository.count({
-        where: {
-          isActive: true,
-        },
-      });
-
     const recentMovements =
-      await this.stockMovementRepository.find({
-        relations: {
-          product: true,
+      await this.stockMovementRepository.find(
+        {
+          where: [
+            {
+              fromLocation: {
+                id: locationId,
+              },
+            },
+            {
+              toLocation: {
+                id: locationId,
+              },
+            },
+          ],
 
-          fromLocation: true,
+          relations: {
+            product: true,
+            fromLocation: true,
+            toLocation: true,
+          },
 
-          toLocation: true,
+          order: {
+            createdAt: 'DESC',
+          },
+
+          take: 5,
         },
-
-        order: {
-          createdAt: 'DESC',
-        },
-
-        take: 5,
-      });
+      );
 
     return {
       success: true,
@@ -1409,7 +2394,13 @@ export class InventoryService {
           lowStock:
             lowStockProducts.length,
 
-          locations,
+          locations: 1,
+
+          locationId:
+            location.id,
+
+          locationName:
+            location.name,
         },
 
         recentMovements,
@@ -1419,16 +2410,21 @@ export class InventoryService {
     };
   }
 
-  // CREATE LOCATION
+  /* ==========================================================
+     CREATE LOCATION / BRANCH
+     ========================================================== */
+
   async createLocation(
     dto: CreateLocationDto,
   ) {
     const existing =
-      await this.locationRepository.findOne({
-        where: {
-          name: dto.name,
+      await this.locationRepository.findOne(
+        {
+          where: {
+            name: dto.name,
+          },
         },
-      });
+      );
 
     if (existing) {
       throw new BadRequestException(
@@ -1437,15 +2433,17 @@ export class InventoryService {
     }
 
     const location =
-      this.locationRepository.create({
-        name: dto.name,
+      this.locationRepository.create(
+        {
+          name: dto.name,
 
-        description:
-          dto.description,
+          description:
+            dto.description,
 
-        isActive:
-          dto.isActive ?? true,
-      });
+          isActive:
+            dto.isActive ?? true,
+        },
+      );
 
     const saved =
       await this.locationRepository.save(
@@ -1461,33 +2459,42 @@ export class InventoryService {
       data: saved,
     };
   }
-  // GET LOCATIONS
+
+  /* ==========================================================
+     GET LOCATIONS / BRANCHES
+     ========================================================== */
 
   async getLocations() {
     const locations =
-      await this.locationRepository.find({
-        order: {
-          createdAt: 'DESC',
+      await this.locationRepository.find(
+        {
+          order: {
+            createdAt: 'DESC',
+          },
         },
-      });
+      );
 
     return {
       success: true,
-
       data: locations,
     };
   }
-  // GET LOCATION
+
+  /* ==========================================================
+     GET SINGLE LOCATION
+     ========================================================== */
 
   async getLocation(
     id: string,
   ) {
     const location =
-      await this.locationRepository.findOne({
-        where: {
-          id,
+      await this.locationRepository.findOne(
+        {
+          where: {
+            id,
+          },
         },
-      });
+      );
 
     if (!location) {
       throw new NotFoundException(
@@ -1497,23 +2504,26 @@ export class InventoryService {
 
     return {
       success: true,
-
       data: location,
     };
   }
 
-  // UPDATE LOCATION
+  /* ==========================================================
+     UPDATE LOCATION
+     ========================================================== */
 
   async updateLocation(
     id: string,
     dto: UpdateLocationDto,
   ) {
     const location =
-      await this.locationRepository.findOne({
-        where: {
-          id,
+      await this.locationRepository.findOne(
+        {
+          where: {
+            id,
+          },
         },
-      });
+      );
 
     if (!location) {
       throw new NotFoundException(
@@ -1526,11 +2536,13 @@ export class InventoryService {
       dto.name !== location.name
     ) {
       const existing =
-        await this.locationRepository.findOne({
-          where: {
-            name: dto.name,
+        await this.locationRepository.findOne(
+          {
+            where: {
+              name: dto.name,
+            },
           },
-        });
+        );
 
       if (existing) {
         throw new BadRequestException(
@@ -1559,17 +2571,21 @@ export class InventoryService {
     };
   }
 
-  // DELETE LOCATION
+  /* ==========================================================
+     DELETE LOCATION
+     ========================================================== */
 
   async deleteLocation(
     id: string,
   ) {
     const location =
-      await this.locationRepository.findOne({
-        where: {
-          id,
+      await this.locationRepository.findOne(
+        {
+          where: {
+            id,
+          },
         },
-      });
+      );
 
     if (!location) {
       throw new NotFoundException(
@@ -1589,17 +2605,21 @@ export class InventoryService {
     };
   }
 
-  // LOCATION-WISE STOCK
+  /* ==========================================================
+     LOCATION STOCK
+     ========================================================== */
 
   async getLocationStock(
     locationId: string,
   ) {
     const location =
-      await this.locationRepository.findOne({
-        where: {
-          id: locationId,
+      await this.locationRepository.findOne(
+        {
+          where: {
+            id: locationId,
+          },
         },
-      });
+      );
 
     if (!location) {
       throw new NotFoundException(
@@ -1608,27 +2628,27 @@ export class InventoryService {
     }
 
     const stocks =
-      await this.inventoryStockRepository.find({
-        where: {
-          location: {
-            id: locationId,
+      await this.inventoryStockRepository.find(
+        {
+          where: {
+            location: {
+              id: locationId,
+            },
+          },
+
+          relations: {
+            product: true,
+            location: true,
+          },
+
+          order: {
+            updatedAt: 'DESC',
           },
         },
-
-        relations: {
-          product: true,
-
-          location: true,
-        },
-
-        order: {
-          updatedAt: 'DESC',
-        },
-      });
+      );
 
     return {
       success: true,
-
       data: stocks,
     };
   }
