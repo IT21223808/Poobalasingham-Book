@@ -262,7 +262,9 @@ function ProductFormContent() {
       // ========================================
 
       else {
-        await createProduct(data);
+        const createdProduct = await createProduct(data);
+console.log("CREATED PRODUCT:", createdProduct);
+console.log("GENERATED BARCODE:", createdProduct.barcode);
 
         alert("Product created successfully.");
       }
