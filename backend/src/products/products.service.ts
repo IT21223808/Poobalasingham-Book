@@ -27,15 +27,76 @@ export class ProductsService {
     private readonly subcategoryRepository: Repository<Subcategory>,
   ) {}
 
+  // =========================================================
+  // GENERATE UNIQUE BARCODE
+  // =========================================================
+  private async generateUniqueBarcode(): Promise<string> {
+    while (true) {
+      // Generate 12 random digits
+      const randomPart = Math.floor(
+        100000000000 +
+          Math.random() * 900000000000,
+      ).toString();
+
+      // Calculate EAN-13 check digit
+      let sum = 0;
+
+      for (let i = 0; i < 12; i++) {
+        const digit = Number(randomPart[i]);
+
+        if (i % 2 === 0) {
+          sum += digit;
+        } else {
+          sum += digit * 3;
+        }
+      }
+
+      const checkDigit =
+        (10 - (sum % 10)) % 10;
+
+      const barcode =
+        `${randomPart}${checkDigit}`;
+
+      // Check whether barcode already exists
+      const existing =
+        await this.productRepository.findOne({
+          where: {
+            barcode,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+      if (!existing) {
+        return barcode;
+      }
+    }
+  }
+
+  // =========================================================
   // CREATE PRODUCT
+  // =========================================================
   async create(
     createProductDto: CreateProductDto,
   ): Promise<Product> {
+    console.log(
+      "========== CREATE PRODUCT ==========",
+    );
+
+    console.log(
+      "DTO BARCODE:",
+      createProductDto.barcode,
+    );
+
+    // -------------------------------------------------------
     // Check duplicate product code
+    // -------------------------------------------------------
     const existingProduct =
       await this.productRepository.findOne({
         where: {
-          productCode: createProductDto.productCode,
+          productCode:
+            createProductDto.productCode,
         },
       });
 
@@ -45,12 +106,30 @@ export class ProductsService {
       );
     }
 
-    // Check duplicate barcode
-    if (createProductDto.barcode) {
+    // -------------------------------------------------------
+    // BARCODE
+    //
+    // If barcode is provided:
+    //   validate duplicate
+    //
+    // If barcode is empty / undefined:
+    //   automatically generate
+    // -------------------------------------------------------
+
+    let barcode =
+      createProductDto.barcode?.trim();
+
+    console.log(
+      "BARCODE BEFORE GENERATION:",
+      barcode,
+    );
+
+    if (barcode) {
+      // Manual barcode provided
       const existingBarcode =
         await this.productRepository.findOne({
           where: {
-            barcode: createProductDto.barcode,
+            barcode,
           },
         });
 
@@ -59,14 +138,28 @@ export class ProductsService {
           "Barcode already exists",
         );
       }
+    } else {
+      // Automatically generate barcode
+      barcode =
+        await this.generateUniqueBarcode();
     }
 
+    console.log(
+      "FINAL BARCODE:",
+      barcode,
+    );
+
+    // -------------------------------------------------------
     // Check duplicate ISBN
-    if (createProductDto.isbn) {
+    // -------------------------------------------------------
+    const isbn =
+      createProductDto.isbn?.trim();
+
+    if (isbn) {
       const existingIsbn =
         await this.productRepository.findOne({
           where: {
-            isbn: createProductDto.isbn,
+            isbn,
           },
         });
 
@@ -77,8 +170,12 @@ export class ProductsService {
       }
     }
 
+    // -------------------------------------------------------
     // Get Category
-    let category: Category | undefined;
+    // -------------------------------------------------------
+    let category:
+      | Category
+      | undefined;
 
     if (createProductDto.categoryId) {
       const foundCategory =
@@ -97,8 +194,12 @@ export class ProductsService {
       category = foundCategory;
     }
 
+    // -------------------------------------------------------
     // Get Subcategory
-    let subcategory: Subcategory | undefined;
+    // -------------------------------------------------------
+    let subcategory:
+      | Subcategory
+      | undefined;
 
     if (createProductDto.subcategoryId) {
       const foundSubcategory =
@@ -120,7 +221,8 @@ export class ProductsService {
       // Check subcategory belongs to selected category
       if (
         category &&
-        foundSubcategory.category.id !== category.id
+        foundSubcategory.category.id !==
+          category.id
       ) {
         throw new BadRequestException(
           "Subcategory does not belong to the selected category",
@@ -130,24 +232,59 @@ export class ProductsService {
       subcategory = foundSubcategory;
     }
 
-    // Remove relationship IDs from product data
+    // -------------------------------------------------------
+    // Remove relationship IDs
+    // -------------------------------------------------------
     const {
       categoryId,
       subcategoryId,
       ...productData
     } = createProductDto;
 
-    // Create product
-    const product = this.productRepository.create({
-      ...productData,
-      category,
-      subcategory,
-    });
+    // -------------------------------------------------------
+    // Create Product
+    // -------------------------------------------------------
+    const product =
+      this.productRepository.create({
+        ...productData,
 
-    return await this.productRepository.save(product);
+        // IMPORTANT:
+        // Always use the processed/generated barcode
+        barcode,
+
+        // Use trimmed ISBN
+        isbn: isbn || undefined,
+
+        category,
+        subcategory,
+      });
+
+    console.log(
+      "PRODUCT BEFORE SAVE:",
+      product,
+    );
+
+    // -------------------------------------------------------
+    // Save Product
+    // -------------------------------------------------------
+    const savedProduct =
+      await this.productRepository.save(product);
+
+    console.log(
+      "PRODUCT AFTER SAVE:",
+      savedProduct,
+    );
+
+    console.log(
+      "====================================",
+    );
+
+    return savedProduct;
   }
 
+  // =========================================================
   // GET ALL PRODUCTS
+  // =========================================================
   async findAll(): Promise<Product[]> {
     return await this.productRepository.find({
       relations: {
@@ -160,11 +297,17 @@ export class ProductsService {
     });
   }
 
+  // =========================================================
   // GET ONE PRODUCT
-  async findOne(id: string): Promise<Product> {
+  // =========================================================
+  async findOne(
+    id: string,
+  ): Promise<Product> {
     const product =
       await this.productRepository.findOne({
-        where: { id },
+        where: {
+          id,
+        },
         relations: {
           category: true,
           subcategory: true,
@@ -180,14 +323,19 @@ export class ProductsService {
     return product;
   }
 
+  // =========================================================
   // UPDATE PRODUCT
+  // =========================================================
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
   ): Promise<Product> {
-    const product = await this.findOne(id);
+    const product =
+      await this.findOne(id);
 
+    // -------------------------------------------------------
     // Check duplicate product code
+    // -------------------------------------------------------
     if (
       updateProductDto.productCode &&
       updateProductDto.productCode !==
@@ -208,46 +356,92 @@ export class ProductsService {
       }
     }
 
-    // Check duplicate barcode
-    if (
-      updateProductDto.barcode &&
-      updateProductDto.barcode !== product.barcode
-    ) {
-      const existingBarcode =
-        await this.productRepository.findOne({
-          where: {
-            barcode: updateProductDto.barcode,
-          },
-        });
+    // -------------------------------------------------------
+    // BARCODE UPDATE
+    //
+    // If barcode is supplied:
+    //   validate duplicate
+    //
+    // If barcode is blank:
+    //   keep existing barcode
+    //
+    // If existing barcode is NULL:
+    //   generate a new barcode
+    // -------------------------------------------------------
 
-      if (existingBarcode) {
-        throw new ConflictException(
-          "Barcode already exists",
-        );
+    let barcode =
+      updateProductDto.barcode?.trim();
+
+    if (barcode) {
+      // New barcode provided
+      if (
+        barcode !== product.barcode
+      ) {
+        const existingBarcode =
+          await this.productRepository.findOne({
+            where: {
+              barcode,
+            },
+            select: {
+              id: true,
+            },
+          });
+
+        if (
+          existingBarcode &&
+          existingBarcode.id !== product.id
+        ) {
+          throw new ConflictException(
+            "Barcode already exists",
+          );
+        }
       }
+    } else {
+      // No barcode entered during edit
+      //
+      // Keep existing barcode if available.
+      // If old product has NULL barcode,
+      // generate one automatically.
+      barcode =
+        product.barcode ||
+        (await this.generateUniqueBarcode());
     }
 
+    // -------------------------------------------------------
     // Check duplicate ISBN
+    // -------------------------------------------------------
+    const isbn =
+      updateProductDto.isbn?.trim();
+
     if (
-      updateProductDto.isbn &&
-      updateProductDto.isbn !== product.isbn
+      isbn &&
+      isbn !== product.isbn
     ) {
       const existingIsbn =
         await this.productRepository.findOne({
           where: {
-            isbn: updateProductDto.isbn,
+            isbn,
+          },
+          select: {
+            id: true,
           },
         });
 
-      if (existingIsbn) {
+      if (
+        existingIsbn &&
+        existingIsbn.id !== product.id
+      ) {
         throw new ConflictException(
           "ISBN already exists",
         );
       }
     }
 
+    // -------------------------------------------------------
     // Get updated category
-    let category = product.category;
+    // -------------------------------------------------------
+    let category =
+      product.category;
 
     if (updateProductDto.categoryId) {
       const foundCategory =
@@ -266,14 +460,20 @@ export class ProductsService {
       category = foundCategory;
     }
 
+    // -------------------------------------------------------
     // Get updated subcategory
-    let subcategory = product.subcategory;
+    // -------------------------------------------------------
+    let subcategory =
+      product.subcategory;
 
-    if (updateProductDto.subcategoryId) {
+    if (
+      updateProductDto.subcategoryId
+    ) {
       const foundSubcategory =
         await this.subcategoryRepository.findOne({
           where: {
-            id: updateProductDto.subcategoryId,
+            id:
+              updateProductDto.subcategoryId,
           },
           relations: {
             category: true,
@@ -296,33 +496,55 @@ export class ProductsService {
         );
       }
 
-      subcategory = foundSubcategory;
+      subcategory =
+        foundSubcategory;
     }
 
+    // -------------------------------------------------------
     // Remove relationship IDs
+    // -------------------------------------------------------
     const {
       categoryId,
       subcategoryId,
       ...productData
     } = updateProductDto;
 
+    // -------------------------------------------------------
+    // Update Product
+    // -------------------------------------------------------
     Object.assign(product, {
       ...productData,
+
+      // IMPORTANT:
+      // Always preserve / update barcode
+      barcode,
+
+      // Preserve trimmed ISBN
+      isbn: isbn || undefined,
+
       category,
       subcategory,
     });
 
-    return await this.productRepository.save(product);
+    return await this.productRepository.save(
+      product,
+    );
   }
 
+  // =========================================================
   // DELETE PRODUCT
+  // =========================================================
   async remove(id: string) {
-    const product = await this.findOne(id);
+    const product =
+      await this.findOne(id);
 
-    await this.productRepository.remove(product);
+    await this.productRepository.remove(
+      product,
+    );
 
     return {
-      message: "Product deleted successfully",
+      message:
+        "Product deleted successfully",
     };
   }
 }
