@@ -12,13 +12,11 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-/* API */
+import api from "@/services/api";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-/* TYPES */
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface InvoiceItem {
   id: number;
@@ -121,56 +119,96 @@ export default function ViewPurchaseInvoicePage({
         setLoading(true);
         setError("");
 
-        const token =
-          localStorage.getItem("accessToken");
-
-        const response = await fetch(
-          `${API_URL}/purchasing/invoices/${invoiceId}`,
-          {
-            method: "GET",
-
-            headers: {
-              "Content-Type": "application/json",
-
-              ...(token
-                ? {
-                    Authorization: `Bearer ${token}`,
-                  }
-                : {}),
-            },
-
-            cache: "no-store",
-          }
+        /*
+         * IMPORTANT:
+         * Use shared Axios API service.
+         * Authentication/token handling is handled
+         * inside services/api.ts.
+         */
+        const response = await api.get(
+          `/purchasing/invoices/${invoiceId}`
         );
 
-        const result =
-          await response.json().catch(() => null);
+        console.log(
+          "PURCHASE INVOICE RESPONSE:",
+          response.data
+        );
 
-        if (!response.ok) {
-          throw new Error(
-            Array.isArray(result?.message)
-              ? result.message.join(", ")
-              : result?.message?.message ||
-                  result?.message ||
-                  "Failed to load invoice"
-          );
-        }
+        const result = response.data;
 
+        /*
+         * Backend may return:
+         *
+         * {
+         *   data: {...}
+         * }
+         *
+         * or directly:
+         *
+         * {...}
+         */
         const invoiceData =
-          result?.data || result;
+          result?.data ?? result;
 
         setInvoice(invoiceData);
-      } catch (err) {
+      } catch (err: any) {
         console.error(
-          "Load invoice error:",
-          err
+          "=========================================="
+        );
+        console.error(
+          "LOAD PURCHASE INVOICE ERROR"
+        );
+        console.error(err);
+
+        console.error(
+          "Axios Response:",
+          err?.response
         );
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load invoice"
+        console.error(
+          "Axios Response Data:",
+          err?.response?.data
         );
+
+        console.error(
+          "Axios Status:",
+          err?.response?.status
+        );
+
+        console.error(
+          "=========================================="
+        );
+
+        const responseData =
+          err?.response?.data;
+
+        let errorMessage =
+          "Failed to load invoice";
+
+        if (typeof responseData === "string") {
+          errorMessage = responseData;
+        } else if (
+          Array.isArray(responseData?.message)
+        ) {
+          errorMessage =
+            responseData.message.join(", ");
+        } else if (
+          typeof responseData?.message === "string"
+        ) {
+          errorMessage =
+            responseData.message;
+        } else if (
+          responseData?.message?.message
+        ) {
+          errorMessage =
+            responseData.message.message;
+        } else if (
+          typeof err?.message === "string"
+        ) {
+          errorMessage = err.message;
+        }
+
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }

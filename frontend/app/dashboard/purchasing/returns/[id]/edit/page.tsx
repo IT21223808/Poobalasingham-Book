@@ -11,8 +11,10 @@ import {
   XCircle,
   Package,
   RefreshCw,
-  ChevronRight
+  ChevronRight,
 } from "lucide-react";
+
+import api from "@/services/api";
 
 import {
   purchasingService,
@@ -35,6 +37,8 @@ export default function EditPurchaseReturnPage() {
   const returnId = Number(params.id);
 
   const [loading, setLoading] = useState(true);
+  const [loadingProducts, setLoadingProducts] =
+    useState(true);
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
@@ -43,10 +47,21 @@ export default function EditPurchaseReturnPage() {
   const [purchaseReturn, setPurchaseReturn] =
     useState<PurchaseReturn | null>(null);
 
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [invoices, setInvoices] = useState<PurchaseInvoice[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [orders, setOrders] = useState<
+    PurchaseOrder[]
+  >([]);
+
+  const [invoices, setInvoices] = useState<
+    PurchaseInvoice[]
+  >([]);
+
+  const [products, setProducts] = useState<
+    Product[]
+  >([]);
+
+  const [locations, setLocations] = useState<
+    Location[]
+  >([]);
 
   const [purchaseOrderId, setPurchaseOrderId] =
     useState<number | "">("");
@@ -57,10 +72,11 @@ export default function EditPurchaseReturnPage() {
   const [locationId, setLocationId] =
     useState<string>("");
 
-  const [reason, setReason] =
-    useState("");
+  const [reason, setReason] = useState("");
 
-  const [items, setItems] = useState<ReturnItemForm[]>([]);
+  const [items, setItems] = useState<
+    ReturnItemForm[]
+  >([]);
 
   // =========================================================
   // ERROR HANDLER
@@ -75,7 +91,10 @@ export default function EditPurchaseReturnPage() {
       return err;
     }
 
-    if (typeof err === "object" && err !== null) {
+    if (
+      typeof err === "object" &&
+      err !== null
+    ) {
       const obj = err as any;
 
       const message =
@@ -92,16 +111,23 @@ export default function EditPurchaseReturnPage() {
         return message;
       }
 
-      if (message && typeof message === "object") {
+      if (
+        message &&
+        typeof message === "object"
+      ) {
         if (Array.isArray(message.message)) {
           return message.message.join(", ");
         }
 
-        if (typeof message.message === "string") {
+        if (
+          typeof message.message === "string"
+        ) {
           return message.message;
         }
 
-        if (typeof message.error === "string") {
+        if (
+          typeof message.error === "string"
+        ) {
           return message.error;
         }
       }
@@ -111,7 +137,7 @@ export default function EditPurchaseReturnPage() {
   };
 
   // =========================================================
-  // LOAD DATA
+  // LOAD RETURN DATA
   // =========================================================
 
   useEffect(() => {
@@ -139,8 +165,11 @@ export default function EditPurchaseReturnPage() {
         ]);
 
         setPurchaseReturn(returnData);
+
         setOrders(ordersData || []);
+
         setInvoices(invoicesData || []);
+
         setLocations(locationsData || []);
 
         setPurchaseOrderId(
@@ -151,7 +180,8 @@ export default function EditPurchaseReturnPage() {
           returnData.invoiceId ?? ""
         );
 
-        const returnDataAny = returnData as any;
+        const returnDataAny =
+          returnData as any;
 
         setLocationId(
           returnDataAny.locationId
@@ -159,13 +189,21 @@ export default function EditPurchaseReturnPage() {
             : ""
         );
 
-        setReason(returnData.reason || "");
+        setReason(
+          returnData.reason || ""
+        );
 
         setItems(
-          (returnData.items || []).map((item) => ({
-            productId: String(item.productId),
-            quantity: Number(item.quantity),
-          }))
+          (returnData.items || []).map(
+            (item) => ({
+              productId: String(
+                item.productId
+              ),
+              quantity: Number(
+                item.quantity
+              ),
+            })
+          )
         );
       } catch (err) {
         console.error(
@@ -173,7 +211,9 @@ export default function EditPurchaseReturnPage() {
           err
         );
 
-        setError(getErrorMessage(err));
+        setError(
+          getErrorMessage(err)
+        );
       } finally {
         setLoading(false);
       }
@@ -183,34 +223,54 @@ export default function EditPurchaseReturnPage() {
   }, [returnId]);
 
   // =========================================================
-  // PRODUCTS
+  // LOAD PRODUCTS
   // =========================================================
 
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/products`
-        );
+        setLoadingProducts(true);
 
-        if (!response.ok) {
-          throw new Error("Failed to load products");
-        }
+        /*
+         * IMPORTANT:
+         * Do NOT use native fetch() here.
+         *
+         * Shared api instance handles:
+         * - Base URL
+         * - JWT token
+         * - Authorization headers
+         * - Axios interceptors
+         */
 
-        const data = await response.json();
+        const response =
+          await api.get("/products");
 
-        const productList = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-          ? data.data
-          : [];
+        const result = response.data;
+
+        const productList: Product[] =
+          Array.isArray(result)
+            ? result
+            : Array.isArray(result?.data)
+            ? result.data
+            : [];
 
         setProducts(productList);
+
+        console.log(
+          "Products loaded:",
+          productList.length
+        );
       } catch (err) {
         console.error(
           "Load products error:",
           err
         );
+
+        setError(
+          getErrorMessage(err)
+        );
+      } finally {
+        setLoadingProducts(false);
       }
     };
 
@@ -233,7 +293,10 @@ export default function EditPurchaseReturnPage() {
           Number(purchaseOrderId)
       ) || null
     );
-  }, [orders, purchaseOrderId]);
+  }, [
+    orders,
+    purchaseOrderId,
+  ]);
 
   // =========================================================
   // AVAILABLE INVOICES
@@ -246,10 +309,14 @@ export default function EditPurchaseReturnPage() {
 
     return invoices.filter(
       (invoice) =>
-        Number(invoice.purchaseOrderId) ===
-        Number(purchaseOrderId)
+        Number(
+          invoice.purchaseOrderId
+        ) === Number(purchaseOrderId)
     );
-  }, [invoices, purchaseOrderId]);
+  }, [
+    invoices,
+    purchaseOrderId,
+  ]);
 
   // =========================================================
   // ADD ITEM
@@ -271,9 +338,14 @@ export default function EditPurchaseReturnPage() {
   // REMOVE ITEM
   // =========================================================
 
-  const removeItem = (index: number) => {
+  const removeItem = (
+    index: number
+  ) => {
     setItems((prev) =>
-      prev.filter((_, itemIndex) => itemIndex !== index)
+      prev.filter(
+        (_, itemIndex) =>
+          itemIndex !== index
+      )
     );
   };
 
@@ -287,19 +359,23 @@ export default function EditPurchaseReturnPage() {
     value: string | number
   ) => {
     setItems((prev) =>
-      prev.map((item, itemIndex) => {
-        if (itemIndex !== index) {
-          return item;
-        }
+      prev.map(
+        (item, itemIndex) => {
+          if (
+            itemIndex !== index
+          ) {
+            return item;
+          }
 
-        return {
-          ...item,
-          [field]:
-            field === "quantity"
-              ? Number(value)
-              : value,
-        };
-      })
+          return {
+            ...item,
+            [field]:
+              field === "quantity"
+                ? Number(value)
+                : value,
+          };
+        }
+      )
     );
   };
 
@@ -310,34 +386,29 @@ export default function EditPurchaseReturnPage() {
   const handlePurchaseOrderChange = (
     value: string
   ) => {
-    const id = value ? Number(value) : "";
+    const id = value
+      ? Number(value)
+      : "";
 
     setPurchaseOrderId(id);
 
-    /*
-     * Existing invoice is only valid for the selected PO.
-     */
     if (id === "") {
       setInvoiceId("");
     } else {
-      const validInvoice = invoices.find(
-        (invoice) =>
-          Number(invoice.id) ===
-            Number(invoiceId) &&
-          Number(invoice.purchaseOrderId) ===
-            Number(id)
-      );
+      const validInvoice =
+        invoices.find(
+          (invoice) =>
+            Number(invoice.id) ===
+              Number(invoiceId) &&
+            Number(
+              invoice.purchaseOrderId
+            ) === Number(id)
+        );
 
       if (!validInvoice) {
         setInvoiceId("");
       }
     }
-
-    /*
-     * Product list will be cleared because products
-     * should belong to the selected PO.
-     */
-    setItems((prev) => prev);
   };
 
   // =========================================================
@@ -361,23 +432,36 @@ export default function EditPurchaseReturnPage() {
       (item) => item.productId
     );
 
-    if (productIds.some((id) => !id)) {
+    if (
+      productIds.some(
+        (id) => !id
+      )
+    ) {
       return "Please select a product for every item.";
     }
 
-    const duplicateProducts = new Set<string>();
+    const duplicateProducts =
+      new Set<string>();
 
     for (const productId of productIds) {
-      if (duplicateProducts.has(productId)) {
+      if (
+        duplicateProducts.has(
+          productId
+        )
+      ) {
         return "Duplicate products are not allowed.";
       }
 
-      duplicateProducts.add(productId);
+      duplicateProducts.add(
+        productId
+      );
     }
 
     for (const item of items) {
       if (
-        !Number.isFinite(item.quantity) ||
+        !Number.isFinite(
+          item.quantity
+        ) ||
         item.quantity < 1
       ) {
         return "Return quantity must be at least 1.";
@@ -399,10 +483,13 @@ export default function EditPurchaseReturnPage() {
     setError("");
     setSuccess("");
 
-    const validationError = validateForm();
+    const validationError =
+      validateForm();
 
     if (validationError) {
-      setError(validationError);
+      setError(
+        validationError
+      );
       return;
     }
 
@@ -410,26 +497,38 @@ export default function EditPurchaseReturnPage() {
       setSaving(true);
 
       const payload = {
-        purchaseOrderId: Number(purchaseOrderId),
+        purchaseOrderId:
+          Number(purchaseOrderId),
 
         ...(invoiceId
           ? {
-              invoiceId: Number(invoiceId),
+              invoiceId:
+                Number(invoiceId),
             }
           : {}),
 
-        locationId: String(locationId),
+        locationId:
+          String(locationId),
 
         ...(reason.trim()
           ? {
-              reason: reason.trim(),
+              reason:
+                reason.trim(),
             }
           : {}),
 
-        items: items.map((item) => ({
-          productId: String(item.productId),
-          quantity: Number(item.quantity),
-        })),
+        items: items.map(
+          (item) => ({
+            productId:
+              String(
+                item.productId
+              ),
+            quantity:
+              Number(
+                item.quantity
+              ),
+          })
+        ),
       };
 
       console.log(
@@ -438,22 +537,19 @@ export default function EditPurchaseReturnPage() {
       );
 
       /*
-       * Your current purchasingService does not have
-       * updateReturn() yet.
-       *
-       * Once backend PUT/PATCH /purchasing/returns/:id
-       * is available, add updateReturn() to the service
-       * and use it here.
+       * updateReturn must exist in
+       * purchasing.service.ts
        */
 
-      const service = purchasingService as any;
+      const service =
+        purchasingService as any;
 
       if (
         typeof service.updateReturn !==
         "function"
       ) {
         throw new Error(
-          "updateReturn API is not available in purchasing.service.ts. Add the backend PUT/PATCH returns/:id endpoint first."
+          "updateReturn API is not available in purchasing.service.ts."
         );
       }
 
@@ -477,7 +573,9 @@ export default function EditPurchaseReturnPage() {
         err
       );
 
-      setError(getErrorMessage(err));
+      setError(
+        getErrorMessage(err)
+      );
     } finally {
       setSaving(false);
     }
@@ -493,6 +591,7 @@ export default function EditPurchaseReturnPage() {
         <div className="mx-auto max-w-6xl">
           <div className="flex items-center justify-center py-24">
             <RefreshCw className="mr-3 h-6 w-6 animate-spin text-gray-500" />
+
             <span className="text-gray-600">
               Loading purchase return...
             </span>
@@ -512,7 +611,8 @@ export default function EditPurchaseReturnPage() {
         <div className="mx-auto max-w-6xl">
           <div className="rounded-xl border border-red-200 bg-red-50 p-6">
             <p className="text-sm text-red-700">
-              {error || "Purchase return not found."}
+              {error ||
+                "Purchase return not found."}
             </p>
 
             <Link
@@ -529,14 +629,20 @@ export default function EditPurchaseReturnPage() {
   }
 
   // =========================================================
-  // CANCELLED / COMPLETED
+  // STATUS
   // =========================================================
 
   const isCancelled =
-    purchaseReturn.status === "CANCELLED";
+    purchaseReturn.status ===
+    "CANCELLED";
 
   const isCompleted =
-    purchaseReturn.status === "COMPLETED";
+    purchaseReturn.status ===
+    "COMPLETED";
+
+  const isPending =
+    purchaseReturn.status ===
+    "PENDING";
 
   // =========================================================
   // UI
@@ -545,63 +651,77 @@ export default function EditPurchaseReturnPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="w-full">
-        {/* HEADER */}
-<div className="mb-6">
-  {/* BREADCRUMB */}
-  <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
-    <Link
-      href="/dashboard/purchasing"
-      className="transition-colors hover:text-orange-600"
-    >
-      Purchasing
-    </Link>
 
-    <ChevronRight className="h-4 w-4 text-gray-400" />
+        {/* ===================================================
+            HEADER
+        =================================================== */}
 
-    <Link
-      href="/dashboard/purchasing/returns"
-      className="transition-colors hover:text-orange-600"
-    >
-      Purchase Returns
-    </Link>
+        <div className="mb-6">
 
-    <ChevronRight className="h-4 w-4 text-gray-400" />
+          {/* BREADCRUMB */}
 
-    <span className="font-medium text-gray-900">
-      Edit Return
-    </span>
-  </div>
+          <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
+            <Link
+              href="/dashboard/purchasing"
+              className="transition-colors hover:text-orange-600"
+            >
+              Purchasing
+            </Link>
 
-  {/* TITLE + STATUS */}
-  <div className="flex items-center justify-between">
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900">
-        Edit Purchase Return
-      </h1>
+            <ChevronRight className="h-4 w-4 text-gray-400" />
 
-      <p className="mt-1 text-sm text-gray-500">
-        Return Number:{" "}
-        <span className="font-medium text-gray-700">
-          {purchaseReturn.returnNumber}
-        </span>
-      </p>
-    </div>
+            <Link
+              href="/dashboard/purchasing/returns"
+              className="transition-colors hover:text-orange-600"
+            >
+              Purchase Returns
+            </Link>
 
-    <div
-      className={`rounded-full px-3 py-1 text-sm font-medium ${
-        isCancelled
-          ? "bg-red-100 text-red-700"
-          : isCompleted
-          ? "bg-green-100 text-green-700"
-          : "bg-yellow-100 text-yellow-700"
-      }`}
-    >
-      {purchaseReturn.status}
-    </div>
-  </div>
-</div>
+            <ChevronRight className="h-4 w-4 text-gray-400" />
 
-        {/* ALERT */}
+            <span className="font-medium text-gray-900">
+              Edit Return
+            </span>
+          </div>
+
+          {/* TITLE + STATUS */}
+
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Edit Purchase Return
+              </h1>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Return Number:{" "}
+                <span className="font-medium text-gray-700">
+                  {
+                    purchaseReturn.returnNumber
+                  }
+                </span>
+              </p>
+            </div>
+
+            <div
+              className={`rounded-full px-3 py-1 text-sm font-medium ${
+                isCancelled
+                  ? "bg-red-100 text-red-700"
+                  : isCompleted
+                  ? "bg-green-100 text-green-700"
+                  : "bg-yellow-100 text-yellow-700"
+              }`}
+            >
+              {
+                purchaseReturn.status
+              }
+            </div>
+          </div>
+        </div>
+
+        {/* ===================================================
+            ALERT
+        =================================================== */}
+
         {error && (
           <div className="mb-5 flex items-start rounded-lg border border-red-200 bg-red-50 p-4">
             <XCircle className="mr-3 mt-0.5 h-5 w-5 shrink-0 text-red-600" />
@@ -624,10 +744,28 @@ export default function EditPurchaseReturnPage() {
           </div>
         )}
 
-        {/* FORM */}
+        {/* ===================================================
+            PRODUCTS LOADING
+        =================================================== */}
+
+        {loadingProducts && (
+          <div className="mb-5 flex items-center rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            Loading products...
+          </div>
+        )}
+
+        {/* ===================================================
+            FORM
+        =================================================== */}
+
         <form onSubmit={handleSubmit}>
           <div className="space-y-6">
-            {/* RETURN INFORMATION */}
+
+            {/* =================================================
+                RETURN INFORMATION
+            ================================================= */}
+
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
               <div className="border-b border-gray-200 px-6 py-4">
                 <h2 className="font-semibold text-gray-900">
@@ -640,7 +778,9 @@ export default function EditPurchaseReturnPage() {
               </div>
 
               <div className="grid gap-5 p-6 md:grid-cols-2">
+
                 {/* RETURN NUMBER */}
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Return Number
@@ -648,13 +788,16 @@ export default function EditPurchaseReturnPage() {
 
                   <input
                     type="text"
-                    value={purchaseReturn.returnNumber}
+                    value={
+                      purchaseReturn.returnNumber
+                    }
                     disabled
                     className="w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2.5 text-sm text-gray-600"
                   />
                 </div>
 
                 {/* STATUS */}
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Status
@@ -662,13 +805,16 @@ export default function EditPurchaseReturnPage() {
 
                   <input
                     type="text"
-                    value={purchaseReturn.status}
+                    value={
+                      purchaseReturn.status
+                    }
                     disabled
                     className="w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2.5 text-sm text-gray-600"
                   />
                 </div>
 
                 {/* PURCHASE ORDER */}
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Purchase Order{" "}
@@ -678,47 +824,60 @@ export default function EditPurchaseReturnPage() {
                   </label>
 
                   <select
-                    value={purchaseOrderId}
+                    value={
+                      purchaseOrderId
+                    }
                     onChange={(e) =>
                       handlePurchaseOrderChange(
                         e.target.value
                       )
                     }
-                    disabled={isCancelled}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-gray-500"
+                    disabled={
+                      !isPending
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-gray-500 disabled:bg-gray-100"
                   >
                     <option value="">
                       Select purchase order
                     </option>
 
-                    {orders.map((order) => (
-                      <option
-                        key={order.id}
-                        value={order.id}
-                      >
-                        {order.poNumber}
-                      </option>
-                    ))}
+                    {orders.map(
+                      (order) => (
+                        <option
+                          key={order.id}
+                          value={order.id}
+                        >
+                          {
+                            order.poNumber
+                          }
+                        </option>
+                      )
+                    )}
                   </select>
                 </div>
 
                 {/* INVOICE */}
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Invoice
                   </label>
 
                   <select
-                    value={invoiceId}
+                    value={
+                      invoiceId
+                    }
                     onChange={(e) =>
                       setInvoiceId(
                         e.target.value
-                          ? Number(e.target.value)
+                          ? Number(
+                              e.target.value
+                            )
                           : ""
                       )
                     }
                     disabled={
-                      isCancelled ||
+                      !isPending ||
                       !purchaseOrderId
                     }
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-gray-500 disabled:bg-gray-100"
@@ -732,10 +891,16 @@ export default function EditPurchaseReturnPage() {
                     {availableInvoices.map(
                       (invoice) => (
                         <option
-                          key={invoice.id}
-                          value={invoice.id}
+                          key={
+                            invoice.id
+                          }
+                          value={
+                            invoice.id
+                          }
                         >
-                          {invoice.invoiceNumber}
+                          {
+                            invoice.invoiceNumber
+                          }
                         </option>
                       )
                     )}
@@ -743,6 +908,7 @@ export default function EditPurchaseReturnPage() {
                 </div>
 
                 {/* LOCATION */}
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Location{" "}
@@ -752,14 +918,18 @@ export default function EditPurchaseReturnPage() {
                   </label>
 
                   <select
-                    value={locationId}
+                    value={
+                      locationId
+                    }
                     onChange={(e) =>
                       setLocationId(
                         e.target.value
                       )
                     }
-                    disabled={isCancelled}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-gray-500"
+                    disabled={
+                      !isPending
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-gray-500 disabled:bg-gray-100"
                   >
                     <option value="">
                       Select location
@@ -768,10 +938,16 @@ export default function EditPurchaseReturnPage() {
                     {locations.map(
                       (location) => (
                         <option
-                          key={location.id}
-                          value={location.id}
+                          key={
+                            location.id
+                          }
+                          value={
+                            location.id
+                          }
                         >
-                          {location.name}
+                          {
+                            location.name
+                          }
                         </option>
                       )
                     )}
@@ -779,6 +955,7 @@ export default function EditPurchaseReturnPage() {
                 </div>
 
                 {/* REASON */}
+
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Reason
@@ -787,9 +964,13 @@ export default function EditPurchaseReturnPage() {
                   <textarea
                     value={reason}
                     onChange={(e) =>
-                      setReason(e.target.value)
+                      setReason(
+                        e.target.value
+                      )
                     }
-                    disabled={isCancelled}
+                    disabled={
+                      !isPending
+                    }
                     rows={3}
                     placeholder="Enter return reason..."
                     className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-gray-500 disabled:bg-gray-100"
@@ -798,7 +979,10 @@ export default function EditPurchaseReturnPage() {
               </div>
             </div>
 
-            {/* ORDER INFO */}
+            {/* =================================================
+                ORDER INFO
+            ================================================= */}
+
             {selectedOrder && (
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
                 <div className="flex items-center border-b border-gray-200 px-6 py-4">
@@ -810,7 +994,9 @@ export default function EditPurchaseReturnPage() {
                     </h2>
 
                     <p className="text-sm text-gray-500">
-                      {selectedOrder.poNumber}
+                      {
+                        selectedOrder.poNumber
+                      }
                     </p>
                   </div>
                 </div>
@@ -836,12 +1022,18 @@ export default function EditPurchaseReturnPage() {
                     <tbody className="divide-y divide-gray-100">
                       {selectedOrder.items.map(
                         (item) => (
-                          <tr key={item.id}>
+                          <tr
+                            key={
+                              item.id
+                            }
+                          >
                             <td className="px-6 py-3">
                               <div className="font-medium text-gray-900">
-                                {item.product
+                                {item
+                                  .product
                                   ?.productName ||
-                                  item.product
+                                  item
+                                    .product
                                     ?.name ||
                                   item.productId}
                               </div>
@@ -850,7 +1042,8 @@ export default function EditPurchaseReturnPage() {
                                 ?.productCode && (
                                 <div className="text-xs text-gray-500">
                                   {
-                                    item.product
+                                    item
+                                      .product
                                       .productCode
                                   }
                                 </div>
@@ -858,7 +1051,9 @@ export default function EditPurchaseReturnPage() {
                             </td>
 
                             <td className="px-6 py-3 text-right">
-                              {item.quantity}
+                              {
+                                item.quantity
+                              }
                             </td>
 
                             <td className="px-6 py-3 text-right">
@@ -875,7 +1070,10 @@ export default function EditPurchaseReturnPage() {
               </div>
             )}
 
-            {/* RETURN ITEMS */}
+            {/* =================================================
+                RETURN ITEMS
+            ================================================= */}
+
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                 <div>
@@ -891,7 +1089,10 @@ export default function EditPurchaseReturnPage() {
                 <button
                   type="button"
                   onClick={addItem}
-                  disabled={isCancelled}
+                  disabled={
+                    !isPending ||
+                    loadingProducts
+                  }
                   className="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Plus className="mr-2 h-4 w-4" />
@@ -900,7 +1101,8 @@ export default function EditPurchaseReturnPage() {
               </div>
 
               <div className="p-6">
-                {items.length === 0 ? (
+                {items.length ===
+                0 ? (
                   <div className="rounded-lg border border-dashed border-gray-300 py-12 text-center">
                     <Package className="mx-auto h-10 w-10 text-gray-400" />
 
@@ -910,9 +1112,14 @@ export default function EditPurchaseReturnPage() {
 
                     <button
                       type="button"
-                      onClick={addItem}
-                      disabled={isCancelled}
-                      className="mt-4 text-sm font-medium text-gray-900 hover:underline"
+                      onClick={
+                        addItem
+                      }
+                      disabled={
+                        !isPending ||
+                        loadingProducts
+                      }
+                      className="mt-4 text-sm font-medium text-gray-900 hover:underline disabled:opacity-50"
                     >
                       Add an item
                     </button>
@@ -920,10 +1127,15 @@ export default function EditPurchaseReturnPage() {
                 ) : (
                   <div className="space-y-4">
                     {items.map(
-                      (item, index) => {
+                      (
+                        item,
+                        index
+                      ) => {
                         const selectedProduct =
                           products.find(
-                            (product) =>
+                            (
+                              product
+                            ) =>
                               String(
                                 product.id
                               ) ===
@@ -934,10 +1146,13 @@ export default function EditPurchaseReturnPage() {
 
                         return (
                           <div
-                            key={index}
+                            key={
+                              index
+                            }
                             className="grid gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-[1fr_180px_auto]"
                           >
                             {/* PRODUCT */}
+
                             <div>
                               <label className="mb-2 block text-sm font-medium text-gray-700">
                                 Product
@@ -947,17 +1162,22 @@ export default function EditPurchaseReturnPage() {
                                 value={
                                   item.productId
                                 }
-                                onChange={(e) =>
+                                onChange={(
+                                  e
+                                ) =>
                                   updateItem(
                                     index,
                                     "productId",
-                                    e.target.value
+                                    e
+                                      .target
+                                      .value
                                   )
                                 }
                                 disabled={
-                                  isCancelled
+                                  !isPending ||
+                                  loadingProducts
                                 }
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm disabled:bg-gray-100"
                               >
                                 <option value="">
                                   Select product
@@ -975,9 +1195,12 @@ export default function EditPurchaseReturnPage() {
                                         product.id
                                       }
                                     >
-                                      {product.productName ||
-                                        product.name ||
-                                        product.productCode ||
+                                      {product
+                                        .productName ||
+                                        product
+                                          .name ||
+                                        product
+                                          .productCode ||
                                         product.id}
                                     </option>
                                   )
@@ -993,6 +1216,7 @@ export default function EditPurchaseReturnPage() {
                             </div>
 
                             {/* QUANTITY */}
+
                             <div>
                               <label className="mb-2 block text-sm font-medium text-gray-700">
                                 Return Quantity
@@ -1004,21 +1228,26 @@ export default function EditPurchaseReturnPage() {
                                 value={
                                   item.quantity
                                 }
-                                onChange={(e) =>
+                                onChange={(
+                                  e
+                                ) =>
                                   updateItem(
                                     index,
                                     "quantity",
-                                    e.target.value
+                                    e
+                                      .target
+                                      .value
                                   )
                                 }
                                 disabled={
-                                  isCancelled
+                                  !isPending
                                 }
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm disabled:bg-gray-100"
                               />
                             </div>
 
                             {/* REMOVE */}
+
                             <div className="flex items-end">
                               <button
                                 type="button"
@@ -1028,7 +1257,7 @@ export default function EditPurchaseReturnPage() {
                                   )
                                 }
                                 disabled={
-                                  isCancelled
+                                  !isPending
                                 }
                                 className="inline-flex h-[42px] items-center justify-center rounded-lg border border-red-200 bg-white px-3 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 title="Remove item"
@@ -1045,7 +1274,10 @@ export default function EditPurchaseReturnPage() {
               </div>
             </div>
 
-            {/* ACTIONS */}
+            {/* =================================================
+                ACTIONS
+            ================================================= */}
+
             <div className="flex items-center justify-end gap-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <Link
                 href={`/dashboard/purchasing/returns/${returnId}`}
@@ -1058,7 +1290,8 @@ export default function EditPurchaseReturnPage() {
                 type="submit"
                 disabled={
                   saving ||
-                  isCancelled
+                  loadingProducts ||
+                  !isPending
                 }
                 className="inline-flex items-center rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1076,9 +1309,19 @@ export default function EditPurchaseReturnPage() {
               </button>
             </div>
 
+            {/* =================================================
+                STATUS MESSAGE
+            ================================================= */}
+
             {isCancelled && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 Cancelled purchase returns cannot be edited.
+              </div>
+            )}
+
+            {isCompleted && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+                Completed purchase returns cannot be edited.
               </div>
             )}
           </div>

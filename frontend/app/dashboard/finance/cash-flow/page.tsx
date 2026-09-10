@@ -5,8 +5,6 @@ import {
   RefreshCw,
   ArrowDownLeft,
   ArrowUpRight,
-  Wallet,
-  Building2,
   TrendingUp,
   TrendingDown,
   AlertCircle,
@@ -67,21 +65,6 @@ export default function CashFlowPage() {
       const income = incomeRes.data?.summary || {};
       const expense = expenseRes.data?.summary || {};
 
-      /*
-       * CASH FLOW CALCULATION
-       *
-       * Cash Inflow  = Income received through Cash
-       * Cash Outflow = Expenses paid through Cash
-       *
-       * Bank Inflow  = Income received through Bank
-       * Bank Outflow = Expenses paid through Bank
-       *
-       * Total Inflow  = Cash Inflow + Bank Inflow
-       * Total Outflow = Cash Outflow + Bank Outflow
-       *
-       * Net Cash Flow = Total Inflow - Total Outflow
-       */
-
       const cashInflow = Number(income.totalCash || 0);
       const cashOutflow = Number(expense.totalCash || 0);
 
@@ -123,18 +106,33 @@ export default function CashFlowPage() {
     fetchData();
   }, [period]);
 
+  const periodLabel =
+    period === "all"
+      ? "All Time"
+      : period === "today"
+      ? "Today"
+      : period === "week"
+      ? "This Week"
+      : period === "month"
+      ? "This Month"
+      : period === "year"
+      ? "This Year"
+      : period;
+
   return (
     <div className="min-h-screen bg-gray-50/50 p-6">
       <FinanceNav />
 
-      {/* Header */}
+      {/* =========================================================
+          HEADER
+      ========================================================= */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900">
             Cash Flow
           </h2>
 
-          <p className="mt-0.5 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-gray-500">
             Track cash inflows, outflows and net cash movement
           </p>
         </div>
@@ -143,7 +141,7 @@ export default function CashFlowPage() {
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm outline-none focus:border-blue-500"
           >
             <option value="today">Today</option>
             <option value="week">This Week</option>
@@ -155,7 +153,7 @@ export default function CashFlowPage() {
           <button
             onClick={fetchData}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${
@@ -167,264 +165,437 @@ export default function CashFlowPage() {
         </div>
       </div>
 
-      {/* Error */}
+      {/* =========================================================
+          ERROR
+      ========================================================= */}
       {error && (
-        <div className="mb-6 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">
-          <AlertCircle className="h-4 w-4" />
-          {error}
+        <div className="mb-6 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Main Summary */}
+      {/* =========================================================
+          SUMMARY CARDS
+      ========================================================= */}
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         {/* Total Inflow */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-              Total Inflow
-            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Total Inflow
+              </p>
 
-            <span className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-              <ArrowDownLeft className="h-4 w-4" />
-            </span>
+              <p className="mt-2 text-xl font-bold text-emerald-600">
+                {formatCurrency(data.totalInflow)}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-emerald-50 p-2.5 text-emerald-600">
+              <ArrowDownLeft className="h-5 w-5" />
+            </div>
           </div>
-
-          <p className="mt-3 text-xl font-bold text-emerald-600">
-            {formatCurrency(data.totalInflow)}
-          </p>
         </div>
 
         {/* Total Outflow */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-              Total Outflow
-            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Total Outflow
+              </p>
 
-            <span className="rounded-lg bg-rose-50 p-2 text-rose-600">
-              <ArrowUpRight className="h-4 w-4" />
-            </span>
+              <p className="mt-2 text-xl font-bold text-rose-600">
+                {formatCurrency(data.totalOutflow)}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-rose-50 p-2.5 text-rose-600">
+              <ArrowUpRight className="h-5 w-5" />
+            </div>
           </div>
-
-          <p className="mt-3 text-xl font-bold text-rose-600">
-            {formatCurrency(data.totalOutflow)}
-          </p>
         </div>
 
         {/* Net Cash Flow */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-              Net Cash Flow
-            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                Net Cash Flow
+              </p>
 
-            <span
-              className={`rounded-lg p-2 ${
+              <p
+                className={`mt-2 text-xl font-bold ${
+                  data.netCashFlow >= 0
+                    ? "text-emerald-600"
+                    : "text-rose-600"
+                }`}
+              >
+                {formatCurrency(data.netCashFlow)}
+              </p>
+            </div>
+
+            <div
+              className={`rounded-lg p-2.5 ${
                 data.netCashFlow >= 0
                   ? "bg-emerald-50 text-emerald-600"
                   : "bg-rose-50 text-rose-600"
               }`}
             >
               {data.netCashFlow >= 0 ? (
-                <TrendingUp className="h-4 w-4" />
+                <TrendingUp className="h-5 w-5" />
               ) : (
-                <TrendingDown className="h-4 w-4" />
+                <TrendingDown className="h-5 w-5" />
               )}
-            </span>
+            </div>
           </div>
-
-          <p
-            className={`mt-3 text-xl font-bold ${
-              data.netCashFlow >= 0
-                ? "text-emerald-600"
-                : "text-rose-600"
-            }`}
-          >
-            {formatCurrency(data.netCashFlow)}
-          </p>
         </div>
       </div>
 
-      {/* Cash & Bank */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Cash */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-gray-200 p-5">
+      {/* =========================================================
+          CASH FLOW STATEMENT
+      ========================================================= */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        {/* Table Header */}
+        <div className="border-b border-gray-200 px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">
+                Cash Flow Statement
+              </h3>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Cash movement for {periodLabel}
+              </p>
+            </div>
+
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-medium text-gray-600">
+              {periodLabel}
+            </span>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px] text-left">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="px-6 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Description
+                </th>
+
+                <th className="px-6 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Cash
+                </th>
+
+                <th className="px-6 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Bank
+                </th>
+
+                <th className="px-6 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Total
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {/* =================================================
+                  INFLOWS
+              ================================================= */}
+              <tr className="bg-emerald-50/60">
+                <td
+                  colSpan={4}
+                  className="px-6 py-3 text-xs font-bold uppercase tracking-wider text-emerald-700"
+                >
+                  Cash Inflows
+                </td>
+              </tr>
+
+              <tr className="border-b border-gray-100">
+                <td className="px-6 py-4 text-sm text-gray-700">
+                  Cash Inflow
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-medium text-emerald-600">
+                  + {formatCurrency(data.cashInflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm text-gray-400">
+                  —
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-semibold text-emerald-600">
+                  + {formatCurrency(data.cashInflow)}
+                </td>
+              </tr>
+
+              <tr className="border-b border-gray-100">
+                <td className="px-6 py-4 text-sm text-gray-700">
+                  Bank Inflow
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm text-gray-400">
+                  —
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-medium text-emerald-600">
+                  + {formatCurrency(data.bankInflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-semibold text-emerald-600">
+                  + {formatCurrency(data.bankInflow)}
+                </td>
+              </tr>
+
+              <tr className="border-b border-gray-200 bg-gray-50/70">
+                <td className="px-6 py-4 text-sm font-bold text-gray-800">
+                  Total Inflows
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-bold text-emerald-600">
+                  + {formatCurrency(data.cashInflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-bold text-emerald-600">
+                  + {formatCurrency(data.bankInflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-bold text-emerald-600">
+                  + {formatCurrency(data.totalInflow)}
+                </td>
+              </tr>
+
+              {/* =================================================
+                  OUTFLOWS
+              ================================================= */}
+              <tr className="bg-rose-50/60">
+                <td
+                  colSpan={4}
+                  className="px-6 py-3 text-xs font-bold uppercase tracking-wider text-rose-700"
+                >
+                  Cash Outflows
+                </td>
+              </tr>
+
+              <tr className="border-b border-gray-100">
+                <td className="px-6 py-4 text-sm text-gray-700">
+                  Cash Outflow
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-medium text-rose-600">
+                  - {formatCurrency(data.cashOutflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm text-gray-400">
+                  —
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-semibold text-rose-600">
+                  - {formatCurrency(data.cashOutflow)}
+                </td>
+              </tr>
+
+              <tr className="border-b border-gray-100">
+                <td className="px-6 py-4 text-sm text-gray-700">
+                  Bank Outflow
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm text-gray-400">
+                  —
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-medium text-rose-600">
+                  - {formatCurrency(data.bankOutflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-semibold text-rose-600">
+                  - {formatCurrency(data.bankOutflow)}
+                </td>
+              </tr>
+
+              <tr className="border-b border-gray-200 bg-gray-50/70">
+                <td className="px-6 py-4 text-sm font-bold text-gray-800">
+                  Total Outflows
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-bold text-rose-600">
+                  - {formatCurrency(data.cashOutflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-bold text-rose-600">
+                  - {formatCurrency(data.bankOutflow)}
+                </td>
+
+                <td className="px-6 py-4 text-right text-sm font-bold text-rose-600">
+                  - {formatCurrency(data.totalOutflow)}
+                </td>
+              </tr>
+
+              {/* =================================================
+                  NET MOVEMENT
+              ================================================= */}
+              <tr className="bg-gray-900">
+                <td className="px-6 py-5 text-sm font-bold text-white">
+                  Net Cash Flow
+                </td>
+
+                <td
+                  className={`px-6 py-5 text-right text-sm font-bold ${
+                    data.cashNet >= 0
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  {data.cashNet >= 0 ? "+" : "-"}{" "}
+                  {formatCurrency(Math.abs(data.cashNet))}
+                </td>
+
+                <td
+                  className={`px-6 py-5 text-right text-sm font-bold ${
+                    data.bankNet >= 0
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  {data.bankNet >= 0 ? "+" : "-"}{" "}
+                  {formatCurrency(Math.abs(data.bankNet))}
+                </td>
+
+                <td
+                  className={`px-6 py-5 text-right text-base font-bold ${
+                    data.netCashFlow >= 0
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                  }`}
+                >
+                  {data.netCashFlow >= 0 ? "+" : "-"}{" "}
+                  {formatCurrency(Math.abs(data.netCashFlow))}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* =========================================================
+          ACCOUNT MOVEMENT SUMMARY
+      ========================================================= */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Cash Account */}
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 bg-gray-50 px-5 py-4">
             <h3 className="text-sm font-bold text-gray-900">
               Cash Account
             </h3>
 
-            <Wallet className="h-5 w-5 text-amber-600" />
+            <p className="mt-0.5 text-xs text-gray-500">
+              Cash movement summary
+            </p>
           </div>
 
-          <div className="p-5">
-            <div className="flex justify-between border-b py-4 text-xs">
-              <span className="text-gray-600">
+          <div className="divide-y divide-gray-100">
+            <div className="flex items-center justify-between px-5 py-4">
+              <span className="text-xs text-gray-600">
                 Cash Inflow
               </span>
 
-              <span className="font-bold text-emerald-600">
+              <span className="text-sm font-semibold text-emerald-600">
                 + {formatCurrency(data.cashInflow)}
               </span>
             </div>
 
-            <div className="flex justify-between border-b py-4 text-xs">
-              <span className="text-gray-600">
+            <div className="flex items-center justify-between px-5 py-4">
+              <span className="text-xs text-gray-600">
                 Cash Outflow
               </span>
 
-              <span className="font-bold text-rose-600">
+              <span className="text-sm font-semibold text-rose-600">
                 - {formatCurrency(data.cashOutflow)}
               </span>
             </div>
 
-            <div className="flex justify-between pt-4 text-sm font-bold">
-              <span>Net Cash Movement</span>
+            <div className="flex items-center justify-between bg-gray-50 px-5 py-4">
+              <span className="text-sm font-bold text-gray-800">
+                Net Cash Movement
+              </span>
 
               <span
-                className={
+                className={`text-sm font-bold ${
                   data.cashNet >= 0
                     ? "text-emerald-600"
                     : "text-rose-600"
-                }
+                }`}
               >
-                {formatCurrency(data.cashNet)}
+                {data.cashNet >= 0 ? "+" : "-"}{" "}
+                {formatCurrency(Math.abs(data.cashNet))}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Bank */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-gray-200 p-5">
+        {/* Bank Account */}
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 bg-gray-50 px-5 py-4">
             <h3 className="text-sm font-bold text-gray-900">
               Bank Account
             </h3>
 
-            <Building2 className="h-5 w-5 text-indigo-600" />
+            <p className="mt-0.5 text-xs text-gray-500">
+              Bank movement summary
+            </p>
           </div>
 
-          <div className="p-5">
-            <div className="flex justify-between border-b py-4 text-xs">
-              <span className="text-gray-600">
+          <div className="divide-y divide-gray-100">
+            <div className="flex items-center justify-between px-5 py-4">
+              <span className="text-xs text-gray-600">
                 Bank Inflow
               </span>
 
-              <span className="font-bold text-emerald-600">
+              <span className="text-sm font-semibold text-emerald-600">
                 + {formatCurrency(data.bankInflow)}
               </span>
             </div>
 
-            <div className="flex justify-between border-b py-4 text-xs">
-              <span className="text-gray-600">
+            <div className="flex items-center justify-between px-5 py-4">
+              <span className="text-xs text-gray-600">
                 Bank Outflow
               </span>
 
-              <span className="font-bold text-rose-600">
+              <span className="text-sm font-semibold text-rose-600">
                 - {formatCurrency(data.bankOutflow)}
               </span>
             </div>
 
-            <div className="flex justify-between pt-4 text-sm font-bold">
-              <span>Net Bank Movement</span>
+            <div className="flex items-center justify-between bg-gray-50 px-5 py-4">
+              <span className="text-sm font-bold text-gray-800">
+                Net Bank Movement
+              </span>
 
               <span
-                className={
+                className={`text-sm font-bold ${
                   data.bankNet >= 0
                     ? "text-emerald-600"
                     : "text-rose-600"
-                }
+                }`}
               >
-                {formatCurrency(data.bankNet)}
+                {data.bankNet >= 0 ? "+" : "-"}{" "}
+                {formatCurrency(Math.abs(data.bankNet))}
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Detailed Summary */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h3 className="mb-5 text-sm font-bold text-gray-900">
-          Cash Flow Summary
-        </h3>
-
-        <div className="mx-auto max-w-3xl space-y-4 text-xs">
-          <div className="flex justify-between">
-            <span className="text-gray-500">
-              Cash Inflow
-            </span>
-
-            <span className="font-semibold text-emerald-600">
-              + {formatCurrency(data.cashInflow)}
-            </span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="text-gray-500">
-              Bank Inflow
-            </span>
-
-            <span className="font-semibold text-emerald-600">
-              + {formatCurrency(data.bankInflow)}
-            </span>
-          </div>
-
-          <div className="flex justify-between border-t pt-4">
-            <span className="font-semibold text-gray-700">
-              Total Inflows
-            </span>
-
-            <span className="font-bold text-emerald-600">
-              + {formatCurrency(data.totalInflow)}
-            </span>
-          </div>
-
-          <div className="my-2 border-t border-gray-100" />
-
-          <div className="flex justify-between">
-            <span className="text-gray-500">
-              Cash Outflow
-            </span>
-
-            <span className="font-semibold text-rose-600">
-              - {formatCurrency(data.cashOutflow)}
-            </span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="text-gray-500">
-              Bank Outflow
-            </span>
-
-            <span className="font-semibold text-rose-600">
-              - {formatCurrency(data.bankOutflow)}
-            </span>
-          </div>
-
-          <div className="flex justify-between border-t pt-4">
-            <span className="font-semibold text-gray-700">
-              Total Outflows
-            </span>
-
-            <span className="font-bold text-rose-600">
-              - {formatCurrency(data.totalOutflow)}
-            </span>
-          </div>
-
-          <div className="mt-4 flex justify-between rounded-lg bg-gray-50 p-4 text-sm font-bold">
-            <span>Net Cash Flow</span>
-
-            <span
-              className={
-                data.netCashFlow >= 0
-                  ? "text-emerald-600"
-                  : "text-rose-600"
-              }
-            >
-              {formatCurrency(data.netCashFlow)}
-            </span>
-          </div>
-        </div>
+      {/* =========================================================
+          FOOTER NOTE
+      ========================================================= */}
+      <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+        <p className="text-xs leading-5 text-blue-800">
+          <span className="font-semibold">Cash Flow:</span>{" "}
+          Total Inflows minus Total Outflows represents the
+          net cash movement for the selected period.
+        </p>
       </div>
     </div>
   );

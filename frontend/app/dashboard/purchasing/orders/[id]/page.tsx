@@ -16,6 +16,7 @@ import {
   StickyNote,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import api from "@/services/api";
 
 interface Supplier {
   id: number | string;
@@ -75,13 +76,6 @@ interface PurchaseOrder {
   orderDate?: string;
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
-
-const ORDERS_API =
-  `${API_URL}/purchasing/orders`;
-
 export default function PurchaseOrderDetailsPage() {
   const params = useParams();
 
@@ -107,61 +101,78 @@ export default function PurchaseOrderDetailsPage() {
       setLoading(true);
       setError(null);
 
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-
-      const response = await fetch(
-        `${ORDERS_API}/${id}`,
-        {
-          method: "GET",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            ...(token
-              ? {
-                  Authorization:
-                    `Bearer ${token}`,
-                }
-              : {}),
-          },
-
-          cache: "no-store",
-        }
+      /*
+       * IMPORTANT:
+       * Use the same shared API instance used by
+       * Create Purchase Order page.
+       *
+       * This ensures the Authorization token / interceptor
+       * is handled consistently.
+       */
+      const response = await api.get(
+        `/purchasing/orders/${id}`
       );
 
-      const data =
-        await response
-          .json()
-          .catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          Array.isArray(data?.message)
-            ? data.message.join(", ")
-            : data?.message ||
-                "Failed to load purchase order"
-        );
-      }
+      /*
+       * Backend may return either:
+       *
+       * {
+       *   id: 4,
+       *   poNumber: "PO-00004",
+       *   ...
+       * }
+       *
+       * OR:
+       *
+       * {
+       *   data: {
+       *     id: 4,
+       *     ...
+       *   }
+       * }
+       */
 
       const result =
-        data?.data || data;
+        response.data?.data ??
+        response.data;
 
       setOrder(result);
-    } catch (err) {
+    } catch (err: any) {
       console.error(
         "Load purchase order error:",
         err
       );
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load purchase order"
-      );
+      /*
+       * Axios error response
+       */
+      const message =
+        err?.response?.data?.message;
+
+      let errorMessage =
+        "Failed to load purchase order";
+
+      if (Array.isArray(message)) {
+        errorMessage =
+          message.join(", ");
+      } else if (
+        typeof message === "string"
+      ) {
+        errorMessage = message;
+      } else if (
+        message &&
+        typeof message === "object" &&
+        typeof message.message === "string"
+      ) {
+        errorMessage = message.message;
+      } else if (
+        err instanceof Error &&
+        err.message
+      ) {
+        errorMessage = err.message;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

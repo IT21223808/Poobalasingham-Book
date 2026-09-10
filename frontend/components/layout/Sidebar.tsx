@@ -61,12 +61,15 @@ interface StoredUser {
   lastName?: string;
   email?: string;
   role?: UserRole;
+
   locationId?: string | null;
   tillId?: number | null;
+
   location?: {
     id: string;
     name: string;
   } | null;
+
   till?: {
     id: number;
     name: string;
@@ -281,6 +284,12 @@ export default function Sidebar({
     null,
   );
 
+  const [branchName, setBranchName] =
+    useState<string>("");
+
+  const [tillName, setTillName] =
+    useState<string>("");
+
   /* =======================================================
      LOAD LOGGED-IN USER
   ======================================================= */
@@ -290,19 +299,60 @@ export default function Sidebar({
       const storedUser =
         localStorage.getItem("user");
 
-      if (!storedUser) {
-        return;
+      let parsedUser: StoredUser | null = null;
+
+      if (storedUser) {
+        try {
+          parsedUser =
+            JSON.parse(storedUser);
+        } catch (error) {
+          console.error(
+            "Failed to parse logged-in user:",
+            error,
+          );
+        }
       }
 
-      const parsedUser: StoredUser =
-        JSON.parse(storedUser);
-
       setUser(parsedUser);
+
+      /* ---------------------------------------------------
+         Branch
+      --------------------------------------------------- */
+
+      const storedBranchName =
+        parsedUser?.location?.name ||
+        localStorage.getItem(
+          "userLocationName",
+        ) ||
+        "";
+
+      setBranchName(
+        storedBranchName.trim(),
+      );
+
+      /* ---------------------------------------------------
+         Till
+      --------------------------------------------------- */
+
+      const storedTillName =
+        parsedUser?.till?.name ||
+        localStorage.getItem(
+          "userTillName",
+        ) ||
+        "";
+
+      setTillName(
+        storedTillName.trim(),
+      );
     } catch (error) {
       console.error(
         "Failed to load logged-in user:",
         error,
       );
+
+      setUser(null);
+      setBranchName("");
+      setTillName("");
     }
   }, []);
 
@@ -334,22 +384,62 @@ export default function Sidebar({
   ======================================================= */
 
   const handleLogout = () => {
-    // Remove authentication tokens
+    /* ---------------------------------------------------
+       Authentication tokens
+    --------------------------------------------------- */
+
     localStorage.removeItem("token");
     localStorage.removeItem("accessToken");
     localStorage.removeItem("access_token");
     localStorage.removeItem("authToken");
 
-    // Remove user/session data
+    /* ---------------------------------------------------
+       User/session data
+    --------------------------------------------------- */
+
     localStorage.removeItem("user");
     localStorage.removeItem("userId");
-    localStorage.removeItem("loggedInUserType");
+    localStorage.removeItem(
+      "loggedInUserType",
+    );
+
+    /* ---------------------------------------------------
+       Branch / Till data
+    --------------------------------------------------- */
+
+    localStorage.removeItem(
+      "userLocationId",
+    );
+
+    localStorage.removeItem(
+      "userLocationName",
+    );
+
+    localStorage.removeItem(
+      "userTillId",
+    );
+
+    localStorage.removeItem(
+      "userTillName",
+    );
+
+    /* ---------------------------------------------------
+       Session storage
+    --------------------------------------------------- */
 
     sessionStorage.removeItem("token");
-    sessionStorage.removeItem("accessToken");
-    sessionStorage.removeItem("access_token");
+    sessionStorage.removeItem(
+      "accessToken",
+    );
+    sessionStorage.removeItem(
+      "access_token",
+    );
 
     sessionStorage.clear();
+
+    /* ---------------------------------------------------
+       Go to login
+    --------------------------------------------------- */
 
     router.push("/login");
   };
@@ -359,18 +449,21 @@ export default function Sidebar({
   ======================================================= */
 
   const isActive = (href: string) => {
-    // Dashboard should only be active on exact dashboard page
+    /* Dashboard exact match */
+
     if (href === "/dashboard") {
       return pathname === "/dashboard";
     }
 
-    // Inventory main menu should only be active
-    // on inventory dashboard
+    /* Inventory main menu exact match */
+
     if (href === "/dashboard/inventory") {
-      return pathname === "/dashboard/inventory";
+      return pathname ===
+        "/dashboard/inventory";
     }
 
-    // Other menu items remain active for child routes
+    /* Other menu items */
+
     return (
       pathname === href ||
       pathname.startsWith(`${href}/`)
@@ -396,10 +489,22 @@ export default function Sidebar({
   const roleLabel =
     getRoleLabel(currentRole);
 
+  /* =======================================================
+     BRANCH / TILL DISPLAY
+  ======================================================= */
+
+  const displayBranch =
+    branchName || "No Branch Assigned";
+
+  const displayTill =
+    tillName || "";
+
   return (
     <aside
       className={`flex h-screen shrink-0 flex-col border-r border-gray-200 bg-white transition-all duration-300 ${
-        collapsed ? "w-20" : "w-72"
+        collapsed
+          ? "w-20"
+          : "w-72"
       }`}
     >
       {/* ================= LOGO ================= */}
@@ -445,50 +550,55 @@ export default function Sidebar({
         )}
 
         <div className="space-y-1">
-          {visibleMenuItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
+          {visibleMenuItems.map(
+            (item) => {
+              const Icon = item.icon;
+              const active =
+                isActive(item.href);
 
-            return (
-              <Link
-                key={item.title}
-                href={item.href}
-                title={
-                  collapsed
-                    ? item.title
-                    : undefined
-                }
-                className={`group relative flex items-center rounded-lg py-3 transition-all duration-200 ${
-                  collapsed
-                    ? "justify-center px-2"
-                    : "gap-3 px-4"
-                } ${
-                  active
-                    ? "bg-blue-50 font-semibold text-blue-700"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
-                }`}
-              >
-                {/* Active indicator */}
-
-                {active && (
-                  <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full bg-blue-700" />
-                )}
-
-                <Icon
-                  size={20}
-                  className={`shrink-0 ${
+              return (
+                <Link
+                  key={item.title}
+                  href={item.href}
+                  title={
+                    collapsed
+                      ? item.title
+                      : undefined
+                  }
+                  className={`group relative flex items-center rounded-lg py-3 transition-all duration-200 ${
+                    collapsed
+                      ? "justify-center px-2"
+                      : "gap-3 px-4"
+                  } ${
                     active
-                      ? "text-blue-700"
-                      : "text-gray-500 group-hover:text-gray-700"
+                      ? "bg-blue-50 font-semibold text-blue-700"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
                   }`}
-                />
+                >
+                  {/* Active indicator */}
 
-                {!collapsed && (
-                  <span>{item.title}</span>
-                )}
-              </Link>
-            );
-          })}
+                  {active && (
+                    <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full bg-blue-700" />
+                  )}
+
+                  <Icon
+                    size={20}
+                    className={`shrink-0 ${
+                      active
+                        ? "text-blue-700"
+                        : "text-gray-500 group-hover:text-gray-700"
+                    }`}
+                  />
+
+                  {!collapsed && (
+                    <span>
+                      {item.title}
+                    </span>
+                  )}
+                </Link>
+              );
+            },
+          )}
         </div>
 
         {/* ================= GENERAL ================= */}
@@ -534,7 +644,9 @@ export default function Sidebar({
               />
 
               {!collapsed && (
-                <span>Settings</span>
+                <span>
+                  Settings
+                </span>
               )}
             </Link>
           )}
@@ -577,28 +689,35 @@ export default function Sidebar({
               : "gap-3"
           }`}
         >
+          {/* Avatar */}
+
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
             {initials}
           </div>
 
           {!collapsed && (
             <div className="min-w-0">
+              {/* Name */}
+
               <p className="truncate font-semibold text-gray-800">
                 {fullName}
               </p>
+
+              {/* Role */}
 
               <p className="text-xs text-gray-500">
                 {roleLabel}
               </p>
 
-              {user?.location?.name && (
-                <p className="truncate text-[11px] text-gray-400">
-                  {user.location.name}
-                  {user?.till?.name
-                    ? ` • ${user.till.name}`
-                    : ""}
-                </p>
-              )}
+              {/* Branch + Till */}
+
+              <p className="truncate text-[11px] text-gray-400">
+                {displayBranch}
+
+                {displayTill
+                  ? ` • ${displayTill}`
+                  : ""}
+              </p>
             </div>
           )}
         </div>

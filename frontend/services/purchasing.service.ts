@@ -66,8 +66,6 @@ export interface PurchaseOrderItem {
 
 // =========================================================
 // GRN
-// =========================================================
-
 export interface GRN {
   id: number;
   grnNumber: string;
@@ -597,10 +595,15 @@ export const purchasingService = {
 
   return response.data;
 },
+completeReturn: async (id: number): Promise<PurchaseReturn> => {
+  const response = await api.patch(
+    `/purchasing/returns/${id}/complete`,
+  );
 
-  // =======================================================
+  return response.data;
+},
+
   // DASHBOARD
-  // =======================================================
 
   getDashboard:
     async (): Promise<DashboardData> => {

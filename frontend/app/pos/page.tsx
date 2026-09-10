@@ -24,6 +24,8 @@ import customerService, {
 import posService, {
   getOfflineQueueCount,
   startOfflineSync,
+  getOpeningBalance,
+  saveOpeningBalance,
 } from "@/services/pos.service";
 
 import {
@@ -60,78 +62,6 @@ const API_URL =
   "http://localhost:5000/api";
 
 /* =========================================================
-   LOCATION TYPE
-========================================================= */
-
-interface Location {
-  id: string;
-  name: string;
-  description?: string | null;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-/* =========================================================
-   LOCATION API
-========================================================= */
-
-async function getLocations(): Promise<Location[]> {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("authToken") ||
-        localStorage.getItem("accessToken") ||
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("token") ||
-        sessionStorage.getItem("authToken") ||
-        sessionStorage.getItem("accessToken") ||
-        sessionStorage.getItem("access_token") ||
-        sessionStorage.getItem("token")
-      : null;
-
-  const response = await fetch(
-    `${API_URL}/inventory/locations`,
-    {
-      method: "GET",
-
-      headers: {
-        "Content-Type": "application/json",
-
-        ...(token
-          ? {
-              Authorization:
-                `Bearer ${token}`,
-            }
-          : {}),
-      },
-
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const message =
-      await response
-        .text()
-        .catch(() => "");
-
-    throw new Error(
-      message ||
-        `Failed to load locations (${response.status})`,
-    );
-  }
-
-  const result =
-    await response.json();
-
-  return Array.isArray(
-    result?.data,
-  )
-    ? result.data
-    : [];
-}
-
-/* =========================================================
    POS PAGE
 ========================================================= */
 
@@ -140,17 +70,9 @@ export default function PosPage() {
      MASTER DATA
   ======================================================= */
 
-  const [products, setProducts] =
-    useState<Product[]>([]);
-
-  const [categories, setCategories] =
-    useState<Category[]>([]);
-
-  const [customers, setCustomers] =
-    useState<Customer[]>([]);
-
-  const [locations, setLocations] =
-    useState<Location[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   const [heldBillsCount, setHeldBillsCount] =
     useState<number>(0);
@@ -158,19 +80,28 @@ export default function PosPage() {
   const [isLoadingProducts, setIsLoadingProducts] =
     useState<boolean>(true);
 
-  const [isLoadingLocations, setIsLoadingLocations] =
+  /* =======================================================
+     LOGGED-IN USER / BRANCH
+  ======================================================= */
+
+  const [userLocationId, setUserLocationId] =
+    useState<string | null>(null);
+
+  const [userLocationName, setUserLocationName] =
+    useState<string>("");
+
+  const [isLoadingUserLocation, setIsLoadingUserLocation] =
     useState<boolean>(true);
 
   /* =======================================================
      OFFLINE / SYNC
   ======================================================= */
 
-  const [isOffline, setIsOffline] =
-    useState<boolean>(
-      typeof window !== "undefined"
-        ? !navigator.onLine
-        : false,
-    );
+  const [isOffline, setIsOffline] = useState<boolean>(
+    typeof window !== "undefined"
+      ? !navigator.onLine
+      : false,
+  );
 
   const [queuedSalesCount, setQueuedSalesCount] =
     useState<number>(0);
@@ -185,20 +116,39 @@ export default function PosPage() {
   const [
     selectedCategoryId,
     setSelectedCategoryId,
-  ] = useState<string | null>(
-    null,
-  );
+  ] = useState<string | null>(null);
 
   /* =======================================================
-     LOCATION / BRANCH
+     OPENING BALANCE
   ======================================================= */
 
+  const [openingBalance, setOpeningBalance] =
+    useState<number>(0);
+
   const [
-    selectedLocationId,
-    setSelectedLocationId,
-  ] = useState<string | null>(
-    null,
-  );
+    isOpeningBalanceModalOpen,
+    setIsOpeningBalanceModalOpen,
+  ] = useState<boolean>(false);
+
+  const [
+    openingBalanceInput,
+    setOpeningBalanceInput,
+  ] = useState<string>("");
+
+  const [
+    isLoadingOpeningBalance,
+    setIsLoadingOpeningBalance,
+  ] = useState<boolean>(false);
+
+  const [
+    isSavingOpeningBalance,
+    setIsSavingOpeningBalance,
+  ] = useState<boolean>(false);
+
+  const [
+    hasOpeningBalance,
+    setHasOpeningBalance,
+  ] = useState<boolean>(false);
 
   /* =======================================================
      CART
@@ -210,24 +160,26 @@ export default function PosPage() {
   const [
     selectedCustomer,
     setSelectedCustomer,
-  ] = useState<Customer | null>(
-    null,
-  );
+  ] = useState<Customer | null>(null);
 
   /* =======================================================
      DISCOUNT
   ======================================================= */
 
-  const [discountAmount, setDiscountAmount] =
-    useState<number>(0);
+  const [
+    discountAmount,
+    setDiscountAmount,
+  ] = useState<number>(0);
 
-  const [discountType, setDiscountType] =
-    useState<
-      "fixed" | "percentage"
-    >("fixed");
+  const [
+    discountType,
+    setDiscountType,
+  ] = useState<"fixed" | "percentage">("fixed");
 
-  const [discountValue, setDiscountValue] =
-    useState<number>(0);
+  const [
+    discountValue,
+    setDiscountValue,
+  ] = useState<number>(0);
 
   /* =======================================================
      HELD BILL
@@ -236,9 +188,7 @@ export default function PosPage() {
   const [
     activeHeldBillId,
     setActiveHeldBillId,
-  ] = useState<string | undefined>(
-    undefined,
-  );
+  ] = useState<string | undefined>(undefined);
 
   const [isHolding, setIsHolding] =
     useState<boolean>(false);
@@ -284,32 +234,88 @@ export default function PosPage() {
   const [
     completedSaleInvoice,
     setCompletedSaleInvoice,
-  ] = useState<SaleInvoice | null>(
-    null,
-  );
+  ] = useState<SaleInvoice | null>(null);
 
   const [
     lastCompletedInvoice,
     setLastCompletedInvoice,
-  ] = useState<SaleInvoice | null>(
-    null,
-  );
+  ] = useState<SaleInvoice | null>(null);
 
-  /*
-   * IMPORTANT:
-   * selectedCustomer is cleared after sale completion.
-   * Therefore the customer email must be stored separately
-   * before selectedCustomer becomes null.
-   */
   const [
     completedCustomerEmail,
     setCompletedCustomerEmail,
-  ] = useState<string | null>(
-    null,
-  );
+  ] = useState<string | null>(null);
 
   /* =======================================================
-     QUEUE COUNT
+     LOAD LOGGED-IN USER BRANCH
+  ======================================================= */
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const storedUser =
+        localStorage.getItem("user");
+
+      if (!storedUser) {
+        toast.error(
+          "Logged-in user information not found. Please login again.",
+        );
+        return;
+      }
+
+      const user = JSON.parse(storedUser);
+
+      /*
+       * IMPORTANT:
+       *
+       * Branch comes from authenticated user.
+       *
+       * POS does NOT allow cashier to manually
+       * select/change branch.
+       */
+
+      const locationId =
+        user?.locationId ??
+        user?.location?.id ??
+        localStorage.getItem("userLocationId") ??
+        null;
+
+      const locationName =
+        user?.location?.name ??
+        localStorage.getItem("userLocationName") ??
+        "";
+
+      if (!locationId) {
+        toast.error(
+          "Your account is not assigned to a branch/location.",
+        );
+        return;
+      }
+
+      setUserLocationId(String(locationId));
+
+      setUserLocationName(
+        locationName || "Assigned Branch",
+      );
+    } catch (error) {
+      console.error(
+        "Failed to load logged-in user location:",
+        error,
+      );
+
+      toast.error(
+        "Failed to load user branch information.",
+      );
+    } finally {
+      setIsLoadingUserLocation(false);
+    }
+  }, []);
+
+  /* =======================================================
+     REFRESH OFFLINE QUEUE COUNT
   ======================================================= */
 
   const refreshQueueCount =
@@ -332,41 +338,29 @@ export default function PosPage() {
   ======================================================= */
 
   useEffect(() => {
-    if (
-      typeof window === "undefined"
-    ) {
+    if (typeof window === "undefined") {
       return;
     }
 
-    const updateNetworkState =
-      () => {
-        const offline =
-          !navigator.onLine;
+    const updateNetworkState = () => {
+      const offline = !navigator.onLine;
 
-        setIsOffline(offline);
+      setIsOffline(offline);
 
-        void refreshQueueCount();
-      };
+      void refreshQueueCount();
+    };
 
-    const handleQueueUpdated =
-      () => {
-        void refreshQueueCount();
-      };
+    const handleQueueUpdated = () => {
+      void refreshQueueCount();
+    };
 
-    const handleSaleCompleted =
-      () => {
-        void refreshQueueCount();
-      };
+    const handleSaleCompleted = () => {
+      void refreshQueueCount();
+    };
 
-    /* Initial state */
-
-    setIsOffline(
-      !navigator.onLine,
-    );
+    setIsOffline(!navigator.onLine);
 
     void refreshQueueCount();
-
-    /* Start automatic offline sync */
 
     const stopOfflineSync =
       startOfflineSync();
@@ -414,9 +408,7 @@ export default function PosPage() {
         handleSaleCompleted,
       );
     };
-  }, [
-    refreshQueueCount,
-  ]);
+  }, [refreshQueueCount]);
 
   /* =======================================================
      LOAD POS MASTER DATA
@@ -424,23 +416,15 @@ export default function PosPage() {
 
   const loadData =
     useCallback(async () => {
-      /*
-       * Never replace existing POS master data with
-       * empty arrays because the browser is offline.
-       */
-
       if (
         typeof window !== "undefined" &&
         !navigator.onLine
       ) {
         setIsLoadingProducts(false);
-        setIsLoadingLocations(false);
-
         return;
       }
 
       setIsLoadingProducts(true);
-      setIsLoadingLocations(true);
 
       try {
         const [
@@ -448,101 +432,41 @@ export default function PosPage() {
           catsData,
           custsData,
           holdsData,
-          locationsData,
         ] = await Promise.all([
           getProducts(),
-
           getCategories(),
-
           customerService.getCustomers(),
-
           posService.getHeldBills(),
-
-          getLocations(),
         ]);
 
         setProducts(
-          Array.isArray(
-            prodsData,
-          )
+          Array.isArray(prodsData)
             ? prodsData
             : [],
         );
 
         setCategories(
-          Array.isArray(
-            catsData,
-          )
+          Array.isArray(catsData)
             ? catsData
             : [],
         );
 
         setCustomers(
-          Array.isArray(
-            custsData,
-          )
+          Array.isArray(custsData)
             ? custsData
             : [],
         );
 
         setHeldBillsCount(
-          Array.isArray(
-            holdsData,
-          )
+          Array.isArray(holdsData)
             ? holdsData.length
             : 0,
-        );
-
-        /* -------------------------------------------------
-           ACTIVE LOCATIONS
-        ------------------------------------------------- */
-
-        const activeLocations =
-          locationsData.filter(
-            (location) =>
-              location.isActive,
-          );
-
-        setLocations(
-          activeLocations,
-        );
-
-        /* -------------------------------------------------
-           KEEP / SELECT LOCATION
-        ------------------------------------------------- */
-
-        setSelectedLocationId(
-          (current) => {
-            if (
-              current &&
-              activeLocations.some(
-                (location) =>
-                  location.id ===
-                  current,
-              )
-            ) {
-              return current;
-            }
-
-            if (
-              activeLocations.length >
-              0
-            ) {
-              return activeLocations[0].id;
-            }
-
-            return null;
-          },
         );
       } catch (error) {
         console.error(
           "Failed to load POS master data:",
           error,
         );
-
-        /*
-         * Only show error while actually online.
-         */
 
         if (
           typeof window === "undefined" ||
@@ -554,7 +478,6 @@ export default function PosPage() {
         }
       } finally {
         setIsLoadingProducts(false);
-        setIsLoadingLocations(false);
       }
     }, []);
 
@@ -567,22 +490,15 @@ export default function PosPage() {
   }, [loadData]);
 
   /* =======================================================
-     RELOAD MASTER DATA WHEN BACK ONLINE
+     RELOAD WHEN ONLINE
   ======================================================= */
 
   useEffect(() => {
-    if (
-      typeof window === "undefined"
-    ) {
+    if (typeof window === "undefined") {
       return;
     }
 
     const handleOnline = () => {
-      /*
-       * Wait until the network is available,
-       * then refresh master data.
-       */
-
       if (navigator.onLine) {
         void loadData();
       }
@@ -602,28 +518,111 @@ export default function PosPage() {
   }, [loadData]);
 
   /* =======================================================
-     SELECTED LOCATION
+     LOAD OPENING BALANCE
   ======================================================= */
 
-  const selectedLocation =
-    useMemo(() => {
-      if (
-        !selectedLocationId
-      ) {
-        return null;
-      }
+  useEffect(() => {
+    /*
+     * No branch = no opening balance.
+     */
 
-      return (
-        locations.find(
-          (location) =>
-            location.id ===
-            selectedLocationId,
-        ) || null
-      );
-    }, [
-      locations,
-      selectedLocationId,
-    ]);
+    if (!userLocationId) {
+      setOpeningBalance(0);
+      setHasOpeningBalance(false);
+      setOpeningBalanceInput("");
+      setIsOpeningBalanceModalOpen(false);
+      setIsLoadingOpeningBalance(false);
+
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadOpeningBalance =
+      async () => {
+        if (
+          typeof window !== "undefined" &&
+          !navigator.onLine
+        ) {
+          setIsLoadingOpeningBalance(false);
+          return;
+        }
+
+        setIsLoadingOpeningBalance(true);
+
+        try {
+          /*
+           * DO NOT SEND locationId.
+           *
+           * Backend must determine:
+           *
+           * req.user.locationId
+           * req.user.tillId
+           *
+           * from JWT.
+           */
+
+          const result =
+            await getOpeningBalance();
+
+          if (cancelled) {
+            return;
+          }
+
+          if (result) {
+            const amount =
+              Number(
+                result.openingBalance || 0,
+              );
+
+            setOpeningBalance(amount);
+
+            setHasOpeningBalance(true);
+
+            setOpeningBalanceInput(
+              amount.toFixed(2),
+            );
+
+            setIsOpeningBalanceModalOpen(
+              false,
+            );
+          } else {
+            setOpeningBalance(0);
+
+            setHasOpeningBalance(false);
+
+            setOpeningBalanceInput("");
+
+            setIsOpeningBalanceModalOpen(
+              true,
+            );
+          }
+        } catch (error) {
+          if (cancelled) {
+            return;
+          }
+
+          console.error(
+            "Failed to load opening balance:",
+            error,
+          );
+
+          toast.error(
+            "Failed to load opening balance.",
+          );
+        } finally {
+          if (!cancelled) {
+            setIsLoadingOpeningBalance(false);
+          }
+        }
+      };
+
+    void loadOpeningBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userLocationId]);
 
   /* =======================================================
      FILTER PRODUCTS
@@ -660,8 +659,7 @@ export default function PosPage() {
             );
 
           const matchesCategory =
-            selectedCategoryId ===
-              null ||
+            selectedCategoryId === null ||
             product.category?.id ===
               selectedCategoryId;
 
@@ -717,8 +715,7 @@ export default function PosPage() {
     (product: Product) => {
       const stock =
         Number(
-          product.stockQuantity ??
-            0,
+          product.stockQuantity ?? 0,
         );
 
       if (stock <= 0) {
@@ -739,17 +736,12 @@ export default function PosPage() {
 
         const sellingPrice =
           Number(
-            product.sellingPrice ||
-              0,
+            product.sellingPrice || 0,
           );
 
-        if (
-          existingIndex >= 0
-        ) {
+        if (existingIndex >= 0) {
           const existing =
-            prevCart[
-              existingIndex
-            ];
+            prevCart[existingIndex];
 
           if (
             existing.quantity >=
@@ -763,8 +755,7 @@ export default function PosPage() {
           }
 
           const nextQty =
-            existing.quantity +
-            1;
+            existing.quantity + 1;
 
           const nextLineTotal =
             nextQty *
@@ -782,10 +773,7 @@ export default function PosPage() {
             existingIndex
           ] = {
             ...existing,
-
-            quantity:
-              nextQty,
-
+            quantity: nextQty,
             lineTotal:
               Math.max(
                 0,
@@ -796,36 +784,26 @@ export default function PosPage() {
           return updatedCart;
         }
 
-        const newItem: PosCartItem =
-          {
-            productId:
-              product.id,
-
-            productCode:
-              product.productCode,
-
-            productName:
-              product.productName,
-
-            barcode:
-              product.barcode,
-
-            unitPrice:
-              sellingPrice,
-
-            quantity: 1,
-
-            availableStock:
-              stock,
-
-            discountAmount: 0,
-
-            lineTotal:
-              sellingPrice,
-
-            imageUrl:
-              product.imageUrl,
-          };
+        const newItem: PosCartItem = {
+          productId:
+            product.id,
+          productCode:
+            product.productCode,
+          productName:
+            product.productName,
+          barcode:
+            product.barcode,
+          unitPrice:
+            sellingPrice,
+          quantity: 1,
+          availableStock:
+            stock,
+          discountAmount: 0,
+          lineTotal:
+            sellingPrice,
+          imageUrl:
+            product.imageUrl,
+        };
 
         return [
           ...prevCart,
@@ -881,10 +859,8 @@ export default function PosPage() {
 
               return {
                 ...item,
-
                 quantity:
                   validQty,
-
                 lineTotal:
                   Math.max(
                     0,
@@ -1000,9 +976,7 @@ export default function PosPage() {
         ),
       );
 
-      setDiscountType(
-        type,
-      );
+      setDiscountType(type);
 
       setDiscountValue(
         Math.max(
@@ -1018,22 +992,12 @@ export default function PosPage() {
 
   const handleEmailReceipt =
     async () => {
-      /*
-       * IMPORTANT:
-       * Do NOT use selectedCustomer here.
-       *
-       * selectedCustomer is cleared immediately after
-       * successful sale. The completed customer email is
-       * stored separately in completedCustomerEmail.
-       */
-
       if (
         !lastCompletedInvoice
       ) {
         toast.error(
           "Complete a sale first before sending the receipt.",
         );
-
         return;
       }
 
@@ -1043,7 +1007,6 @@ export default function PosPage() {
         toast.error(
           "Customer email is not available for this receipt.",
         );
-
         return;
       }
 
@@ -1054,7 +1017,6 @@ export default function PosPage() {
         toast.error(
           "Email receipt requires an internet connection.",
         );
-
         return;
       }
 
@@ -1065,7 +1027,6 @@ export default function PosPage() {
         toast.error(
           "Customer email is not available for this receipt.",
         );
-
         return;
       }
 
@@ -1078,7 +1039,6 @@ export default function PosPage() {
         toast.error(
           "Please provide a valid customer email address.",
         );
-
         return;
       }
 
@@ -1090,13 +1050,8 @@ export default function PosPage() {
           },
         );
 
-        /* -----------------------------------------------
-           AUTH TOKEN
-        ------------------------------------------------ */
-
         const token =
-          typeof window !==
-          "undefined"
+          typeof window !== "undefined"
             ? localStorage.getItem(
                 "authToken",
               ) ||
@@ -1129,24 +1084,17 @@ export default function PosPage() {
           );
         }
 
-        /* -----------------------------------------------
-           SEND TO BACKEND
-        ------------------------------------------------ */
-
         const response =
           await fetch(
             `${API_URL}/pos/sales/${lastCompletedInvoice.id}/email-receipt`,
             {
               method: "POST",
-
               headers: {
                 "Content-Type":
                   "application/json",
-
                 Authorization:
                   `Bearer ${token}`,
               },
-
               body: JSON.stringify({
                 email,
               }),
@@ -1211,7 +1159,6 @@ export default function PosPage() {
         setCompletedSaleInvoice(
           lastCompletedInvoice,
         );
-
         return;
       }
 
@@ -1229,66 +1176,67 @@ export default function PosPage() {
 
   const handleHoldBill =
     async () => {
-      if (
-        cart.length === 0
-      ) {
+      if (!userLocationId) {
         toast.error(
-          "Cannot hold an empty cart.",
+          "Your account is not assigned to a branch/location.",
         );
-
         return;
       }
 
-      /*
-       * Hold bill currently needs backend.
-       */
+      if (cart.length === 0) {
+        toast.error(
+          "Cannot hold an empty cart.",
+        );
+        return;
+      }
 
       if (
-        typeof window !==
-          "undefined" &&
+        typeof window !== "undefined" &&
         !navigator.onLine
       ) {
         toast.error(
           "Hold Bill requires an internet connection.",
         );
-
         return;
       }
 
       setIsHolding(true);
 
       try {
+        /*
+         * IMPORTANT:
+         *
+         * locationId is NOT sent.
+         *
+         * Backend gets locationId/tillId
+         * from authenticated JWT.
+         */
+
         const held =
-          await posService.holdBill(
-            {
-              customerId:
-                selectedCustomer?.id ||
-                undefined,
+          await posService.holdBill({
+            customerId:
+              selectedCustomer?.id ||
+              undefined,
 
-              customerName:
-                selectedCustomer?.customerName ||
-                undefined,
+            customerName:
+              selectedCustomer?.customerName ||
+              undefined,
 
-              cartData: {
-                items: cart,
-
-                customer:
-                  selectedCustomer,
-
-                discountAmount,
-
-                discountType,
-
-                discountValue,
-              },
-
-              subtotal,
-
+            cartData: {
+              items: cart,
+              customer:
+                selectedCustomer,
               discountAmount,
-
-              grandTotal,
+              discountType,
+              discountValue,
             },
-          );
+
+            subtotal,
+
+            discountAmount,
+
+            grandTotal,
+          });
 
         toast.success(
           `Bill held successfully as #${held.holdNumber}`,
@@ -1296,9 +1244,7 @@ export default function PosPage() {
 
         handleClearCart();
 
-        setSelectedCustomer(
-          null,
-        );
+        setSelectedCustomer(null);
 
         await loadData();
       } catch (error) {
@@ -1308,7 +1254,9 @@ export default function PosPage() {
         );
 
         toast.error(
-          "Failed to hold bill. Please try again.",
+          error instanceof Error
+            ? error.message
+            : "Failed to hold bill. Please try again.",
         );
       } finally {
         setIsHolding(false);
@@ -1388,9 +1336,7 @@ export default function PosPage() {
                       product.id,
                   );
 
-                if (
-                  !soldItem
-                ) {
+                if (!soldItem) {
                   return product;
                 }
 
@@ -1418,6 +1364,108 @@ export default function PosPage() {
     );
 
   /* =======================================================
+     SAVE OPENING BALANCE
+  ======================================================= */
+
+  const handleSaveOpeningBalance =
+    async () => {
+      if (!userLocationId) {
+        toast.error(
+          "Your account is not assigned to a branch/location.",
+        );
+        return;
+      }
+
+      if (
+        typeof window !== "undefined" &&
+        !navigator.onLine
+      ) {
+        toast.error(
+          "Opening balance requires an internet connection.",
+        );
+        return;
+      }
+
+      const amount =
+        Number(
+          openingBalanceInput,
+        );
+
+      if (
+        !Number.isFinite(amount) ||
+        amount < 0
+      ) {
+        toast.error(
+          "Please enter a valid opening balance.",
+        );
+        return;
+      }
+
+      setIsSavingOpeningBalance(
+        true,
+      );
+
+      try {
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT send locationId.
+         *
+         * Backend determines:
+         *
+         * locationId = JWT user location
+         * tillId     = JWT user till
+         */
+
+        const result =
+          await saveOpeningBalance(
+            amount,
+          );
+
+        const savedAmount =
+          Number(
+            result.openingBalance ||
+              0,
+          );
+
+        setOpeningBalance(
+          savedAmount,
+        );
+
+        setOpeningBalanceInput(
+          savedAmount.toFixed(2),
+        );
+
+        setHasOpeningBalance(
+          true,
+        );
+
+        setIsOpeningBalanceModalOpen(
+          false,
+        );
+
+        toast.success(
+          "Opening balance saved successfully.",
+        );
+      } catch (error) {
+        console.error(
+          "Failed to save opening balance:",
+          error,
+        );
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to save opening balance.",
+        );
+      } finally {
+        setIsSavingOpeningBalance(
+          false,
+        );
+      }
+    };
+
+  /* =======================================================
      KEYBOARD SHORTCUTS
   ======================================================= */
 
@@ -1426,9 +1474,7 @@ export default function PosPage() {
       (
         event: KeyboardEvent,
       ) => {
-        if (
-          event.key === "F3"
-        ) {
+        if (event.key === "F3") {
           event.preventDefault();
 
           setIsQuickCustomerOpen(
@@ -1438,9 +1484,7 @@ export default function PosPage() {
           return;
         }
 
-        if (
-          event.key === "F4"
-        ) {
+        if (event.key === "F4") {
           event.preventDefault();
 
           setIsDiscountModalOpen(
@@ -1450,9 +1494,7 @@ export default function PosPage() {
           return;
         }
 
-        if (
-          event.key === "F8"
-        ) {
+        if (event.key === "F8") {
           event.preventDefault();
 
           if (
@@ -1464,28 +1506,14 @@ export default function PosPage() {
           return;
         }
 
-        if (
-          event.key === "F9"
-        ) {
+        if (event.key === "F9") {
           event.preventDefault();
 
           if (
             cart.length > 0 &&
             grandTotal > 0
           ) {
-            if (
-              !selectedLocationId
-            ) {
-              toast.error(
-                "Please select a branch/location before completing the sale.",
-              );
-
-              return;
-            }
-
-            setIsPaymentModalOpen(
-              true,
-            );
+            handleOpenPayment();
           }
 
           return;
@@ -1517,6 +1545,14 @@ export default function PosPage() {
           setIsShortcutGuideOpen(
             false,
           );
+
+          if (
+            hasOpeningBalance
+          ) {
+            setIsOpeningBalanceModalOpen(
+              false,
+            );
+          }
         }
       };
 
@@ -1534,7 +1570,8 @@ export default function PosPage() {
   }, [
     cart.length,
     grandTotal,
-    selectedLocationId,
+    hasOpeningBalance,
+    userLocationId,
   ]);
 
   /* =======================================================
@@ -1543,31 +1580,36 @@ export default function PosPage() {
 
   const handleOpenPayment =
     () => {
-      if (
-        cart.length === 0
-      ) {
+      if (cart.length === 0) {
         toast.error(
           "Cart is empty.",
         );
-
         return;
       }
 
-      if (
-        grandTotal <= 0
-      ) {
+      if (grandTotal <= 0) {
         toast.error(
           "Invoice total must be greater than 0.",
         );
+        return;
+      }
 
+      if (!userLocationId) {
+        toast.error(
+          "Your account is not assigned to a branch/location.",
+        );
         return;
       }
 
       if (
-        !selectedLocationId
+        !hasOpeningBalance
       ) {
         toast.error(
-          "Please select a branch/location before completing the sale.",
+          "Please set the opening balance before completing the sale.",
+        );
+
+        setIsOpeningBalanceModalOpen(
+          true,
         );
 
         return;
@@ -1591,134 +1633,53 @@ export default function PosPage() {
       ================================================= */}
 
       <PosHeader
-        heldBillsCount={
-          heldBillsCount
+        openingBalance={
+          openingBalance
         }
-
-        onOpenHoldModal={() =>
-          setIsHoldModalOpen(
-            true,
-          )
+        branchName={
+          isLoadingUserLocation
+            ? "Loading..."
+            : userLocationName ||
+              "No Branch Assigned"
         }
-
-        onOpenReturnModal={() =>
-          setIsReturnModalOpen(
-            true,
-          )
-        }
-
         onOpenShortcutGuide={() =>
           setIsShortcutGuideOpen(
             true,
           )
         }
-
         searchQuery={
           searchQuery
         }
-
         onSearchChange={
           setSearchQuery
         }
-
         onBarcodeScan={
           handleBarcodeScan
         }
-
         onClearSearch={() =>
           setSearchQuery("")
         }
-
         isLoadingProducts={
           isLoadingProducts
         }
-
         isOffline={
           isOffline
         }
-
         queuedSalesCount={
           queuedSalesCount
         }
       />
 
       {/* =================================================
-          BRANCH / LOCATION
-      ================================================= */}
-
-      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            POS Branch / Location
-          </p>
-
-          <p className="text-sm font-black text-slate-900">
-            {selectedLocation
-              ? selectedLocation.name
-              : isLoadingLocations
-              ? "Loading..."
-              : "No location selected"}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {locations.length === 0 &&
-            !isLoadingLocations && (
-              <span className="text-xs font-bold text-red-600">
-                No active locations
-                available
-              </span>
-            )}
-
-          <select
-            value={
-              selectedLocationId ||
-              ""
-            }
-            onChange={(event) =>
-              setSelectedLocationId(
-                event.target.value ||
-                  null,
-              )
-            }
-            disabled={
-              isLoadingLocations ||
-              locations.length === 0
-            }
-            className="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 disabled:cursor-not-allowed disabled:bg-slate-100"
-          >
-            <option value="">
-              Select Branch / Location
-            </option>
-
-            {locations.map(
-              (location) => (
-                <option
-                  key={
-                    location.id
-                  }
-                  value={
-                    location.id
-                  }
-                >
-                  {
-                    location.name
-                  }
-                </option>
-              ),
-            )}
-          </select>
-        </div>
-      </div>
-
-      {/* =================================================
           MAIN POS WORKSPACE
       ================================================= */}
 
       <main className="flex min-w-0 flex-1 overflow-hidden">
+
         {/* LEFT */}
 
         <section className="flex min-w-0 flex-1 flex-col space-y-3 overflow-hidden p-3">
+
           <CategoryFilter
             categories={
               categories
@@ -1736,7 +1697,9 @@ export default function PosPage() {
               products={
                 filteredProducts
               }
-              cartItems={cart}
+              cartItems={
+                cart
+              }
               onAddToCart={
                 handleAddToCart
               }
@@ -1751,8 +1714,12 @@ export default function PosPage() {
 
         <section className="h-full w-80 shrink-0 sm:w-96 md:w-[400px] xl:w-[440px]">
           <PosCart
-            cartItems={cart}
-            customers={customers}
+            cartItems={
+              cart
+            }
+            customers={
+              customers
+            }
             selectedCustomer={
               selectedCustomer
             }
@@ -1790,6 +1757,16 @@ export default function PosPage() {
             onHoldBill={
               handleHoldBill
             }
+            onOpenHoldModal={() =>
+              setIsHoldModalOpen(
+                true,
+              )
+            }
+            onOpenReturnModal={() =>
+              setIsReturnModalOpen(
+                true,
+              )
+            }
             onOpenPaymentModal={
               handleOpenPayment
             }
@@ -1805,6 +1782,114 @@ export default function PosPage() {
           />
         </section>
       </main>
+
+      {/* =================================================
+          OPENING BALANCE
+      ================================================= */}
+
+      {isOpeningBalanceModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+
+            <div className="mb-5">
+              <h2 className="text-xl font-extrabold text-slate-900">
+                Opening Balance
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Enter the opening cash
+                balance for this POS
+                branch.
+              </p>
+
+              {userLocationName && (
+                <p className="mt-2 text-sm font-bold text-blue-600">
+                  Branch:{" "}
+                  {userLocationName}
+                </p>
+              )}
+            </div>
+
+            <label className="mb-2 block text-sm font-bold text-slate-700">
+              Opening Cash Balance
+            </label>
+
+            <div className="flex items-center rounded-xl border border-slate-300 bg-white px-3 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/20">
+
+              <span className="mr-2 text-sm font-bold text-slate-500">
+                Rs.
+              </span>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={
+                  openingBalanceInput
+                }
+                onChange={(event) =>
+                  setOpeningBalanceInput(
+                    event.target.value,
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (
+                    event.key ===
+                    "Enter"
+                  ) {
+                    event.preventDefault();
+
+                    void handleSaveOpeningBalance();
+                  }
+                }}
+                autoFocus
+                disabled={
+                  isSavingOpeningBalance
+                }
+                className="w-full bg-transparent py-3 text-lg font-bold text-slate-900 outline-none disabled:opacity-50"
+                placeholder="0.00"
+              />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+
+              {hasOpeningBalance && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setIsOpeningBalanceModalOpen(
+                      false,
+                    )
+                  }
+                  disabled={
+                    isSavingOpeningBalance
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  void handleSaveOpeningBalance()
+                }
+                disabled={
+                  isSavingOpeningBalance ||
+                  isLoadingOpeningBalance ||
+                  !userLocationId
+                }
+                className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSavingOpeningBalance
+                  ? "Saving..."
+                  : "Save Opening Balance"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* =================================================
           QUICK CUSTOMER
@@ -1903,23 +1988,21 @@ export default function PosPage() {
         heldBillId={
           activeHeldBillId
         }
+
         locationId={
-          selectedLocationId
+          userLocationId ?? undefined
         }
+
         onSaleSuccess={(
           invoice,
         ) => {
-          /* -----------------------------------------------
-             CLOSE PAYMENT
-          ------------------------------------------------ */
+          /* CLOSE PAYMENT */
 
           setIsPaymentModalOpen(
             false,
           );
 
-          /* -----------------------------------------------
-             STORE RECEIPT
-          ------------------------------------------------ */
+          /* STORE RECEIPT */
 
           setCompletedSaleInvoice(
             invoice,
@@ -1929,22 +2012,17 @@ export default function PosPage() {
             invoice,
           );
 
-          /* -----------------------------------------------
-             SAVE CUSTOMER EMAIL
-             
-             IMPORTANT:
-             This MUST happen BEFORE selectedCustomer
-             is cleared below.
-          ------------------------------------------------ */
+          /*
+           * Save customer email before
+           * clearing selected customer.
+           */
 
           setCompletedCustomerEmail(
             selectedCustomer?.email?.trim() ||
               null,
           );
 
-          /* -----------------------------------------------
-             OFFLINE LOCAL STOCK
-          ------------------------------------------------ */
+          /* OFFLINE LOCAL STOCK */
 
           if (
             invoice.id.startsWith(
@@ -1956,26 +2034,17 @@ export default function PosPage() {
             );
           }
 
-          /* -----------------------------------------------
-             CLEAR CART
-          ------------------------------------------------ */
+          /* CLEAR CART */
 
           handleClearCart();
-
-          /*
-           * Customer is cleared from the active POS cart,
-           * but completedCustomerEmail remains available
-           * for the receipt modal.
-           */
 
           setSelectedCustomer(
             null,
           );
 
-          /* -----------------------------------------------
-             IMPORTANT:
-             Do NOT reload backend data while offline.
-          ------------------------------------------------ */
+          /*
+           * Reload backend only when online.
+           */
 
           if (
             typeof window !==
@@ -1985,9 +2054,7 @@ export default function PosPage() {
             void loadData();
           }
 
-          /* -----------------------------------------------
-             Refresh queue
-          ------------------------------------------------ */
+          /* REFRESH OFFLINE QUEUE */
 
           void refreshQueueCount();
         }}
@@ -2002,35 +2069,20 @@ export default function PosPage() {
           completedSaleInvoice !==
           null
         }
-
         onClose={() => {
           setCompletedSaleInvoice(
             null,
           );
         }}
-
         saleInvoice={
           completedSaleInvoice
         }
-
-        /*
-         * Customer email is stored separately because
-         * selectedCustomer is cleared after sale.
-         */
-
         customerEmail={
           completedCustomerEmail
         }
-
-        /*
-         * Email is sent only when the user clicks
-         * Email Receipt inside ReceiptModal.
-         */
-
         onEmailReceipt={
           handleEmailReceipt
         }
-
         onNewSale={() => {
           setCompletedSaleInvoice(
             null,
@@ -2078,20 +2130,17 @@ export default function PosPage() {
 
           posService
             .getHeldBills()
-            .then(
-              (bills) =>
-                setHeldBillsCount(
-                  bills.length,
-                ),
+            .then((bills) =>
+              setHeldBillsCount(
+                bills.length,
+              ),
             )
-            .catch(
-              (error) => {
-                console.error(
-                  "Failed to refresh held bills:",
-                  error,
-                );
-              },
-            );
+            .catch((error) => {
+              console.error(
+                "Failed to refresh held bills:",
+                error,
+              );
+            });
         }}
       />
 

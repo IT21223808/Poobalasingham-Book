@@ -183,18 +183,22 @@ export interface ReturnResponse {
 
 export interface CashClosingSummary {
   date: string;
-
+  locationId?: string | null;
+  tillId?: number | null;
+  id?: string | null;
+  closed?: boolean;
+  isClosed?: boolean;
   totalTransactions: number;
-
   openingCash: number;
   cashSales: number;
   cardSales: number;
   qrSales: number;
-
   totalSales: number;
-
   refundsCount: number;
   totalRefunds: number;
-
   expectedCash: number;
+  actualCash?: number | null;
+  difference?: number | null;
+  closedBy?: number | null;
+  closedAt?: string | null;
 }

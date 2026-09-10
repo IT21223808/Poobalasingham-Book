@@ -25,26 +25,28 @@ import api from "@/services/api";
 
 interface Customer {
   id: number;
-  customerCode: string;
-  name: string;
+
+  // Backend uses customerName
+  customerName: string;
+
   phone?: string | null;
   email?: string | null;
   address?: string | null;
   city?: string | null;
-  country?: string | null;
+
   isActive: boolean;
+
   createdAt?: string;
   updatedAt?: string;
 }
 
 interface CustomerForm {
-  customerCode: string;
-  name: string;
+  customerName: string;
   phone: string;
   email: string;
   address: string;
   city: string;
-  country: string;
+  isActive: boolean;
 }
 
 /* =========================================================
@@ -52,13 +54,12 @@ interface CustomerForm {
 ========================================================= */
 
 const EMPTY_FORM: CustomerForm = {
-  customerCode: "",
-  name: "",
+  customerName: "",
   phone: "",
   email: "",
   address: "",
   city: "",
-  country: "",
+  isActive: true,
 };
 
 /* =========================================================
@@ -71,18 +72,23 @@ export default function CustomersPage() {
   ======================================================= */
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"all" | "active" | "inactive">(
-    "all",
-  );
+
+  const [status, setStatus] = useState<
+    "all" | "active" | "inactive"
+  >("all");
 
   const [currentPage, setCurrentPage] = useState(1);
+
   const [itemsPerPage] = useState(10);
 
   const [showModal, setShowModal] = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
+
+  const [showViewModal, setShowViewModal] =
+    useState(false);
 
   const [editingCustomer, setEditingCustomer] =
     useState<Customer | null>(null);
@@ -96,24 +102,35 @@ export default function CustomersPage() {
   const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
+
   const [success, setSuccess] = useState("");
 
   /* =======================================================
      ERROR HELPER
   ======================================================= */
 
-  const getErrorMessage = (error: any) => {
-    const data = error?.response?.data;
+  const getErrorMessage = (error: any): string => {
+    const responseData = error?.response?.data;
 
-    if (Array.isArray(data?.message)) {
-      return data.message.join(", ");
+    if (Array.isArray(responseData?.message)) {
+      return responseData.message.join(", ");
     }
 
-    if (typeof data?.message === "string") {
-      return data.message;
+    if (
+      typeof responseData?.message === "string"
+    ) {
+      return responseData.message;
     }
 
-    if (typeof error?.message === "string") {
+    if (
+      typeof responseData?.error === "string"
+    ) {
+      return responseData.error;
+    }
+
+    if (
+      typeof error?.message === "string"
+    ) {
       return error.message;
     }
 
@@ -129,32 +146,71 @@ export default function CustomersPage() {
       setLoading(true);
       setError("");
 
-      /*
-       * IMPORTANT:
-       * Do NOT use fetch() here.
-       *
-       * api.get() automatically adds:
-       * Authorization: Bearer <JWT>
-       */
-
-      const response = await api.get("/customers");
+      const response =
+        await api.get("/customers");
 
       const data = response.data;
 
+      let customerList: any[] = [];
+
       if (Array.isArray(data)) {
-        setCustomers(data);
+        customerList = data;
       } else if (Array.isArray(data?.data)) {
-        setCustomers(data.data);
-      } else {
-        setCustomers([]);
+        customerList = data.data;
+      } else if (
+        Array.isArray(data?.customers)
+      ) {
+        customerList = data.customers;
       }
+
+      /*
+       * Normalize old/new backend response.
+       *
+       * If backend returns customerName -> use it.
+       * If an older response returns name -> convert it
+       * to customerName for the frontend.
+       */
+      const normalizedCustomers: Customer[] =
+        customerList.map((customer) => ({
+          id: Number(customer.id),
+
+          customerName:
+            customer.customerName ??
+            customer.name ??
+            "",
+
+          phone:
+            customer.phone ?? null,
+
+          email:
+            customer.email ?? null,
+
+          address:
+            customer.address ?? null,
+
+          city:
+            customer.city ?? null,
+
+          isActive:
+            customer.isActive !== false,
+
+          createdAt:
+            customer.createdAt,
+
+          updatedAt:
+            customer.updatedAt,
+        }));
+
+      setCustomers(normalizedCustomers);
     } catch (error: any) {
       console.error(
         "❌ Failed to load customers:",
-        error,
+        error?.response?.data || error
       );
 
-      setError(getErrorMessage(error));
+      setError(
+        getErrorMessage(error)
+      );
     } finally {
       setLoading(false);
     }
@@ -173,39 +229,44 @@ export default function CustomersPage() {
   ======================================================= */
 
   const filteredCustomers = useMemo(() => {
-    const searchValue = search
-      .trim()
-      .toLowerCase();
+    const searchValue =
+      search.trim().toLowerCase();
 
-    return customers.filter((customer) => {
-      const matchesSearch =
-        !searchValue ||
-        customer.customerCode
-          ?.toLowerCase()
-          .includes(searchValue) ||
-        customer.name
-          ?.toLowerCase()
-          .includes(searchValue) ||
-        customer.phone
-          ?.toLowerCase()
-          .includes(searchValue) ||
-        customer.email
-          ?.toLowerCase()
-          .includes(searchValue) ||
-        customer.city
-          ?.toLowerCase()
-          .includes(searchValue);
+    return customers.filter(
+      (customer) => {
+        const matchesSearch =
+          !searchValue ||
+          customer.customerName
+            ?.toLowerCase()
+            .includes(searchValue) ||
+          customer.phone
+            ?.toLowerCase()
+            .includes(searchValue) ||
+          customer.email
+            ?.toLowerCase()
+            .includes(searchValue) ||
+          customer.city
+            ?.toLowerCase()
+            .includes(searchValue);
 
-      const matchesStatus =
-        status === "all" ||
-        (status === "active" &&
-          customer.isActive) ||
-        (status === "inactive" &&
-          !customer.isActive);
+        const matchesStatus =
+          status === "all" ||
+          (status === "active" &&
+            customer.isActive) ||
+          (status === "inactive" &&
+            !customer.isActive);
 
-      return matchesSearch && matchesStatus;
-    });
-  }, [customers, search, status]);
+        return (
+          matchesSearch &&
+          matchesStatus
+        );
+      }
+    );
+  }, [
+    customers,
+    search,
+    status,
+  ]);
 
   /* =======================================================
      PAGINATION
@@ -214,88 +275,116 @@ export default function CustomersPage() {
   const totalPages = Math.max(
     1,
     Math.ceil(
-      filteredCustomers.length / itemsPerPage,
-    ),
+      filteredCustomers.length /
+        itemsPerPage
+    )
   );
 
-  const paginatedCustomers = useMemo(() => {
-    const start =
-      (currentPage - 1) * itemsPerPage;
+  const paginatedCustomers =
+    useMemo(() => {
+      const start =
+        (currentPage - 1) *
+        itemsPerPage;
 
-    return filteredCustomers.slice(
-      start,
-      start + itemsPerPage,
-    );
-  }, [
-    filteredCustomers,
-    currentPage,
-    itemsPerPage,
-  ]);
+      return filteredCustomers.slice(
+        start,
+        start + itemsPerPage
+      );
+    }, [
+      filteredCustomers,
+      currentPage,
+      itemsPerPage,
+    ]);
 
   useEffect(() => {
-    if (currentPage > totalPages) {
+    if (
+      currentPage > totalPages
+    ) {
       setCurrentPage(totalPages);
     }
-  }, [currentPage, totalPages]);
+  }, [
+    currentPage,
+    totalPages,
+  ]);
 
   /* =======================================================
      SUMMARY
   ======================================================= */
 
-  const totalCustomers = customers.length;
+  const totalCustomers =
+    customers.length;
 
-  const activeCustomers = customers.filter(
-    (customer) => customer.isActive,
-  ).length;
+  const activeCustomers =
+    customers.filter(
+      (customer) =>
+        customer.isActive
+    ).length;
 
   const inactiveCustomers =
     customers.filter(
-      (customer) => !customer.isActive,
+      (customer) =>
+        !customer.isActive
     ).length;
 
   /* =======================================================
-     OPEN CREATE
+     OPEN CREATE MODAL
   ======================================================= */
 
   const openCreateModal = () => {
     setEditingCustomer(null);
-    setForm(EMPTY_FORM);
-    setError("");
-    setSuccess("");
-    setShowModal(true);
-  };
-
-  /* =======================================================
-     OPEN EDIT
-  ======================================================= */
-
-  const openEditModal = (
-    customer: Customer,
-  ) => {
-    setEditingCustomer(customer);
 
     setForm({
-      customerCode:
-        customer.customerCode || "",
-      name: customer.name || "",
-      phone: customer.phone || "",
-      email: customer.email || "",
-      address: customer.address || "",
-      city: customer.city || "",
-      country: customer.country || "",
+      ...EMPTY_FORM,
+      isActive: true,
     });
 
     setError("");
     setSuccess("");
+
     setShowModal(true);
   };
 
   /* =======================================================
-     OPEN VIEW
+     OPEN EDIT MODAL
+  ======================================================= */
+
+  const openEditModal = (
+    customer: Customer
+  ) => {
+    setEditingCustomer(customer);
+
+    setForm({
+      customerName:
+        customer.customerName || "",
+
+      phone:
+        customer.phone || "",
+
+      email:
+        customer.email || "",
+
+      address:
+        customer.address || "",
+
+      city:
+        customer.city || "",
+
+      isActive:
+        customer.isActive,
+    });
+
+    setError("");
+    setSuccess("");
+
+    setShowModal(true);
+  };
+
+  /* =======================================================
+     OPEN VIEW MODAL
   ======================================================= */
 
   const openViewModal = (
-    customer: Customer,
+    customer: Customer
   ) => {
     setViewingCustomer(customer);
     setShowViewModal(true);
@@ -309,8 +398,13 @@ export default function CustomersPage() {
     if (saving) return;
 
     setShowModal(false);
+
     setEditingCustomer(null);
-    setForm(EMPTY_FORM);
+
+    setForm({
+      ...EMPTY_FORM,
+    });
+
     setError("");
     setSuccess("");
   };
@@ -330,7 +424,7 @@ export default function CustomersPage() {
 
   const handleChange = (
     field: keyof CustomerForm,
-    value: string,
+    value: string | boolean
   ) => {
     setForm((prev) => ({
       ...prev,
@@ -339,46 +433,112 @@ export default function CustomersPage() {
   };
 
   /* =======================================================
+     VALIDATE FORM
+  ======================================================= */
+
+  const validateForm =
+    (): string | null => {
+      if (
+        !form.customerName.trim()
+      ) {
+        return "Customer name is required.";
+      }
+
+      if (
+        form.email.trim() &&
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+          form.email.trim()
+        )
+      ) {
+        return "Please enter a valid email address.";
+      }
+
+      return null;
+    };
+
+  /* =======================================================
+     BUILD PAYLOAD
+  ======================================================= */
+
+  const buildPayload = () => {
+    /*
+     * IMPORTANT:
+     *
+     * Backend DTO accepts:
+     *
+     * customerName
+     * phone
+     * email
+     * address
+     * city
+     * isActive
+     *
+     * Do NOT send:
+     *
+     * customerCode
+     * name
+     * country
+     */
+
+    return {
+      customerName:
+        form.customerName.trim(),
+
+      phone:
+        form.phone.trim() ||
+        undefined,
+
+      email:
+        form.email.trim() ||
+        undefined,
+
+      address:
+        form.address.trim() ||
+        undefined,
+
+      city:
+        form.city.trim() ||
+        undefined,
+
+      isActive:
+        form.isActive,
+    };
+  };
+
+  /* =======================================================
      SAVE CUSTOMER
   ======================================================= */
 
   const handleSubmit = async (
-    event: React.FormEvent,
+    event: React.FormEvent
   ) => {
     event.preventDefault();
 
     setError("");
     setSuccess("");
 
-    if (!form.name.trim()) {
-      setError("Customer name is required.");
+    const validationError =
+      validateForm();
+
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     try {
       setSaving(true);
 
-      const payload = {
-        customerCode:
-          form.customerCode.trim() || undefined,
+      const payload =
+        buildPayload();
 
-        name: form.name.trim(),
-
-        phone:
-          form.phone.trim() || undefined,
-
-        email:
-          form.email.trim() || undefined,
-
-        address:
-          form.address.trim() || undefined,
-
-        city:
-          form.city.trim() || undefined,
-
-        country:
-          form.country.trim() || undefined,
-      };
+      console.log(
+        "📤 CUSTOMER PAYLOAD:",
+        JSON.stringify(
+          payload,
+          null,
+          2
+        )
+      );
 
       let response;
 
@@ -387,10 +547,11 @@ export default function CustomersPage() {
       ===================================================== */
 
       if (editingCustomer) {
-        response = await api.patch(
-          `/customers/${editingCustomer.id}`,
-          payload,
-        );
+        response =
+          await api.patch(
+            `/customers/${editingCustomer.id}`,
+            payload
+          );
       }
 
       /* =====================================================
@@ -398,38 +559,47 @@ export default function CustomersPage() {
       ===================================================== */
 
       else {
-        response = await api.post(
-          "/customers",
-          payload,
-        );
+        response =
+          await api.post(
+            "/customers",
+            payload
+          );
       }
 
       console.log(
         "✅ Customer saved:",
-        response.data,
+        response.data
       );
 
       setSuccess(
         editingCustomer
           ? "Customer updated successfully."
-          : "Customer created successfully.",
+          : "Customer created successfully."
       );
 
       await loadCustomers();
 
       setTimeout(() => {
         setShowModal(false);
+
         setEditingCustomer(null);
-        setForm(EMPTY_FORM);
+
+        setForm({
+          ...EMPTY_FORM,
+        });
+
         setSuccess("");
       }, 700);
     } catch (error: any) {
       console.error(
         "❌ Failed to save customer:",
-        error,
+        error?.response?.data ||
+          error
       );
 
-      setError(getErrorMessage(error));
+      setError(
+        getErrorMessage(error)
+      );
     } finally {
       setSaving(false);
     }
@@ -439,102 +609,117 @@ export default function CustomersPage() {
      DEACTIVATE
   ======================================================= */
 
-  const handleDeactivate = async (
-    customer: Customer,
-  ) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to deactivate ${customer.name}?`,
-    );
+  const handleDeactivate =
+    async (
+      customer: Customer
+    ) => {
+      const confirmed =
+        window.confirm(
+          `Are you sure you want to deactivate ${customer.customerName}?`
+        );
 
-    if (!confirmed) return;
+      if (!confirmed) return;
 
-    try {
-      setError("");
-      setSuccess("");
-
-      const response = await api.delete(
-        `/customers/${customer.id}`,
-      );
-
-      console.log(
-        "✅ Customer deactivated:",
-        response.data,
-      );
-
-      setSuccess(
-        "Customer deactivated successfully.",
-      );
-
-      await loadCustomers();
-
-      setTimeout(() => {
+      try {
+        setError("");
         setSuccess("");
-      }, 1500);
-    } catch (error: any) {
-      console.error(
-        "❌ Failed to deactivate customer:",
-        error,
-      );
 
-      setError(getErrorMessage(error));
-    }
-  };
+        const response =
+          await api.delete(
+            `/customers/${customer.id}`
+          );
+
+        console.log(
+          "✅ Customer deactivated:",
+          response.data
+        );
+
+        setSuccess(
+          "Customer deactivated successfully."
+        );
+
+        await loadCustomers();
+
+        setTimeout(() => {
+          setSuccess("");
+        }, 1500);
+      } catch (error: any) {
+        console.error(
+          "❌ Failed to deactivate customer:",
+          error?.response?.data ||
+            error
+        );
+
+        setError(
+          getErrorMessage(error)
+        );
+      }
+    };
 
   /* =======================================================
      ACTIVATE
   ======================================================= */
 
-  const handleActivate = async (
-    customer: Customer,
-  ) => {
-    try {
-      setError("");
-      setSuccess("");
-
-      const response = await api.patch(
-        `/customers/${customer.id}/activate`,
-      );
-
-      console.log(
-        "✅ Customer activated:",
-        response.data,
-      );
-
-      setSuccess(
-        "Customer activated successfully.",
-      );
-
-      await loadCustomers();
-
-      setTimeout(() => {
+  const handleActivate =
+    async (
+      customer: Customer
+    ) => {
+      try {
+        setError("");
         setSuccess("");
-      }, 1500);
-    } catch (error: any) {
-      console.error(
-        "❌ Failed to activate customer:",
-        error,
-      );
 
-      setError(getErrorMessage(error));
-    }
-  };
+        const response =
+          await api.patch(
+            `/customers/${customer.id}/activate`
+          );
+
+        console.log(
+          "✅ Customer activated:",
+          response.data
+        );
+
+        setSuccess(
+          "Customer activated successfully."
+        );
+
+        await loadCustomers();
+
+        setTimeout(() => {
+          setSuccess("");
+        }, 1500);
+      } catch (error: any) {
+        console.error(
+          "❌ Failed to activate customer:",
+          error?.response?.data ||
+            error
+        );
+
+        setError(
+          getErrorMessage(error)
+        );
+      }
+    };
 
   /* =======================================================
-     SEARCH RESET
+     SEARCH
   ======================================================= */
 
   const handleSearchChange = (
-    value: string,
+    value: string
   ) => {
     setSearch(value);
     setCurrentPage(1);
   };
 
+  /* =======================================================
+     STATUS
+  ======================================================= */
+
   const handleStatusChange = (
     value:
       | "all"
       | "active"
-      | "inactive",
+      | "inactive"
   ) => {
     setStatus(value);
     setCurrentPage(1);
@@ -545,13 +730,18 @@ export default function CustomersPage() {
   ======================================================= */
 
   const formatDate = (
-    value?: string,
+    value?: string
   ) => {
     if (!value) return "-";
 
-    const date = new Date(value);
+    const date =
+      new Date(value);
 
-    if (Number.isNaN(date.getTime())) {
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
       return "-";
     }
 
@@ -564,11 +754,13 @@ export default function CustomersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+
       {/* ===================================================
           HEADER
       =================================================== */}
 
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             Customers
@@ -581,29 +773,45 @@ export default function CustomersPage() {
 
         <button
           type="button"
-          onClick={openCreateModal}
+          onClick={
+            openCreateModal
+          }
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
         >
           <Plus size={18} />
+
           Add Customer
         </button>
+
       </div>
 
       {/* ===================================================
-          ERROR
+          GLOBAL ERROR
       =================================================== */}
 
-      {error && (
+      {error && !showModal && (
         <div className="mb-5 flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <span>{error}</span>
+
+          <div>
+            <p className="font-semibold">
+              Error
+            </p>
+
+            <p className="mt-1">
+              {error}
+            </p>
+          </div>
 
           <button
             type="button"
-            onClick={() => setError("")}
+            onClick={() =>
+              setError("")
+            }
             className="shrink-0"
           >
             <X size={18} />
           </button>
+
         </div>
       )}
 
@@ -611,19 +819,24 @@ export default function CustomersPage() {
           SUCCESS
       =================================================== */}
 
-      {success && (
+      {success && !showModal && (
         <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
           {success}
         </div>
       )}
 
       {/* ===================================================
-          SUMMARY CARDS
+          SUMMARY
       =================================================== */}
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+
+        {/* TOTAL */}
+
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
           <div className="flex items-center justify-between">
+
             <div>
               <p className="text-sm text-gray-500">
                 Total Customers
@@ -637,11 +850,17 @@ export default function CustomersPage() {
             <div className="rounded-lg bg-blue-50 p-3 text-blue-600">
               <Users size={22} />
             </div>
+
           </div>
+
         </div>
 
+        {/* ACTIVE */}
+
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
           <div className="flex items-center justify-between">
+
             <div>
               <p className="text-sm text-gray-500">
                 Active Customers
@@ -655,11 +874,17 @@ export default function CustomersPage() {
             <div className="rounded-lg bg-green-50 p-3 text-green-600">
               <UserRoundCheck size={22} />
             </div>
+
           </div>
+
         </div>
 
+        {/* INACTIVE */}
+
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+
           <div className="flex items-center justify-between">
+
             <div>
               <p className="text-sm text-gray-500">
                 Inactive Customers
@@ -673,8 +898,11 @@ export default function CustomersPage() {
             <div className="rounded-lg bg-red-50 p-3 text-red-600">
               <UserRoundX size={22} />
             </div>
+
           </div>
+
         </div>
+
       </div>
 
       {/* ===================================================
@@ -682,8 +910,11 @@ export default function CustomersPage() {
       =================================================== */}
 
       <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+
         <div className="flex flex-col gap-3 md:flex-row">
+
           <div className="relative flex-1">
+
             <Search
               size={18}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -694,26 +925,29 @@ export default function CustomersPage() {
               value={search}
               onChange={(event) =>
                 handleSearchChange(
-                  event.target.value,
+                  event.target.value
                 )
               }
               placeholder="Search customers..."
               className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
+
           </div>
 
           <select
             value={status}
             onChange={(event) =>
               handleStatusChange(
-                event.target.value as
+                event.target
+                  .value as
                   | "all"
                   | "active"
-                  | "inactive",
+                  | "inactive"
               )
             }
             className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
+
             <option value="all">
               All Status
             </option>
@@ -725,8 +959,11 @@ export default function CustomersPage() {
             <option value="inactive">
               Inactive
             </option>
+
           </select>
+
         </div>
+
       </div>
 
       {/* ===================================================
@@ -734,14 +971,21 @@ export default function CustomersPage() {
       =================================================== */}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+
         {loading ? (
+
           <div className="flex min-h-[300px] items-center justify-center">
+
             <div className="text-sm text-gray-500">
               Loading customers...
             </div>
+
           </div>
+
         ) : paginatedCustomers.length === 0 ? (
+
           <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+
             <Users
               size={40}
               className="mb-3 text-gray-300"
@@ -754,15 +998,23 @@ export default function CustomersPage() {
             <p className="mt-1 text-sm text-gray-500">
               Try changing your search or filters.
             </p>
+
           </div>
+
         ) : (
+
           <>
+
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
+
+              <table className="w-full min-w-[850px]">
+
                 <thead className="bg-gray-50">
+
                   <tr className="border-b border-gray-200">
+
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Code
+                      ID
                     </th>
 
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -788,170 +1040,248 @@ export default function CustomersPage() {
                     <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
                       Actions
                     </th>
+
                   </tr>
+
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
+
                   {paginatedCustomers.map(
                     (customer) => (
+
                       <tr
                         key={customer.id}
                         className="transition hover:bg-gray-50"
                       >
+
+                        {/* ID */}
+
                         <td className="px-5 py-4 text-sm font-medium text-gray-700">
-                          {customer.customerCode ||
-                            "-"}
+                          #{customer.id}
                         </td>
 
+                        {/* CUSTOMER NAME */}
+
                         <td className="px-5 py-4">
+
                           <div className="flex items-center gap-3">
+
                             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+
                               <Users size={17} />
+
                             </div>
 
                             <div>
+
                               <p className="text-sm font-semibold text-gray-900">
-                                {customer.name}
+
+                                {customer.customerName ||
+                                  "-"}
+
                               </p>
 
                               <p className="text-xs text-gray-400">
-                                ID: {customer.id}
+                                Customer #{customer.id}
                               </p>
+
                             </div>
+
                           </div>
+
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-gray-600">
-                          {customer.phone || "-"}
-                        </td>
+                        {/* PHONE */}
 
                         <td className="px-5 py-4 text-sm text-gray-600">
-                          {customer.email || "-"}
-                        </td>
-
-                        <td className="px-5 py-4 text-sm text-gray-600">
-                          {[
-                            customer.city,
-                            customer.country,
-                          ]
-                            .filter(Boolean)
-                            .join(", ") ||
+                          {customer.phone ||
                             "-"}
                         </td>
 
-                        <td className="px-5 py-4">
-                          {customer.isActive ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                              Active
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
-                              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                              Inactive
-                            </span>
-                          )}
+                        {/* EMAIL */}
+
+                        <td className="px-5 py-4 text-sm text-gray-600">
+                          {customer.email ||
+                            "-"}
                         </td>
 
+                        {/* LOCATION */}
+
+                        <td className="px-5 py-4 text-sm text-gray-600">
+
+                          {customer.city ||
+                            "-"}
+
+                        </td>
+
+                        {/* STATUS */}
+
                         <td className="px-5 py-4">
+
+                          {customer.isActive ? (
+
+                            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
+
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+
+                              Active
+
+                            </span>
+
+                          ) : (
+
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+
+                              Inactive
+
+                            </span>
+
+                          )}
+
+                        </td>
+
+                        {/* ACTIONS */}
+
+                        <td className="px-5 py-4">
+
                           <div className="flex items-center justify-end gap-1">
+
+                            {/* VIEW */}
+
                             <button
                               type="button"
                               title="View"
                               onClick={() =>
                                 openViewModal(
-                                  customer,
+                                  customer
                                 )
                               }
                               className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
                             >
+
                               <Eye size={17} />
+
                             </button>
+
+                            {/* EDIT */}
 
                             <button
                               type="button"
                               title="Edit"
                               onClick={() =>
                                 openEditModal(
-                                  customer,
+                                  customer
                                 )
                               }
                               className="rounded-lg p-2 text-blue-500 transition hover:bg-blue-50 hover:text-blue-700"
                             >
+
                               <Pencil size={17} />
+
                             </button>
 
+                            {/* ACTIVATE / DEACTIVATE */}
+
                             {customer.isActive ? (
+
                               <button
                                 type="button"
                                 title="Deactivate"
                                 onClick={() =>
                                   handleDeactivate(
-                                    customer,
+                                    customer
                                   )
                                 }
                                 className="rounded-lg p-2 text-red-500 transition hover:bg-red-50 hover:text-red-700"
                               >
-                                <UserX
-                                  size={17}
-                                />
+
+                                <UserX size={17} />
+
                               </button>
+
                             ) : (
+
                               <button
                                 type="button"
                                 title="Activate"
                                 onClick={() =>
                                   handleActivate(
-                                    customer,
+                                    customer
                                   )
                                 }
                                 className="rounded-lg p-2 text-green-500 transition hover:bg-green-50 hover:text-green-700"
                               >
+
                                 <UserCheck
                                   size={17}
                                 />
+
                               </button>
+
                             )}
+
                           </div>
+
                         </td>
+
                       </tr>
-                    ),
+
+                    )
                   )}
+
                 </tbody>
+
               </table>
+
             </div>
 
-            {/* =================================================
-                PAGINATION
-            ================================================= */}
+            {/* PAGINATION */}
 
             <div className="flex flex-col gap-3 border-t border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+
               <p className="text-sm text-gray-500">
+
                 Showing{" "}
-                {filteredCustomers.length === 0
+
+                {filteredCustomers.length ===
+                0
                   ? 0
                   : (currentPage - 1) *
                       itemsPerPage +
-                    1}{" "}
-                to{" "}
+                    1}
+
+                {" "}to{" "}
+
                 {Math.min(
                   currentPage *
                     itemsPerPage,
-                  filteredCustomers.length,
-                )}{" "}
-                of{" "}
+                  filteredCustomers.length
+                )}
+
+                {" "}of{" "}
+
                 {filteredCustomers.length}{" "}
                 customers
+
               </p>
 
               <div className="flex items-center gap-2">
+
                 <button
                   type="button"
-                  disabled={currentPage <= 1}
+                  disabled={
+                    currentPage <= 1
+                  }
                   onClick={() =>
                     setCurrentPage(
                       (page) =>
-                        Math.max(1, page - 1),
+                        Math.max(
+                          1,
+                          page - 1
+                        )
                     )
                   }
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
@@ -967,25 +1297,31 @@ export default function CustomersPage() {
                 <button
                   type="button"
                   disabled={
-                    currentPage >= totalPages
+                    currentPage >=
+                    totalPages
                   }
                   onClick={() =>
                     setCurrentPage(
                       (page) =>
                         Math.min(
                           totalPages,
-                          page + 1,
-                        ),
+                          page + 1
+                        )
                     )
                   }
                   className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Next
                 </button>
+
               </div>
+
             </div>
+
           </>
+
         )}
+
       </div>
 
       {/* =====================================================
@@ -993,92 +1329,104 @@ export default function CustomersPage() {
       ===================================================== */}
 
       {showModal && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+
+            {/* HEADER */}
+
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+
               <div>
+
                 <h2 className="text-lg font-bold text-gray-900">
+
                   {editingCustomer
                     ? "Edit Customer"
                     : "Add Customer"}
+
                 </h2>
 
                 <p className="mt-1 text-xs text-gray-500">
+
                   {editingCustomer
                     ? "Update customer information"
                     : "Create a new customer"}
+
                 </p>
+
               </div>
 
               <button
                 type="button"
-                onClick={closeModal}
+                onClick={
+                  closeModal
+                }
                 disabled={saving}
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50"
               >
+
                 <X size={20} />
+
               </button>
+
             </div>
 
+            {/* FORM */}
+
             <form
-              onSubmit={handleSubmit}
+              onSubmit={
+                handleSubmit
+              }
               className="max-h-[75vh] overflow-y-auto"
             >
+
               <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
-                {/* CUSTOMER CODE */}
 
-                <div>
+                {/* CUSTOMER NAME */}
+
+                <div className="md:col-span-2">
+
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Customer Code
-                  </label>
 
-                  <input
-                    type="text"
-                    value={form.customerCode}
-                    onChange={(event) =>
-                      handleChange(
-                        "customerCode",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="Auto / optional"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
-
-                {/* NAME */}
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
                     Customer Name
+
                     <span className="ml-1 text-red-500">
                       *
                     </span>
+
                   </label>
 
                   <input
                     type="text"
-                    value={form.name}
+                    value={
+                      form.customerName
+                    }
                     onChange={(event) =>
                       handleChange(
-                        "name",
-                        event.target.value,
+                        "customerName",
+                        event.target.value
                       )
                     }
                     placeholder="Enter customer name"
                     required
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    disabled={saving}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                   />
+
                 </div>
 
                 {/* PHONE */}
 
                 <div>
+
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">
                     Phone
                   </label>
 
                   <div className="relative">
+
                     <Phone
                       size={16}
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -1086,27 +1434,34 @@ export default function CustomersPage() {
 
                     <input
                       type="text"
-                      value={form.phone}
+                      value={
+                        form.phone
+                      }
                       onChange={(event) =>
                         handleChange(
                           "phone",
-                          event.target.value,
+                          event.target.value
                         )
                       }
                       placeholder="Enter phone number"
-                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      disabled={saving}
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                     />
+
                   </div>
+
                 </div>
 
                 {/* EMAIL */}
 
                 <div>
+
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">
                     Email
                   </label>
 
                   <div className="relative">
+
                     <Mail
                       size={16}
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -1114,48 +1469,60 @@ export default function CustomersPage() {
 
                     <input
                       type="email"
-                      value={form.email}
+                      value={
+                        form.email
+                      }
                       onChange={(event) =>
                         handleChange(
                           "email",
-                          event.target.value,
+                          event.target.value
                         )
                       }
                       placeholder="Enter email"
-                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      disabled={saving}
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                     />
+
                   </div>
+
                 </div>
 
                 {/* ADDRESS */}
 
                 <div className="md:col-span-2">
+
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">
                     Address
                   </label>
 
                   <textarea
-                    value={form.address}
+                    value={
+                      form.address
+                    }
                     onChange={(event) =>
                       handleChange(
                         "address",
-                        event.target.value,
+                        event.target.value
                       )
                     }
                     placeholder="Enter address"
                     rows={3}
-                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    disabled={saving}
+                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                   />
+
                 </div>
 
                 {/* CITY */}
 
                 <div>
+
                   <label className="mb-1.5 block text-sm font-medium text-gray-700">
                     City
                   </label>
 
                   <div className="relative">
+
                     <MapPin
                       size={16}
                       className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -1163,63 +1530,88 @@ export default function CustomersPage() {
 
                     <input
                       type="text"
-                      value={form.city}
+                      value={
+                        form.city
+                      }
                       onChange={(event) =>
                         handleChange(
                           "city",
-                          event.target.value,
+                          event.target.value
                         )
                       }
                       placeholder="Enter city"
-                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      disabled={saving}
+                      className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                     />
+
                   </div>
+
                 </div>
 
-                {/* COUNTRY */}
+                {/* ACTIVE */}
 
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Country
+                <div className="flex items-center">
+
+                  <label className="flex cursor-pointer items-center gap-3">
+
+                    <input
+                      type="checkbox"
+                      checked={
+                        form.isActive
+                      }
+                      onChange={(event) =>
+                        handleChange(
+                          "isActive",
+                          event.target.checked
+                        )
+                      }
+                      disabled={saving}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+
+                    <span className="text-sm font-medium text-gray-700">
+                      Active Customer
+                    </span>
+
                   </label>
 
-                  <input
-                    type="text"
-                    value={form.country}
-                    onChange={(event) =>
-                      handleChange(
-                        "country",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="Enter country"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
                 </div>
 
                 {/* FORM ERROR */}
 
                 {error && (
+
                   <div className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+
                     {error}
+
                   </div>
+
                 )}
 
                 {/* FORM SUCCESS */}
 
                 {success && (
+
                   <div className="md:col-span-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+
                     {success}
+
                   </div>
+
                 )}
+
               </div>
 
               {/* FOOTER */}
 
               <div className="flex items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+
                 <button
                   type="button"
-                  onClick={closeModal}
+                  onClick={
+                    closeModal
+                  }
                   disabled={saving}
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
@@ -1231,16 +1623,23 @@ export default function CustomersPage() {
                   disabled={saving}
                   className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
+
                   {saving
                     ? "Saving..."
                     : editingCustomer
-                      ? "Update Customer"
-                      : "Create Customer"}
+                    ? "Update Customer"
+                    : "Create Customer"}
+
                 </button>
+
               </div>
+
             </form>
+
           </div>
+
         </div>
+
       )}
 
       {/* =====================================================
@@ -1249,10 +1648,17 @@ export default function CustomersPage() {
 
       {showViewModal &&
         viewingCustomer && (
+
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+
             <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+
+              {/* HEADER */}
+
               <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+
                 <div>
+
                   <h2 className="text-lg font-bold text-gray-900">
                     Customer Details
                   </h2>
@@ -1260,64 +1666,90 @@ export default function CustomersPage() {
                   <p className="mt-1 text-xs text-gray-500">
                     View customer information
                   </p>
+
                 </div>
 
                 <button
                   type="button"
-                  onClick={closeViewModal}
+                  onClick={
+                    closeViewModal
+                  }
                   className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
                 >
+
                   <X size={20} />
+
                 </button>
+
               </div>
 
+              {/* DETAILS */}
+
               <div className="space-y-5 p-6">
+
                 {/* NAME */}
 
                 <div className="flex items-center gap-4">
+
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+
                     <Users size={25} />
+
                   </div>
 
                   <div>
+
                     <h3 className="text-lg font-bold text-gray-900">
-                      {viewingCustomer.name}
+
+                      {viewingCustomer.customerName ||
+                        "-"}
+
                     </h3>
 
                     <p className="text-sm text-gray-500">
-                      {viewingCustomer.customerCode ||
-                        "-"}
+                      Customer #
+                      {viewingCustomer.id}
                     </p>
+
                   </div>
+
                 </div>
 
                 {/* STATUS */}
 
                 <div>
+
                   <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
                     Status
                   </p>
 
                   {viewingCustomer.isActive ? (
+
                     <span className="inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
                       Active
                     </span>
+
                   ) : (
+
                     <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
                       Inactive
                     </span>
+
                   )}
+
                 </div>
 
                 {/* PHONE */}
 
                 <div className="flex items-start gap-3">
+
                   <Phone
                     size={18}
                     className="mt-0.5 text-gray-400"
                   />
 
                   <div>
+
                     <p className="text-xs text-gray-400">
                       Phone
                     </p>
@@ -1326,18 +1758,22 @@ export default function CustomersPage() {
                       {viewingCustomer.phone ||
                         "-"}
                     </p>
+
                   </div>
+
                 </div>
 
                 {/* EMAIL */}
 
                 <div className="flex items-start gap-3">
+
                   <Mail
                     size={18}
                     className="mt-0.5 text-gray-400"
                   />
 
                   <div>
+
                     <p className="text-xs text-gray-400">
                       Email
                     </p>
@@ -1346,18 +1782,22 @@ export default function CustomersPage() {
                       {viewingCustomer.email ||
                         "-"}
                     </p>
+
                   </div>
+
                 </div>
 
                 {/* ADDRESS */}
 
                 <div className="flex items-start gap-3">
+
                   <MapPin
                     size={18}
                     className="mt-0.5 text-gray-400"
                   />
 
                   <div>
+
                     <p className="text-xs text-gray-400">
                       Address
                     </p>
@@ -1367,54 +1807,67 @@ export default function CustomersPage() {
                         "-"}
                     </p>
 
-                    <p className="text-sm text-gray-600">
-                      {[
-                        viewingCustomer.city,
-                        viewingCustomer.country,
-                      ]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </p>
+                    {viewingCustomer.city && (
+
+                      <p className="text-sm text-gray-600">
+                        {viewingCustomer.city}
+                      </p>
+
+                    )}
+
                   </div>
+
                 </div>
 
-                {/* CREATED */}
+                {/* CREATED / UPDATED */}
 
                 <div className="border-t border-gray-100 pt-4">
+
                   <div className="grid grid-cols-2 gap-4">
+
                     <div>
+
                       <p className="text-xs text-gray-400">
                         Created
                       </p>
 
                       <p className="mt-1 text-sm text-gray-700">
                         {formatDate(
-                          viewingCustomer.createdAt,
+                          viewingCustomer.createdAt
                         )}
                       </p>
+
                     </div>
 
                     <div>
+
                       <p className="text-xs text-gray-400">
                         Updated
                       </p>
 
                       <p className="mt-1 text-sm text-gray-700">
                         {formatDate(
-                          viewingCustomer.updatedAt,
+                          viewingCustomer.updatedAt
                         )}
                       </p>
+
                     </div>
+
                   </div>
+
                 </div>
+
               </div>
 
-              {/* VIEW FOOTER */}
+              {/* FOOTER */}
 
               <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+
                 <button
                   type="button"
-                  onClick={closeViewModal}
+                  onClick={
+                    closeViewModal
+                  }
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Close
@@ -1423,20 +1876,34 @@ export default function CustomersPage() {
                 <button
                   type="button"
                   onClick={() => {
+
+                    const customer =
+                      viewingCustomer;
+
                     closeViewModal();
+
                     openEditModal(
-                      viewingCustomer,
+                      customer
                     );
+
                   }}
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
                 >
+
                   <Pencil size={16} />
+
                   Edit
+
                 </button>
+
               </div>
+
             </div>
+
           </div>
+
         )}
+
     </div>
   );
 }

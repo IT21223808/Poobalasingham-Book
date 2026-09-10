@@ -74,22 +74,6 @@ export default function BalanceSheetPage() {
       const income = incomeRes.data?.summary || {};
       const expense = expenseRes.data?.summary || {};
 
-      /*
-       * ASSET CALCULATION
-       *
-       * Cash Balance
-       * = Total Cash Income - Total Cash Expenses
-       *
-       * Bank Balance
-       * = Total Bank Income - Total Bank Expenses
-       *
-       * Current Assets
-       * = Cash + Bank + Accounts Receivable
-       *
-       * Total Assets
-       * = Current Assets
-       */
-
       const cash =
         Number(income.totalCash || 0) -
         Number(expense.totalCash || 0);
@@ -98,10 +82,6 @@ export default function BalanceSheetPage() {
         Number(income.totalBank || 0) -
         Number(expense.totalBank || 0);
 
-      /*
-       * AR/AP are kept as zero until the corresponding
-       * finance APIs are connected.
-       */
       const receivable = 0;
       const payable = 0;
 
@@ -112,22 +92,8 @@ export default function BalanceSheetPage() {
 
       const totalAssets = currentAssets;
 
-      /*
-       * Liabilities
-       *
-       * Total Liabilities = Accounts Payable
-       */
       const totalLiabilities = payable;
 
-      /*
-       * Accounting Equation:
-       *
-       * Assets = Liabilities + Equity
-       *
-       * Therefore:
-       *
-       * Equity = Assets - Liabilities
-       */
       const equity =
         totalAssets -
         totalLiabilities;
@@ -171,11 +137,19 @@ export default function BalanceSheetPage() {
   const isBalanced =
     Math.abs(data.difference) < 0.01;
 
+  const periodLabel =
+    period === "all"
+      ? "All Time"
+      : period.charAt(0).toUpperCase() +
+        period.slice(1);
+
   return (
     <div className="min-h-screen bg-gray-50/50 p-6">
       <FinanceNav />
 
-      {/* Header */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900">
@@ -215,7 +189,9 @@ export default function BalanceSheetPage() {
         </div>
       </div>
 
-      {/* Error */}
+      {/* =====================================================
+          ERROR
+      ===================================================== */}
       {error && (
         <div className="mb-6 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">
           <AlertCircle className="h-4 w-4" />
@@ -223,221 +199,552 @@ export default function BalanceSheetPage() {
         </div>
       )}
 
-      {/* Total Assets */}
-      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-gray-500">
-              Total Assets
-            </p>
+      {/* =====================================================
+          REPORT HEADER
+      ===================================================== */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-200 bg-gray-50 px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-blue-50 p-2.5 text-blue-600">
+                <Scale className="h-5 w-5" />
+              </div>
 
-            <p className="mt-2 text-2xl font-bold text-blue-600">
-              {formatCurrency(data.totalAssets)}
-            </p>
-          </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  Balance Sheet Statement
+                </h3>
 
-          <Scale className="h-8 w-8 text-blue-600" />
-        </div>
-      </div>
-
-      {/* Main Sections */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Assets */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 p-5">
-            <h3 className="font-bold text-gray-900">
-              Assets
-            </h3>
-          </div>
-
-          <div className="space-y-1 p-5 text-xs">
-            <div className="flex justify-between border-b py-3">
-              <span className="flex items-center gap-2 text-gray-600">
-                <Wallet className="h-4 w-4 text-amber-600" />
-                Cash
-              </span>
-
-              <span className="font-semibold">
-                {formatCurrency(data.cash)}
-              </span>
+                <p className="mt-0.5 text-[11px] text-gray-500">
+                  Financial position — {periodLabel}
+                </p>
+              </div>
             </div>
 
-            <div className="flex justify-between border-b py-3">
-              <span className="flex items-center gap-2 text-gray-600">
-                <Building2 className="h-4 w-4 text-indigo-600" />
-                Bank
-              </span>
+            {/* Balance Status */}
+            {!loading && (
+              <div
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 ${
+                  isBalanced
+                    ? "border-emerald-200 bg-emerald-50"
+                    : "border-rose-200 bg-rose-50"
+                }`}
+              >
+                {isBalanced ? (
+                  <CheckCircle className="h-4 w-4 text-emerald-600" />
+                ) : (
+                  <XCircle className="h-4 w-4 text-rose-600" />
+                )}
 
-              <span className="font-semibold">
-                {formatCurrency(data.bank)}
-              </span>
-            </div>
+                <div>
+                  <p
+                    className={`text-[10px] font-bold uppercase tracking-wider ${
+                      isBalanced
+                        ? "text-emerald-700"
+                        : "text-rose-700"
+                    }`}
+                  >
+                    {isBalanced
+                      ? "Balanced"
+                      : "Not Balanced"}
+                  </p>
 
-            <div className="flex justify-between border-b py-3">
-              <span className="text-gray-600">
-                Accounts Receivable
-              </span>
-
-              <span className="font-semibold">
-                {formatCurrency(data.receivable)}
-              </span>
-            </div>
-
-            <div className="mt-3 flex justify-between border-t pt-3 font-bold">
-              <span>Total Assets</span>
-
-              <span className="text-blue-600">
-                {formatCurrency(data.totalAssets)}
-              </span>
-            </div>
+                  <p className="text-[10px] text-gray-500">
+                    Assets = Liabilities + Equity
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Liabilities */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 p-5">
-            <h3 className="font-bold text-gray-900">
-              Liabilities
-            </h3>
-          </div>
+        {/* =====================================================
+            BALANCE SHEET TABLE
+        ===================================================== */}
+        <div className="p-6">
+          {loading ? (
+            <div className="py-16 text-center">
+              <RefreshCw className="mx-auto h-5 w-5 animate-spin text-blue-500" />
 
-          <div className="space-y-1 p-5 text-xs">
-            <div className="flex justify-between border-b py-3">
-              <span className="flex items-center gap-2 text-gray-600">
-                <ArrowUpRight className="h-4 w-4 text-rose-600" />
-                Accounts Payable
-              </span>
-
-              <span className="font-semibold">
-                {formatCurrency(data.payable)}
-              </span>
+              <p className="mt-3 text-xs text-gray-400">
+                Loading balance sheet...
+              </p>
             </div>
-
-            <div className="mt-3 flex justify-between border-t pt-3 font-bold">
-              <span>Total Liabilities</span>
-
-              <span className="text-rose-600">
-                {formatCurrency(data.totalLiabilities)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Equity */}
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 p-5">
-            <h3 className="font-bold text-gray-900">
-              Equity
-            </h3>
-          </div>
-
-          <div className="space-y-1 p-5 text-xs">
-            <div className="flex justify-between border-b py-3">
-              <span className="flex items-center gap-2 text-gray-600">
-                <ArrowDownLeft className="h-4 w-4 text-emerald-600" />
-                Owner Equity
-              </span>
-
-              <span className="font-semibold">
-                {formatCurrency(data.equity)}
-              </span>
-            </div>
-
-            <div className="mt-3 flex justify-between border-t pt-3 font-bold">
-              <span>Total Equity</span>
-
-              <span className="text-emerald-600">
-                {formatCurrency(data.equity)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Accounting Equation */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="mb-5 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-gray-900">
-            Accounting Equation
-          </h3>
-
-          {isBalanced ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-              <CheckCircle className="h-3.5 w-3.5" />
-              Balanced
-            </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1 text-[11px] font-semibold text-rose-700">
-              <XCircle className="h-3.5 w-3.5" />
-              Not Balanced
-            </span>
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="w-[55%] border-b border-gray-200 px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Description
+                    </th>
+
+                    <th className="w-[25%] border-b border-gray-200 px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Amount
+                    </th>
+
+                    <th className="w-[20%] border-b border-gray-200 px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                      Classification
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {/* =================================================
+                      ASSETS
+                  ================================================= */}
+                  <tr className="bg-blue-50/50">
+                    <td
+                      colSpan={3}
+                      className="border-b border-gray-200 px-5 py-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Scale className="h-4 w-4 text-blue-600" />
+
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-800">
+                          Assets
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Cash */}
+                  <tr className="transition hover:bg-gray-50">
+                    <td className="border-b border-gray-100 px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-md bg-amber-50 p-2">
+                          <Wallet className="h-4 w-4 text-amber-600" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">
+                            Cash
+                          </p>
+
+                          <p className="text-[10px] text-gray-400">
+                            Cash available in business
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {formatCurrency(data.cash)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
+                        Current Asset
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Bank */}
+                  <tr className="transition hover:bg-gray-50">
+                    <td className="border-b border-gray-100 px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-md bg-indigo-50 p-2">
+                          <Building2 className="h-4 w-4 text-indigo-600" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">
+                            Bank
+                          </p>
+
+                          <p className="text-[10px] text-gray-400">
+                            Bank balances
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {formatCurrency(data.bank)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold text-indigo-700">
+                        Current Asset
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Receivable */}
+                  <tr className="transition hover:bg-gray-50">
+                    <td className="border-b border-gray-100 px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-md bg-blue-50 p-2">
+                          <ArrowDownLeft className="h-4 w-4 text-blue-600" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">
+                            Accounts Receivable
+                          </p>
+
+                          <p className="text-[10px] text-gray-400">
+                            Amount receivable from customers
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {formatCurrency(data.receivable)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
+                        Current Asset
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Current Assets */}
+                  <tr className="bg-blue-50/30">
+                    <td className="border-b border-gray-200 px-5 py-4">
+                      <span className="text-xs font-bold text-gray-900">
+                        Total Current Assets
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-200 px-5 py-4 text-right">
+                      <span className="text-sm font-bold text-blue-600">
+                        {formatCurrency(data.currentAssets)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-200 px-5 py-4 text-right">
+                      <span className="text-[10px] font-medium text-gray-400">
+                        Cash + Bank + AR
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Total Assets */}
+                  <tr className="bg-blue-100/50">
+                    <td className="px-5 py-5">
+                      <span className="text-sm font-bold text-gray-900">
+                        TOTAL ASSETS
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-5 text-right">
+                      <span className="text-lg font-bold text-blue-600">
+                        {formatCurrency(data.totalAssets)}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-5 text-right">
+                      <span className="inline-flex rounded-full bg-blue-100 px-3 py-1 text-[10px] font-bold text-blue-700">
+                        ASSETS
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* =================================================
+                      LIABILITIES
+                  ================================================= */}
+                  <tr className="bg-rose-50/50">
+                    <td
+                      colSpan={3}
+                      className="border-b border-gray-200 px-5 py-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <ArrowUpRight className="h-4 w-4 text-rose-600" />
+
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-800">
+                          Liabilities
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Payable */}
+                  <tr className="transition hover:bg-gray-50">
+                    <td className="border-b border-gray-100 px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-md bg-rose-50 p-2">
+                          <ArrowUpRight className="h-4 w-4 text-rose-600" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">
+                            Accounts Payable
+                          </p>
+
+                          <p className="text-[10px] text-gray-400">
+                            Amount payable to suppliers
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {formatCurrency(data.payable)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-semibold text-rose-700">
+                        Current Liability
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Total Liabilities */}
+                  <tr className="bg-rose-50/30">
+                    <td className="border-b border-gray-200 px-5 py-4">
+                      <span className="text-xs font-bold text-gray-900">
+                        TOTAL LIABILITIES
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-200 px-5 py-4 text-right">
+                      <span className="text-sm font-bold text-rose-600">
+                        {formatCurrency(data.totalLiabilities)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-200 px-5 py-4 text-right">
+                      <span className="text-[10px] font-medium text-gray-400">
+                        Total Payables
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* =================================================
+                      EQUITY
+                  ================================================= */}
+                  <tr className="bg-emerald-50/50">
+                    <td
+                      colSpan={3}
+                      className="border-b border-gray-200 px-5 py-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <ArrowDownLeft className="h-4 w-4 text-emerald-600" />
+
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-800">
+                          Equity
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Owner Equity */}
+                  <tr className="transition hover:bg-gray-50">
+                    <td className="border-b border-gray-100 px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-md bg-emerald-50 p-2">
+                          <ArrowDownLeft className="h-4 w-4 text-emerald-600" />
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-800">
+                            Owner Equity
+                          </p>
+
+                          <p className="text-[10px] text-gray-400">
+                            Assets less liabilities
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {formatCurrency(data.equity)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-100 px-5 py-4 text-right">
+                      <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                        Equity
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Total Equity */}
+                  <tr className="bg-emerald-50/30">
+                    <td className="border-b border-gray-200 px-5 py-4">
+                      <span className="text-xs font-bold text-gray-900">
+                        TOTAL EQUITY
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-200 px-5 py-4 text-right">
+                      <span className="text-sm font-bold text-emerald-600">
+                        {formatCurrency(data.equity)}
+                      </span>
+                    </td>
+
+                    <td className="border-b border-gray-200 px-5 py-4 text-right">
+                      <span className="text-[10px] font-medium text-gray-400">
+                        Owner Equity
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* =================================================
+                      LIABILITIES + EQUITY
+                  ================================================= */}
+                  <tr className="bg-gray-100">
+                    <td className="px-5 py-5">
+                      <span className="text-sm font-bold text-gray-900">
+                        TOTAL LIABILITIES + EQUITY
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-5 text-right">
+                      <span className="text-lg font-bold text-gray-900">
+                        {formatCurrency(
+                          data.liabilitiesAndEquity
+                        )}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-5 text-right">
+                      <span className="inline-flex rounded-full bg-gray-200 px-3 py-1 text-[10px] font-bold text-gray-700">
+                        L + E
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-lg bg-blue-50 p-4">
-            <p className="text-[11px] uppercase tracking-wider text-gray-500">
-              Total Assets
-            </p>
+          {/* =====================================================
+              ACCOUNTING EQUATION SUMMARY
+          ===================================================== */}
+          {!loading && (
+            <div className="mt-6 overflow-hidden rounded-lg border border-gray-200">
+              <div className="border-b border-gray-200 bg-gray-50 px-5 py-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800">
+                  Accounting Equation
+                </h3>
+              </div>
 
-            <p className="mt-2 text-lg font-bold text-blue-600">
-              {formatCurrency(data.totalAssets)}
-            </p>
-          </div>
+              <div className="grid grid-cols-1 divide-y divide-gray-200 md:grid-cols-3 md:divide-x md:divide-y-0">
+                {/* Assets */}
+                <div className="p-5">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                    Total Assets
+                  </p>
 
-          <div className="rounded-lg bg-rose-50 p-4">
-            <p className="text-[11px] uppercase tracking-wider text-gray-500">
-              Total Liabilities
-            </p>
+                  <p className="mt-2 text-lg font-bold text-blue-600">
+                    {formatCurrency(data.totalAssets)}
+                  </p>
+                </div>
 
-            <p className="mt-2 text-lg font-bold text-rose-600">
-              {formatCurrency(data.totalLiabilities)}
-            </p>
-          </div>
+                {/* Liabilities */}
+                <div className="p-5">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                    Total Liabilities
+                  </p>
 
-          <div className="rounded-lg bg-emerald-50 p-4">
-            <p className="text-[11px] uppercase tracking-wider text-gray-500">
-              Total Equity
-            </p>
+                  <p className="mt-2 text-lg font-bold text-rose-600">
+                    {formatCurrency(data.totalLiabilities)}
+                  </p>
+                </div>
 
-            <p className="mt-2 text-lg font-bold text-emerald-600">
-              {formatCurrency(data.equity)}
-            </p>
-          </div>
-        </div>
+                {/* Equity */}
+                <div className="p-5">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                    Total Equity
+                  </p>
 
-        <div className="mt-5 space-y-3 border-t pt-5 text-sm">
-          <div className="flex justify-between font-bold">
-            <span>Total Assets</span>
+                  <p className="mt-2 text-lg font-bold text-emerald-600">
+                    {formatCurrency(data.equity)}
+                  </p>
+                </div>
+              </div>
 
-            <span>
-              {formatCurrency(data.totalAssets)}
-            </span>
-          </div>
+              {/* Equation */}
+              <div className="border-t border-gray-200 bg-gray-50 px-5 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-gray-600">
+                    <span className="font-semibold text-gray-900">
+                      Assets
+                    </span>
 
-          <div className="flex justify-between border-t pt-3 font-bold">
-            <span>Liabilities + Equity</span>
+                    {" = "}
 
-            <span>
-              {formatCurrency(data.liabilitiesAndEquity)}
-            </span>
-          </div>
+                    <span className="font-semibold text-gray-900">
+                      Liabilities
+                    </span>
 
-          <div className="flex justify-between border-t pt-3 text-xs">
-            <span className="text-gray-500">
-              Difference
-            </span>
+                    {" + "}
 
-            <span
-              className={
-                isBalanced
-                  ? "font-semibold text-emerald-600"
-                  : "font-semibold text-rose-600"
-              }
-            >
-              {formatCurrency(data.difference)}
-            </span>
-          </div>
+                    <span className="font-semibold text-gray-900">
+                      Equity
+                    </span>
+                  </div>
+
+                  <div
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-bold ${
+                      isBalanced
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-rose-100 text-rose-700"
+                    }`}
+                  >
+                    {isBalanced ? (
+                      <>
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        BALANCED
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-3.5 w-3.5" />
+                        NOT BALANCED
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Difference */}
+                <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
+                  <span className="text-xs text-gray-500">
+                    Difference
+                  </span>
+
+                  <span
+                    className={`text-sm font-bold ${
+                      isBalanced
+                        ? "text-emerald-600"
+                        : "text-rose-600"
+                    }`}
+                  >
+                    {formatCurrency(data.difference)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================
+              NOTE
+          ===================================================== */}
+          {!loading && (
+            <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <p className="text-[11px] font-semibold text-blue-800">
+                Accounting Note
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-blue-700">
+                The balance sheet follows the accounting equation:
+                Assets = Liabilities + Equity.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

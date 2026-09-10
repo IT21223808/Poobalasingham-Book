@@ -50,6 +50,20 @@ export interface FinanceTransaction {
   updatedAt: string;
 }
 
+interface FinanceAuthenticatedUser {
+  id: number;
+  email?: string;
+  role: string;
+  locationId?: string | null;
+  tillId?: number | null;
+}
+
+interface FinanceScope {
+  isOwner: boolean;
+  locationId: string | null;
+  tillId: number | null;
+}
+
 export interface SupplierPayment {
   id: number;
   paymentNumber: string;

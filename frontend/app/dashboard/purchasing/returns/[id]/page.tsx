@@ -35,6 +35,8 @@ export default function PurchaseReturnViewPage() {
 
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -83,6 +85,63 @@ export default function PurchaseReturnViewPage() {
   }, [loadReturn]);
 
   // =========================================================
+  // COMPLETE RETURN
+  // =========================================================
+
+  const handleCompleteReturn = async () => {
+    if (!purchaseReturn) {
+      return;
+    }
+
+    if (purchaseReturn.status !== "PENDING") {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Are you sure you want to complete purchase return ${purchaseReturn.returnNumber}?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCompleting(true);
+      setError("");
+      setSuccess("");
+
+      await purchasingService.completeReturn(
+        purchaseReturn.id
+      );
+
+      setSuccess(
+        "Purchase return completed successfully."
+      );
+
+      // Refresh from backend
+      await loadReturn();
+    } catch (err: any) {
+      console.error(
+        "Complete purchase return error:",
+        err
+      );
+
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to complete purchase return.";
+
+      setError(
+        typeof message === "string"
+          ? message
+          : JSON.stringify(message)
+      );
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  // =========================================================
   // CANCEL RETURN
   // =========================================================
 
@@ -126,7 +185,7 @@ export default function PurchaseReturnViewPage() {
           : prev
       );
 
-      // Optional refresh from backend
+      // Refresh from backend
       await loadReturn();
     } catch (err: any) {
       console.error(
@@ -269,7 +328,8 @@ export default function PurchaseReturnViewPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-red-700">
-                  {error || "Purchase return not found"}
+                  {error ||
+                    "Purchase return not found"}
                 </p>
               </div>
             </div>
@@ -409,6 +469,34 @@ export default function PurchaseReturnViewPage() {
                 {purchaseReturn.status}
               </span>
 
+              {/* COMPLETE */}
+
+              {isPending && (
+                <button
+                  type="button"
+                  onClick={handleCompleteReturn}
+                  disabled={
+                    completing || cancelling
+                  }
+                  className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {completing ? (
+                    <>
+                      <RefreshCw
+                        size={17}
+                        className="animate-spin"
+                      />
+                      Completing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={17} />
+                      Complete Return
+                    </>
+                  )}
+                </button>
+              )}
+
               {/* EDIT */}
 
               {isPending && (
@@ -427,7 +515,9 @@ export default function PurchaseReturnViewPage() {
                 <button
                   type="button"
                   onClick={handleCancelReturn}
-                  disabled={cancelling}
+                  disabled={
+                    cancelling || completing
+                  }
                   className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {cancelling ? (
@@ -912,7 +1002,8 @@ export default function PurchaseReturnViewPage() {
               </h3>
 
               <p className="mt-1 text-sm text-green-700">
-                This purchase return has been completed.
+                This purchase return has been completed
+                successfully.
               </p>
             </div>
 
@@ -934,7 +1025,7 @@ export default function PurchaseReturnViewPage() {
 
               <p className="mt-1 text-sm text-yellow-700">
                 This return is still pending. You can
-                edit or cancel it.
+                edit, complete, or cancel it.
               </p>
             </div>
 
@@ -956,6 +1047,34 @@ export default function PurchaseReturnViewPage() {
 
           {isPending && (
             <>
+              {/* COMPLETE */}
+
+              <button
+                type="button"
+                onClick={handleCompleteReturn}
+                disabled={
+                  completing || cancelling
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {completing ? (
+                  <>
+                    <RefreshCw
+                      size={17}
+                      className="animate-spin"
+                    />
+                    Completing...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={17} />
+                    Complete Return
+                  </>
+                )}
+              </button>
+
+              {/* EDIT */}
+
               <Link
                 href={`/dashboard/purchasing/returns/${purchaseReturn.id}/edit`}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
@@ -964,10 +1083,14 @@ export default function PurchaseReturnViewPage() {
                 Edit Return
               </Link>
 
+              {/* CANCEL */}
+
               <button
                 type="button"
                 onClick={handleCancelReturn}
-                disabled={cancelling}
+                disabled={
+                  cancelling || completing
+                }
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-5 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {cancelling ? (

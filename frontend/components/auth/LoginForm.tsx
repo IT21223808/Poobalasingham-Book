@@ -32,53 +32,121 @@ export default function LoginForm() {
     },
   });
 
-const onSubmit = async (data: LoginFormData) => {
-  try {
-    setServerError('');
+  const onSubmit = async (data: LoginFormData) => {
+    try {
+      setServerError('');
 
-    const response = await login({
-      email: data.email,
-      password: data.password,
-    });
+      const response = await login({
+        email: data.email,
+        password: data.password,
+      });
 
-    // Save access token in cookie
-    Cookies.set('access_token', response.access_token, {
-      expires: data.remember ? 7 : undefined,
-    });
+      // ==========================================
+      // ACCESS TOKEN
+      // ==========================================
 
-    // Save the SAME access token in localStorage
-    // Reports API and other frontend API calls can use this.
-    localStorage.setItem(
-      'authToken',
-      response.access_token,
-    );
+      Cookies.set('access_token', response.access_token, {
+        expires: data.remember ? 7 : undefined,
+      });
 
-    // Save user information if needed
-    if (response.user) {
+      // Same token for API calls
       localStorage.setItem(
-        'user',
-        JSON.stringify(response.user),
+        'authToken',
+        response.access_token,
       );
 
-      localStorage.setItem(
-        'userId',
-        String(response.user.id),
-      );
+      // ==========================================
+      // USER INFORMATION
+      // ==========================================
 
-      localStorage.setItem(
-        'loggedInUserType',
-        response.user.role,
+      if (response.user) {
+        localStorage.setItem(
+          'user',
+          JSON.stringify(response.user),
+        );
+
+        localStorage.setItem(
+          'userId',
+          String(response.user.id),
+        );
+
+        localStorage.setItem(
+          'loggedInUserType',
+          response.user.role,
+        );
+
+        // ==========================================
+        // BRANCH / LOCATION
+        // ==========================================
+
+        const locationId =
+          response.user.locationId ||
+          response.user.location?.id;
+
+        const locationName =
+          response.user.location?.name;
+
+        if (locationId) {
+          localStorage.setItem(
+            'userLocationId',
+            String(locationId),
+          );
+        } else {
+          localStorage.removeItem('userLocationId');
+        }
+
+        if (locationName) {
+          localStorage.setItem(
+            'userLocationName',
+            locationName,
+          );
+        } else {
+          localStorage.removeItem('userLocationName');
+        }
+
+        // ==========================================
+        // TILL
+        // ==========================================
+
+        const tillId =
+          response.user.tillId ||
+          response.user.till?.id;
+
+        const tillName =
+          response.user.till?.name;
+
+        if (tillId) {
+          localStorage.setItem(
+            'userTillId',
+            String(tillId),
+          );
+        } else {
+          localStorage.removeItem('userTillId');
+        }
+
+        if (tillName) {
+          localStorage.setItem(
+            'userTillName',
+            tillName,
+          );
+        } else {
+          localStorage.removeItem('userTillName');
+        }
+      }
+
+      // ==========================================
+      // GO TO DASHBOARD
+      // ==========================================
+
+      router.push('/dashboard');
+    } catch (error: any) {
+      setServerError(
+        error?.response?.data?.message?.message ||
+          error?.response?.data?.message ||
+          'Invalid email or password',
       );
     }
-
-    router.push('/dashboard');
-  } catch (error: any) {
-    setServerError(
-      error?.response?.data?.message?.message ||
-        'Invalid email or password',
-    );
-  }
-};
+  };
 
   return (
     <motion.form
@@ -117,7 +185,7 @@ const onSubmit = async (data: LoginFormData) => {
                 message: 'Enter a valid email',
               },
             })}
-            className="flex-1 bg-transparent px-4 py-4 outline-none text-black placeholder:text-slate-400"
+            className="flex-1 bg-transparent px-4 py-4 text-black outline-none placeholder:text-slate-400"
           />
         </div>
 
@@ -171,6 +239,7 @@ const onSubmit = async (data: LoginFormData) => {
       {/* Login Button */}
 
       <button
+        type="submit"
         disabled={isSubmitting}
         className="flex w-full items-center justify-center rounded-xl bg-blue-600 py-4 font-semibold text-white transition hover:bg-blue-700 disabled:opacity-70"
       >
@@ -180,7 +249,6 @@ const onSubmit = async (data: LoginFormData) => {
               size={18}
               className="mr-2 animate-spin"
             />
-
             Signing In...
           </>
         ) : (
