@@ -1,5 +1,21 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+
 import "./globals.css";
+
+/* =========================================================
+   GLOBAL FONT
+========================================================= */
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
+
+/* =========================================================
+   METADATA
+========================================================= */
 
 export const metadata: Metadata = {
   title: "Poobalasingham Book Depot",
@@ -11,14 +27,21 @@ export const metadata: Metadata = {
   },
 };
 
+/* =========================================================
+   ROOT LAYOUT
+========================================================= */
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
-      <body className="min-h-full antialiased">
+    <html
+      lang="en"
+      className={`h-full ${inter.variable}`}
+    >
+      <body className="min-h-full font-sans antialiased">
         {children}
       </body>
     </html>
