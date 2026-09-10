@@ -19,6 +19,7 @@ import {
   LogOut,
   MapPin,
   BookOpen,
+  UserCog,
 } from "lucide-react";
 
 import { useEffect, useMemo, useState } from "react";
@@ -53,7 +54,8 @@ type MenuPermission =
   | "finance"
   | "reports"
   | "pos"
-  | "settings";
+  | "settings"
+  | "staff";
 
 interface StoredUser {
   id?: number;
@@ -83,13 +85,10 @@ interface StoredUser {
 
 const normalizeRole = (
   role?: UserRole,
-): "OWNER" | "MANAGER" | "CASHIER" | "USER" => {
+): "OWNER" | "MANAGER" | "CASHIER" | "STAFF" | "USER" => {
   switch (role) {
     case "ADMIN":
       return "OWNER";
-
-    case "STAFF":
-      return "CASHIER";
 
     case "OWNER":
       return "OWNER";
@@ -99,6 +98,9 @@ const normalizeRole = (
 
     case "CASHIER":
       return "CASHIER";
+
+    case "STAFF":
+      return "STAFF";
 
     default:
       return "USER";
@@ -110,9 +112,13 @@ const normalizeRole = (
 ========================================================= */
 
 const ROLE_PERMISSIONS: Record<
-  "OWNER" | "MANAGER" | "CASHIER" | "USER",
+  "OWNER" | "MANAGER" | "CASHIER" | "STAFF" | "USER",
   MenuPermission[]
 > = {
+  /* =======================================================
+     OWNER
+  ======================================================= */
+
   OWNER: [
     "dashboard",
     "catalog",
@@ -126,8 +132,13 @@ const ROLE_PERMISSIONS: Record<
     "finance",
     "reports",
     "pos",
+    "staff",
     "settings",
   ],
+
+  /* =======================================================
+     MANAGER
+  ======================================================= */
 
   MANAGER: [
     "dashboard",
@@ -140,6 +151,10 @@ const ROLE_PERMISSIONS: Record<
     "pos",
   ],
 
+  /* =======================================================
+     CASHIER
+  ======================================================= */
+
   CASHIER: [
     "dashboard",
     "catalog",
@@ -148,6 +163,22 @@ const ROLE_PERMISSIONS: Record<
     "customers",
     "pos",
   ],
+
+  /* =======================================================
+     STAFF
+  ======================================================= */
+
+  STAFF: [
+    "dashboard",
+    "catalog",
+    "products",
+    "orders",
+    "customers",
+  ],
+
+  /* =======================================================
+     USER
+  ======================================================= */
 
   USER: [],
 };
@@ -252,7 +283,12 @@ const menuItems: {
 ========================================================= */
 
 const getRoleLabel = (
-  role: "OWNER" | "MANAGER" | "CASHIER" | "USER",
+  role:
+    | "OWNER"
+    | "MANAGER"
+    | "CASHIER"
+    | "STAFF"
+    | "USER",
 ) => {
   switch (role) {
     case "OWNER":
@@ -263,6 +299,9 @@ const getRoleLabel = (
 
     case "CASHIER":
       return "Cashier";
+
+    case "STAFF":
+      return "Staff";
 
     default:
       return "User";
@@ -280,9 +319,8 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
 
-  const [user, setUser] = useState<StoredUser | null>(
-    null,
-  );
+  const [user, setUser] =
+    useState<StoredUser | null>(null);
 
   const [branchName, setBranchName] =
     useState<string>("");
@@ -299,7 +337,9 @@ export default function Sidebar({
       const storedUser =
         localStorage.getItem("user");
 
-      let parsedUser: StoredUser | null = null;
+      let parsedUser:
+        | StoredUser
+        | null = null;
 
       if (storedUser) {
         try {
@@ -384,28 +424,16 @@ export default function Sidebar({
   ======================================================= */
 
   const handleLogout = () => {
-    /* ---------------------------------------------------
-       Authentication tokens
-    --------------------------------------------------- */
-
     localStorage.removeItem("token");
     localStorage.removeItem("accessToken");
     localStorage.removeItem("access_token");
     localStorage.removeItem("authToken");
-
-    /* ---------------------------------------------------
-       User/session data
-    --------------------------------------------------- */
 
     localStorage.removeItem("user");
     localStorage.removeItem("userId");
     localStorage.removeItem(
       "loggedInUserType",
     );
-
-    /* ---------------------------------------------------
-       Branch / Till data
-    --------------------------------------------------- */
 
     localStorage.removeItem(
       "userLocationId",
@@ -423,10 +451,6 @@ export default function Sidebar({
       "userTillName",
     );
 
-    /* ---------------------------------------------------
-       Session storage
-    --------------------------------------------------- */
-
     sessionStorage.removeItem("token");
     sessionStorage.removeItem(
       "accessToken",
@@ -437,10 +461,6 @@ export default function Sidebar({
 
     sessionStorage.clear();
 
-    /* ---------------------------------------------------
-       Go to login
-    --------------------------------------------------- */
-
     router.push("/login");
   };
 
@@ -449,20 +469,15 @@ export default function Sidebar({
   ======================================================= */
 
   const isActive = (href: string) => {
-    /* Dashboard exact match */
-
     if (href === "/dashboard") {
       return pathname === "/dashboard";
     }
 
-    /* Inventory main menu exact match */
-
     if (href === "/dashboard/inventory") {
-      return pathname ===
-        "/dashboard/inventory";
+      return (
+        pathname === "/dashboard/inventory"
+      );
     }
-
-    /* Other menu items */
 
     return (
       pathname === href ||
@@ -553,6 +568,7 @@ export default function Sidebar({
           {visibleMenuItems.map(
             (item) => {
               const Icon = item.icon;
+
               const active =
                 isActive(item.href);
 
@@ -575,8 +591,6 @@ export default function Sidebar({
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
                   }`}
                 >
-                  {/* Active indicator */}
-
                   {active && (
                     <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full bg-blue-700" />
                   )}
@@ -610,6 +624,62 @@ export default function Sidebar({
         )}
 
         <div className="mt-2 space-y-1">
+
+          {/* ================= STAFF & ACCESS ================= */}
+
+          {allowedPermissions.includes(
+            "staff",
+          ) && (
+            <Link
+              href="/dashboard/staff"
+              title={
+                collapsed
+                  ? "Staff & Access"
+                  : undefined
+              }
+              className={`group relative flex items-center rounded-lg py-3 transition ${
+                collapsed
+                  ? "justify-center px-2"
+                  : "gap-3 px-4"
+              } ${
+                pathname ===
+                  "/dashboard/staff" ||
+                pathname.startsWith(
+                  "/dashboard/staff/",
+                )
+                  ? "bg-blue-50 font-semibold text-blue-600"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-700"
+              }`}
+            >
+              {(pathname ===
+                "/dashboard/staff" ||
+                pathname.startsWith(
+                  "/dashboard/staff/",
+                )) && (
+                <span className="absolute bottom-2 left-0 top-2 w-1 rounded-r-full bg-blue-700" />
+              )}
+
+              <UserCog
+                size={20}
+                className={
+                  pathname ===
+                    "/dashboard/staff" ||
+                  pathname.startsWith(
+                    "/dashboard/staff/",
+                  )
+                    ? "text-blue-600"
+                    : "text-gray-500 group-hover:text-gray-700"
+                }
+              />
+
+              {!collapsed && (
+                <span>
+                  Staff & Access
+                </span>
+              )}
+            </Link>
+          )}
+
           {/* ================= SETTINGS ================= */}
 
           {allowedPermissions.includes(
@@ -689,27 +759,19 @@ export default function Sidebar({
               : "gap-3"
           }`}
         >
-          {/* Avatar */}
-
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
             {initials}
           </div>
 
           {!collapsed && (
             <div className="min-w-0">
-              {/* Name */}
-
               <p className="truncate font-semibold text-gray-800">
                 {fullName}
               </p>
 
-              {/* Role */}
-
               <p className="text-xs text-gray-500">
                 {roleLabel}
               </p>
-
-              {/* Branch + Till */}
 
               <p className="truncate text-[11px] text-gray-400">
                 {displayBranch}
