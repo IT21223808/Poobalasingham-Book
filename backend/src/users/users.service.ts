@@ -117,11 +117,10 @@ export class UsersService {
     }
 
     /*
-     * If exact name is not found,
-     * use the first active branch.
-     *
-     * This is only a fallback.
+     * Fallback:
+     * Use the first active branch.
      */
+
     const firstActiveBranch =
       await this.locationRepository.findOne({
         where: {
@@ -137,7 +136,8 @@ export class UsersService {
   }
 
   // ============================================================
-  // CREATE USER - INTERNAL / AUTH COMPATIBILITY
+  // CREATE USER
+  // INTERNAL / AUTH COMPATIBILITY
   // ============================================================
 
   async create(
@@ -196,10 +196,11 @@ export class UsersService {
     if (
       dto.role !== UserRole.OWNER &&
       dto.role !== UserRole.MANAGER &&
-      dto.role !== UserRole.CASHIER
+      dto.role !== UserRole.CASHIER &&
+      dto.role !== UserRole.STAFF
     ) {
       throw new BadRequestException(
-        'Only OWNER, MANAGER and CASHIER users can be created',
+        'Only OWNER, MANAGER, CASHIER and STAFF users can be created',
       );
     }
 
@@ -219,7 +220,7 @@ export class UsersService {
     }
 
     // ----------------------------------------------------------
-    // OWNER
+    // DEFAULT VALUES
     // ----------------------------------------------------------
 
     let locationId:
@@ -228,12 +229,20 @@ export class UsersService {
     let tillId:
       number | null = null;
 
-    if (dto.role === UserRole.OWNER) {
+    // ----------------------------------------------------------
+    // OWNER
+    // ----------------------------------------------------------
+
+    if (
+      dto.role === UserRole.OWNER
+    ) {
       /*
-       * Owner gets Main Branch automatically.
+       * Owner automatically belongs
+       * to Main Branch.
        *
-       * No till for Owner.
+       * Owner does not use a till.
        */
+
       locationId =
         await this.getMainBranchId();
 
@@ -250,7 +259,16 @@ export class UsersService {
     // MANAGER
     // ----------------------------------------------------------
 
-    if (dto.role === UserRole.MANAGER) {
+    if (
+      dto.role === UserRole.MANAGER
+    ) {
+      /*
+       * Manager must be assigned
+       * to a branch.
+       *
+       * Manager does not use a till.
+       */
+
       locationId =
         dto.locationId ?? null;
 
@@ -261,12 +279,38 @@ export class UsersService {
     // CASHIER
     // ----------------------------------------------------------
 
-    if (dto.role === UserRole.CASHIER) {
+    if (
+      dto.role === UserRole.CASHIER
+    ) {
+      /*
+       * Cashier requires:
+       * Branch + Till
+       */
+
       locationId =
         dto.locationId ?? null;
 
       tillId =
         dto.tillId ?? null;
+    }
+
+    // ----------------------------------------------------------
+    // STAFF
+    // ----------------------------------------------------------
+
+    if (
+      dto.role === UserRole.STAFF
+    ) {
+      /*
+       * Staff requires a branch.
+       *
+       * Staff does not use a till.
+       */
+
+      locationId =
+        dto.locationId ?? null;
+
+      tillId = null;
     }
 
     // ----------------------------------------------------------
@@ -290,7 +334,7 @@ export class UsersService {
       );
 
     // ----------------------------------------------------------
-    // CREATE
+    // CREATE USER
     // ----------------------------------------------------------
 
     const user =
@@ -389,10 +433,11 @@ export class UsersService {
     if (
       nextRole !== UserRole.OWNER &&
       nextRole !== UserRole.MANAGER &&
-      nextRole !== UserRole.CASHIER
+      nextRole !== UserRole.CASHIER &&
+      nextRole !== UserRole.STAFF
     ) {
       throw new BadRequestException(
-        'Only OWNER, MANAGER and CASHIER users are allowed',
+        'Only OWNER, MANAGER, CASHIER and STAFF users are allowed',
       );
     }
 
@@ -404,9 +449,12 @@ export class UsersService {
       nextRole === UserRole.OWNER
     ) {
       /*
-       * Owner always belongs to Main Branch.
-       * Owner does not have a till.
+       * Owner always belongs
+       * to Main Branch.
+       *
+       * Owner does not use a till.
        */
+
       nextLocationId =
         await this.getMainBranchId();
 
@@ -426,8 +474,38 @@ export class UsersService {
     if (
       nextRole === UserRole.MANAGER
     ) {
+      /*
+       * Manager does not use a till.
+       */
+
       nextTillId = null;
     }
+
+    // ----------------------------------------------------------
+    // STAFF
+    // ----------------------------------------------------------
+
+    if (
+      nextRole === UserRole.STAFF
+    ) {
+      /*
+       * Staff does not use a till.
+       */
+
+      nextTillId = null;
+    }
+
+    // ----------------------------------------------------------
+    // CASHIER
+    // ----------------------------------------------------------
+
+    /*
+     * Cashier keeps the selected
+     * branch + till.
+     *
+     * validateAssignment() will
+     * verify both.
+     */
 
     // ----------------------------------------------------------
     // VALIDATE BRANCH / TILL
@@ -578,9 +656,9 @@ export class UsersService {
     locationId?: string | null,
     tillId?: number | null,
   ): Promise<void> {
-    // ----------------------------------------------------------
+    // ==========================================================
     // OWNER
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (
       role === UserRole.OWNER
@@ -612,9 +690,9 @@ export class UsersService {
       return;
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // MANAGER
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (
       role === UserRole.MANAGER
@@ -635,16 +713,20 @@ export class UsersService {
 
       if (!location) {
         throw new BadRequestException(
-          'Selected branch does not exist or is inactive',
+          'Selected manager branch does not exist or is inactive',
         );
       }
+
+      /*
+       * Manager does not need a till.
+       */
 
       return;
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // CASHIER
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (
       role === UserRole.CASHIER
@@ -655,15 +737,14 @@ export class UsersService {
         );
       }
 
-      if (!tillId) {
+      if (
+        tillId === null ||
+        tillId === undefined
+      ) {
         throw new BadRequestException(
           'Cashier must be assigned to a till',
         );
       }
-
-      // --------------------------------------------------------
-      // BRANCH
-      // --------------------------------------------------------
 
       const location =
         await this.locationRepository.findOne({
@@ -675,13 +756,9 @@ export class UsersService {
 
       if (!location) {
         throw new BadRequestException(
-          'Selected branch does not exist or is inactive',
+          'Selected cashier branch does not exist or is inactive',
         );
       }
-
-      // --------------------------------------------------------
-      // TILL
-      // --------------------------------------------------------
 
       const till =
         await this.tillRepository.findOne({
@@ -697,9 +774,10 @@ export class UsersService {
         );
       }
 
-      // --------------------------------------------------------
-      // TILL → BRANCH CHECK
-      // --------------------------------------------------------
+      /*
+       * Till must belong to
+       * the selected branch.
+       */
 
       if (
         till.locationId !==
@@ -713,9 +791,52 @@ export class UsersService {
       return;
     }
 
-    // ----------------------------------------------------------
-    // INVALID ROLE
-    // ----------------------------------------------------------
+    // ==========================================================
+    // STAFF
+    // ==========================================================
+
+    if (
+      role === UserRole.STAFF
+    ) {
+      if (!locationId) {
+        throw new BadRequestException(
+          'Staff must be assigned to a branch',
+        );
+      }
+
+      const location =
+        await this.locationRepository.findOne({
+          where: {
+            id: locationId,
+            isActive: true,
+          },
+        });
+
+      if (!location) {
+        throw new BadRequestException(
+          'Selected staff branch does not exist or is inactive',
+        );
+      }
+
+      /*
+       * Staff cannot have a till.
+       */
+
+      if (
+        tillId !== null &&
+        tillId !== undefined
+      ) {
+        throw new BadRequestException(
+          'Staff cannot be assigned to a till',
+        );
+      }
+
+      return;
+    }
+
+    // ==========================================================
+    // INVALID / LEGACY ROLE
+    // ==========================================================
 
     throw new BadRequestException(
       'Invalid user role',
