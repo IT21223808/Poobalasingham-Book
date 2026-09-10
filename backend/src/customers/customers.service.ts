@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,53 +18,59 @@ export class CustomersService {
   ) {}
 
   // =========================================================
-  // CREATE
+  // CREATE CUSTOMER / SELECT EXISTING CUSTOMER
   // =========================================================
-
   async create(dto: CreateCustomerDto): Promise<Customer> {
-  try {
-    const existingPhone = await this.customerRepository.findOne({
-      where: {
-        phone: dto.phone,
-      },
-    });
+    /*
+     * If phone number already exists:
+     * --------------------------------
+     * Do NOT create a duplicate customer.
+     * Return the existing customer instead.
+     *
+     * This is especially useful for POS Quick Customer.
+     */
 
-    if (existingPhone) {
-      throw new ConflictException(
-        'Customer with this phone number already exists',
-      );
+    const phone = dto.phone?.trim();
+
+    if (phone) {
+      const existingCustomer =
+        await this.customerRepository.findOne({
+          where: {
+            phone,
+          },
+        });
+
+      if (existingCustomer) {
+        return existingCustomer;
+      }
     }
 
+    // Generate new customer code only
+    // when a new customer is actually created.
     const customerCode = await this.generateCustomerCode();
 
     const customer = this.customerRepository.create({
       customerCode,
-      customerName: dto.customerName,
-      phone: dto.phone,
-      email: dto.email,
-      address: dto.address,
-      city: dto.city,
+      customerName: dto.customerName.trim(),
+      phone: phone || undefined,
+      email: dto.email?.trim() || undefined,
+      address: dto.address?.trim() || undefined,
+      city: dto.city?.trim() || undefined,
       isActive: dto.isActive ?? true,
     });
-    const savedCustomer =
-      await this.customerRepository.save(customer);
-    return savedCustomer;
-  } catch (error) {
-    throw error;
+
+    return this.customerRepository.save(customer);
   }
-}
 
   // =========================================================
-  // LIST
+  // GET ALL CUSTOMERS
   // =========================================================
-
   async findAll(
     search?: string,
     status?: string,
   ): Promise<Customer[]> {
     const query =
-      this.customerRepository
-        .createQueryBuilder('customer');
+      this.customerRepository.createQueryBuilder('customer');
 
     if (search) {
       query.andWhere(
@@ -100,20 +105,14 @@ export class CustomersService {
     }
 
     return query
-      .orderBy(
-        'customer.createdAt',
-        'DESC',
-      )
+      .orderBy('customer.createdAt', 'DESC')
       .getMany();
   }
 
   // =========================================================
-  // VIEW
+  // GET CUSTOMER BY ID
   // =========================================================
-
-  async findOne(
-    id: number,
-  ): Promise<Customer> {
+  async findOne(id: number): Promise<Customer> {
     const customer =
       await this.customerRepository.findOne({
         where: { id },
@@ -129,74 +128,77 @@ export class CustomersService {
   }
 
   // =========================================================
-  // UPDATE
+  // UPDATE CUSTOMER
   // =========================================================
-
   async update(
     id: number,
     dto: UpdateCustomerDto,
   ): Promise<Customer> {
-    const customer =
-      await this.findOne(id);
+    const customer = await this.findOne(id);
 
-    Object.assign(
-      customer,
-      dto,
-    );
+    Object.assign(customer, {
+      ...dto,
+      customerName:
+        dto.customerName?.trim() ??
+        customer.customerName,
 
-    return this.customerRepository.save(
-      customer,
-    );
+      phone:
+        dto.phone?.trim() ??
+        customer.phone,
+
+      email:
+        dto.email?.trim() ??
+        customer.email,
+
+      address:
+        dto.address?.trim() ??
+        customer.address,
+
+      city:
+        dto.city?.trim() ??
+        customer.city,
+    });
+
+    return this.customerRepository.save(customer);
   }
 
   // =========================================================
-  // DEACTIVATE
+  // DEACTIVATE CUSTOMER
   // =========================================================
-
-  async remove(
-    id: number,
-  ): Promise<Customer> {
-    const customer =
-      await this.findOne(id);
+  async remove(id: number): Promise<Customer> {
+    const customer = await this.findOne(id);
 
     customer.isActive = false;
 
-    return this.customerRepository.save(
-      customer,
-    );
+    return this.customerRepository.save(customer);
   }
 
   // =========================================================
-  // ACTIVATE
+  // ACTIVATE CUSTOMER
   // =========================================================
-
-  async activate(
-    id: number,
-  ): Promise<Customer> {
-    const customer =
-      await this.findOne(id);
+  async activate(id: number): Promise<Customer> {
+    const customer = await this.findOne(id);
 
     customer.isActive = true;
 
-    return this.customerRepository.save(
-      customer,
-    );
+    return this.customerRepository.save(customer);
   }
 
   // =========================================================
   // GENERATE CUSTOMER CODE
   // =========================================================
-
   private async generateCustomerCode(): Promise<string> {
-  const lastCustomer = await this.customerRepository
-    .createQueryBuilder('customer')
-    .orderBy('customer.id', 'DESC')
-    .getOne();
+    const lastCustomer =
+      await this.customerRepository
+        .createQueryBuilder('customer')
+        .orderBy('customer.id', 'DESC')
+        .getOne();
 
-  const nextNumber = lastCustomer
-    ? lastCustomer.id + 1
-    : 1;
+    const nextNumber =
+      lastCustomer
+        ? lastCustomer.id + 1
+        : 1;
 
-  return `CUS-${String(nextNumber).padStart(3, '0')}`;
-}
+    return `CUS-${String(nextNumber).padStart(3, '0')}`;
+  }
 }

@@ -11,8 +11,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import { AuthGuard } from '@nestjs/passport';
-
 import { FinanceService } from './finance.service';
 
 import { CreateExpenseCategoryDto } from './dto/create-expense-category.dto';
@@ -31,14 +29,9 @@ import { FinanceQueryDto } from './dto/finance-query.dto';
 
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
-
-import {
-  AppPermission,
-} from '../common/permissions/permissions';
-
-import {
-  RequirePermissions,
-} from '../common/decorators/permissions.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { AppPermission } from '../common/permissions/permissions';
+import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 @Controller('finance')
 @UseGuards(
@@ -51,21 +44,20 @@ export class FinanceController {
     private readonly financeService: FinanceService,
   ) {}
 
-  // =========================================================
-  // OVERVIEW
   // GET /api/finance/dashboard
-  // =========================================================
 
   @Get('dashboard')
   getDashboard(
     @Query() query: FinanceQueryDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.getDashboard(query);
+    return this.financeService.getDashboard(
+      query,
+      user,
+    );
   }
 
-  // =========================================================
   // EXPENSE CATEGORIES
-  // =========================================================
 
   @Get('expense-categories')
   findAllExpenseCategories(
@@ -110,26 +102,29 @@ export class FinanceController {
     return this.financeService.deleteExpenseCategory(id);
   }
 
-  // =========================================================
   // CASH BOOK
-  // =========================================================
 
   @Get('cash-book')
   getCashBook(
     @Query() query: FinanceQueryDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.getCashBook(query);
+    return this.financeService.getCashBook(
+      query,
+      user,
+    );
   }
 
-  // =========================================================
   // BANK BOOK
-  // =========================================================
-
   @Get('bank-book')
   getBankBook(
     @Query() query: FinanceQueryDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.getBankBook(query);
+    return this.financeService.getBankBook(
+      query,
+      user,
+    );
   }
 
   // =========================================================
@@ -139,141 +134,164 @@ export class FinanceController {
   @Get('income')
   findAllIncome(
     @Query() query: FinanceQueryDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.findAllIncome(query);
+    return this.financeService.findAllIncome(
+      query,
+      user,
+    );
   }
 
   @Post('income')
   createIncome(
     @Body() dto: CreateIncomeDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.createIncome(dto);
+    return this.financeService.createIncome(
+      dto,
+      user,
+    );
   }
 
   @Patch('income/:id')
   updateIncome(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateFinanceTransactionDto,
+    @CurrentUser() user: any,
   ) {
     return this.financeService.updateTransaction(
       id,
       dto,
+      user,
     );
   }
 
   @Delete('income/:id')
   deleteIncome(
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.deleteTransaction(id);
+    return this.financeService.deleteTransaction(
+      id,
+      user,
+    );
   }
 
-  // =========================================================
   // EXPENSES
-  // =========================================================
 
   @Get('expenses')
   findAllExpenses(
     @Query() query: FinanceQueryDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.findAllExpenses(query);
+    return this.financeService.findAllExpenses(
+      query,
+      user,
+    );
   }
 
   @Post('expenses')
   createExpense(
     @Body() dto: CreateExpenseDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.createExpense(dto);
+    return this.financeService.createExpense(
+      dto,
+      user,
+    );
   }
 
   @Patch('expenses/:id')
   updateExpense(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateFinanceTransactionDto,
+    @CurrentUser() user: any,
   ) {
     return this.financeService.updateTransaction(
       id,
       dto,
+      user,
     );
   }
 
   @Delete('expenses/:id')
   deleteExpense(
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.deleteTransaction(id);
+    return this.financeService.deleteTransaction(
+      id,
+      user,
+    );
   }
 
-  // =========================================================
   // SUPPLIER PAYMENTS
-  // =========================================================
-
-  @Get('supplier-payments')
-  findAllSupplierPayments(
-    @Query('supplierId') supplierId?: string,
-    @Query('purchaseInvoiceId') purchaseInvoiceId?: string,
-    @Query('search') search?: string,
-  ) {
-    return this.financeService.findAllSupplierPayments({
-      supplierId: supplierId
-        ? parseInt(supplierId, 10)
-        : undefined,
-
-      purchaseInvoiceId: purchaseInvoiceId
-        ? parseInt(purchaseInvoiceId, 10)
-        : undefined,
-
-      search,
-    });
-  }
-
   @Get('supplier-payments/:id')
   findOneSupplierPayment(
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.findOneSupplierPayment(id);
+    return this.financeService.findOneSupplierPayment(
+      id,
+      user,
+    );
   }
 
-  @Post('supplier-payments')
-  createSupplierPayment(
-    @Body() dto: CreateSupplierPaymentDto,
-  ) {
-    return this.financeService.createSupplierPayment(dto);
-  }
+ // SUPPLIER PAYMENTS
 
-  // =========================================================
-  // CUSTOMER PAYMENTS
-  // =========================================================
-
-  @Get('customer-payments')
-  findAllCustomerPayments(
-    @Query('customerId') customerId?: string,
-    @Query('salesInvoiceId') salesInvoiceId?: string,
-    @Query('search') search?: string,
-  ) {
-    return this.financeService.findAllCustomerPayments({
-      customerId: customerId
-        ? parseInt(customerId, 10)
+@Get('supplier-payments')
+findAllSupplierPayments(
+  @CurrentUser() user: any,
+  @Query('supplierId') supplierId?: string,
+  @Query('purchaseInvoiceId') purchaseInvoiceId?: string,
+  @Query('search') search?: string,
+) {
+  return this.financeService.findAllSupplierPayments(
+    {
+      supplierId: supplierId
+        ? parseInt(supplierId, 10)
         : undefined,
-
-      salesInvoiceId,
+      purchaseInvoiceId: purchaseInvoiceId
+        ? parseInt(purchaseInvoiceId, 10)
+        : undefined,
       search,
-    });
-  }
+    },
+    user,
+  );
+}
 
+  // CUSTOMER PAYMENTS
   @Get('customer-payments/:id')
   findOneCustomerPayment(
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.findOneCustomerPayment(id);
+    return this.financeService.findOneCustomerPayment(
+      id,
+      user,
+    );
   }
 
-  @Post('customer-payments')
-  createCustomerPayment(
-    @Body() dto: CreateCustomerPaymentDto,
-  ) {
-    return this.financeService.createCustomerPayment(dto);
-  }
+ // CUSTOMER PAYMENTS
+
+@Get('customer-payments')
+findAllCustomerPayments(
+  @CurrentUser() user: any,
+  @Query('customerId') customerId?: string,
+  @Query('salesInvoiceId') salesInvoiceId?: string,
+  @Query('search') search?: string,
+) {
+  return this.financeService.findAllCustomerPayments(
+    {
+      customerId: customerId
+        ? parseInt(customerId, 10)
+        : undefined,
+      salesInvoiceId,
+      search,
+    },
+    user,
+  );
+}
 
   // =========================================================
   // ACCOUNTS RECEIVABLE
@@ -281,6 +299,7 @@ export class FinanceController {
 
   @Get('accounts-receivable')
   getAccountsReceivable(
+        @CurrentUser() user: any,
     @Query('customerId') customerId?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
@@ -288,28 +307,26 @@ export class FinanceController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.financeService.getAccountsReceivable({
-      customerId: customerId
-        ? parseInt(customerId, 10)
-        : undefined,
-
-      status,
-      search,
-
-      overdueOnly:
-        overdueOnly === 'true',
-
-      startDate,
-      endDate,
-    });
+   return this.financeService.getAccountsReceivable(
+  {
+    customerId: customerId
+      ? parseInt(customerId, 10)
+      : undefined,
+    status,
+    search,
+    overdueOnly: overdueOnly === 'true',
+    startDate,
+    endDate,
+  },
+  user,
+);
   }
 
-  // =========================================================
   // ACCOUNTS PAYABLE
-  // =========================================================
 
   @Get('accounts-payable')
   getAccountsPayable(
+    @CurrentUser() user: any,
     @Query('supplierId') supplierId?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
@@ -317,111 +334,124 @@ export class FinanceController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.financeService.getAccountsPayable({
-      supplierId: supplierId
-        ? parseInt(supplierId, 10)
-        : undefined,
+    return this.financeService.getAccountsPayable(
+      {
+        supplierId: supplierId
+          ? parseInt(supplierId, 10)
+          : undefined,
 
-      status,
-      search,
+        status,
+        search,
 
-      overdueOnly:
-        overdueOnly === 'true',
+        overdueOnly:
+          overdueOnly === 'true',
 
-      startDate,
-      endDate,
-    });
+        startDate,
+        endDate,
+      },
+      user,
+    );
   }
 
-  // =========================================================
   // PROFIT & LOSS
-  // NORMAL FINANCE PAGE
-  // GET /api/finance/profit-loss
-  // =========================================================
 
   @Get('profit-loss')
   getProfitLoss(
+    @CurrentUser() user: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
     return this.financeService.getProfitLossReport(
       startDate,
       endDate,
+      user,
     );
   }
 
-  // =========================================================
   // BALANCE SHEET
-  // NORMAL FINANCE PAGE
-  // GET /api/finance/balance-sheet
-  // =========================================================
 
   @Get('balance-sheet')
   getBalanceSheet(
+    @CurrentUser() user: any,
     @Query('asOfDate') asOfDate?: string,
   ) {
     return this.financeService.getBalanceSheetReport(
       asOfDate,
+      user,
     );
   }
 
-  // =========================================================
   // CASH FLOW
-  // NORMAL FINANCE PAGE
-  // GET /api/finance/cash-flow
-  // =========================================================
 
   @Get('cash-flow')
   getCashFlow(
+     @CurrentUser() user: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
     return this.financeService.getCashFlowReport(
       startDate,
       endDate,
+      user,
     );
   }
 
-  // =========================================================
   // CENTRAL TRANSACTIONS
-  // =========================================================
 
   @Get('transactions')
   findAllTransactions(
+        @CurrentUser() user: any,
     @Query() query: FinanceQueryDto,
   ) {
-    return this.financeService.findAllTransactions(query);
+    return this.financeService.findAllTransactions(
+      query,
+      user,
+    );
   }
 
   @Get('transactions/:id')
   findOneTransaction(
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.findOneTransaction(id);
+    return this.financeService.findOneTransaction(
+      id,
+      user,
+    );
   }
 
   @Post('transactions')
   createTransaction(
     @Body() dto: CreateFinanceTransactionDto,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.createTransaction(dto);
+    return this.financeService.createTransaction(
+      dto,
+      user,
+    );
   }
 
   @Patch('transactions/:id')
   updateTransaction(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateFinanceTransactionDto,
+    @CurrentUser() user: any,
   ) {
     return this.financeService.updateTransaction(
       id,
       dto,
+      user,
     );
   }
 
   @Delete('transactions/:id')
   deleteTransaction(
     @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
   ) {
-    return this.financeService.deleteTransaction(id);
+    return this.financeService.deleteTransaction(
+      id,
+      user,
+    );
   }
 }

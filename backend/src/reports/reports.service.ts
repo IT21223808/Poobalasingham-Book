@@ -3,7 +3,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 
 import { PosSale,SaleStatus,} from '../pos/entities/pos-sale.entity';
 import { PosReturn } from '../pos/entities/pos-return.entity';
@@ -76,10 +76,227 @@ private readonly purchaseInvoiceRepository: Repository<PurchaseInvoice>,
 ) {}
 
   // =========================================================
+  // BRANCH / TILL REPORT SCOPE
+  // OWNER   -> all branches / all tills
+  // MANAGER -> own branch / all tills
+  // CASHIER -> own branch / own till
+  // =========================================================
+
+  private normalizeRole(role?: string): string {
+  const normalized = String(role || '').toUpperCase();
+
+  if (normalized === 'ADMIN') {
+    return 'OWNER';
+  }
+
+  if (normalized === 'STAFF') {
+    return 'CASHIER';
+  }
+
+  if (
+    normalized === 'BRANCH_MANAGER' ||
+    normalized === 'BRANCH MANAGER'
+  ) {
+    return 'MANAGER';
+  }
+
+  return normalized;
+}
+
+private resolveReportScope(user?: any) {
+  const role = this.normalizeRole(user?.role);
+
+  // =========================================================
+  // OWNER
+  // =========================================================
+
+  if (role === 'OWNER') {
+    return {
+      isOwner: true,
+      locationId: null as string | null,
+      tillId: null as number | null,
+    };
+  }
+
+  // =========================================================
+  // NON-OWNER
+  // =========================================================
+
+  const locationId =
+    user?.locationId ??
+    user?.location?.id ??
+    user?.branchId ??
+    user?.branch?.id;
+
+  if (
+    locationId === null ||
+    locationId === undefined ||
+    String(locationId).trim() === ''
+  ) {
+    throw new BadRequestException(
+      'Logged-in user is not assigned to a branch.',
+    );
+  }
+
+  // =========================================================
+  // CASHIER
+  // =========================================================
+
+  if (role === 'CASHIER') {
+    const tillId =
+      user?.tillId ??
+      user?.till?.id;
+
+    if (
+      tillId === null ||
+      tillId === undefined ||
+      String(tillId).trim() === ''
+    ) {
+      throw new BadRequestException(
+        'Cashier is not assigned to a till.',
+      );
+    }
+
+    return {
+      isOwner: false,
+      locationId: String(locationId),
+      tillId: Number(tillId),
+    };
+  }
+
+  // =========================================================
+  // MANAGER / OTHER BRANCH USERS
+  // =========================================================
+
+  return {
+    isOwner: false,
+    locationId: String(locationId),
+    tillId: null as number | null,
+  };
+}
+ private applySaleScope(
+  qb: SelectQueryBuilder<PosSale>,
+  user: any,
+  alias = 'sale',
+) {
+  const scope = this.resolveReportScope(user);
+
+  if (scope.isOwner) {
+    return scope;
+  }
+
+  qb.andWhere(
+    `${alias}.locationId = :reportLocationId`,
+    {
+      reportLocationId: scope.locationId,
+    },
+  );
+
+  if (scope.tillId !== null) {
+    qb.andWhere(
+      `${alias}.tillId = :reportTillId`,
+      {
+        reportTillId: scope.tillId,
+      },
+    );
+  }
+
+  return scope;
+}
+
+private applyMovementScope(
+  qb: SelectQueryBuilder<StockMovement>,
+  user: any,
+) {
+  const scope = this.resolveReportScope(user);
+
+  if (scope.isOwner) {
+    return scope;
+  }
+
+  qb.andWhere(
+    `(
+      fromLocation.id = :movementLocationId
+      OR
+      toLocation.id = :movementLocationId
+    )`,
+    {
+      movementLocationId: scope.locationId,
+    },
+  );
+
+  return scope;
+}
+
+private applyFinanceTransactionScope(
+  qb: SelectQueryBuilder<FinanceTransaction>,
+  user: any,
+) {
+  const scope =
+    this.resolveReportScope(user);
+
+  if (scope.isOwner) {
+    return scope;
+  }
+
+  qb.andWhere(
+    't.locationId = :reportFinanceLocationId',
+    {
+      reportFinanceLocationId:
+        scope.locationId,
+    },
+  );
+
+  if (scope.tillId !== null) {
+    qb.andWhere(
+      't.tillId = :reportFinanceTillId',
+      {
+        reportFinanceTillId: scope.tillId,
+      },
+    );
+  }
+
+  return scope;
+}
+
+  private getSaleReturnRatio(sale: PosSale & { __reportReturnAmount?: number }): number {
+    const total = Number(sale.grandTotal || 0);
+    const returned = Number(sale.__reportReturnAmount || 0);
+    if (sale.status === SaleStatus.RETURNED) return 1;
+    if (total <= 0) return 0;
+    return Math.min(1, Math.max(0, returned / total));
+  }
+
+  private async getStockMap(user?: any): Promise<Map<string, number>> {
+    const scope = this.resolveReportScope(user);
+    const map = new Map<string, number>();
+
+    if (scope.isOwner) {
+      const products = await this.productRepository.find();
+      for (const product of products) {
+        map.set(String(product.id), Number(product.stockQuantity || 0));
+      }
+      return map;
+    }
+
+    const stocks = await this.inventoryStockRepository.find({
+      where: { location: { id: scope.locationId! } },
+      relations: { product: true },
+    });
+
+    for (const stock of stocks) {
+      if (stock.product?.id) {
+        map.set(String(stock.product.id), Number(stock.quantity || 0));
+      }
+    }
+    return map;
+  }
+
+  // =========================================================
   // STEP 2 - DAILY SALES REPORT
   // =========================================================
 
-  async getDailySalesReport(date?: string) {
+  async getDailySalesReport(date?: string, user?: any) {
     const reportDate = date || this.getTodayDate();
 
     this.validateDate(reportDate);
@@ -108,17 +325,17 @@ private readonly purchaseInvoiceRepository: Repository<PurchaseInvoice>,
     // GET SALES FOR THE DAY
     // ---------------------------------------------------------
 
-    const sales = await this.posSaleRepository
+    const salesQb = this.posSaleRepository
       .createQueryBuilder('sale')
-      .where('sale.createdAt >= :startDate', {
-        startDate,
-      })
-      .andWhere('sale.createdAt < :endDate', {
-        endDate,
-      })
+      .where('sale.createdAt >= :startDate', { startDate })
+      .andWhere('sale.createdAt < :endDate', { endDate })
       .andWhere('sale.status != :cancelledStatus', {
         cancelledStatus: SaleStatus.CANCELLED,
-      })
+      });
+
+    this.applySaleScope(salesQb, user);
+
+    const sales = await salesQb
       .orderBy('sale.createdAt', 'DESC')
       .getMany();
 
@@ -319,6 +536,7 @@ private readonly purchaseInvoiceRepository: Repository<PurchaseInvoice>,
 async getMonthlySalesReport(
   year?: number,
   month?: number,
+  user?: any,
 ) {
   const currentDate = new Date();
 
@@ -384,17 +602,17 @@ async getMonthlySalesReport(
   // GET SALES
   // ---------------------------------------------------------
 
-  const sales = await this.posSaleRepository
+  const salesQb = this.posSaleRepository
     .createQueryBuilder('sale')
-    .where('sale.createdAt >= :startDate', {
-      startDate,
-    })
-    .andWhere('sale.createdAt < :endDate', {
-      endDate,
-    })
+    .where('sale.createdAt >= :startDate', { startDate })
+    .andWhere('sale.createdAt < :endDate', { endDate })
     .andWhere('sale.status != :cancelledStatus', {
       cancelledStatus: SaleStatus.CANCELLED,
-    })
+    });
+
+  this.applySaleScope(salesQb, user);
+
+  const sales = await salesQb
     .orderBy('sale.createdAt', 'ASC')
     .getMany();
 
@@ -626,7 +844,7 @@ async getMonthlySalesReport(
   };
 }
 
-async getAnnualSalesReport(year?: number) {
+async getAnnualSalesReport(year?: number, user?: any) {
   const currentDate = new Date();
 
   const reportYear =
@@ -674,17 +892,17 @@ async getAnnualSalesReport(year?: number) {
   // GET SALES
   // ---------------------------------------------------------
 
-  const sales = await this.posSaleRepository
+  const salesQb = this.posSaleRepository
     .createQueryBuilder('sale')
-    .where('sale.createdAt >= :startDate', {
-      startDate,
-    })
-    .andWhere('sale.createdAt < :endDate', {
-      endDate,
-    })
+    .where('sale.createdAt >= :startDate', { startDate })
+    .andWhere('sale.createdAt < :endDate', { endDate })
     .andWhere('sale.status != :cancelledStatus', {
       cancelledStatus: SaleStatus.CANCELLED,
-    })
+    });
+
+  this.applySaleScope(salesQb, user);
+
+  const sales = await salesQb
     .orderBy('sale.createdAt', 'ASC')
     .getMany();
 
@@ -1008,8 +1226,8 @@ async getAnnualSalesReport(year?: number) {
 // 5. CATEGORY-WISE SALES
 // =========================================================
 
-async getCategoryWiseSales(query?: ReportQueryDto) {
-  const sales = await this.getSalesWithItems(query);
+async getCategoryWiseSales(query?: ReportQueryDto, user?: any) {
+  const sales = await this.getSalesWithItems(query, user);
 
   const categoryMap = new Map<
     string,
@@ -1041,6 +1259,10 @@ async getCategoryWiseSales(query?: ReportQueryDto) {
         continue;
       }
 
+      const returnRatio = this.getSaleReturnRatio(
+        sale as PosSale & { __reportReturnAmount?: number },
+      );
+
       const category = (product as any).category;
 
       const categoryId = category?.id
@@ -1070,15 +1292,16 @@ async getCategoryWiseSales(query?: ReportQueryDto) {
 
       const record = categoryMap.get(key)!;
 
-      const quantity = Number(
-        item.quantity || 0,
-      );
+      const originalQuantity = Number(item.quantity || 0);
+      const quantity = originalQuantity * (1 - returnRatio);
 
-      const grossSales = Number(
+      const originalGrossSales = Number(
         item.lineTotal ??
           Number(item.unitPrice || 0) *
-            quantity,
+            originalQuantity,
       );
+      const grossSales = originalGrossSales;
+      const netLineSales = originalGrossSales * (1 - returnRatio);
 
       const purchasePrice = Number(
         (product as any).purchasePrice || 0,
@@ -1086,11 +1309,16 @@ async getCategoryWiseSales(query?: ReportQueryDto) {
 
       const cost = purchasePrice * quantity;
 
+      const allocatedReturnAmount =
+  originalGrossSales * returnRatio;
+
       record.quantitySold += quantity;
       record.grossSales += grossSales;
-      record.netSales += grossSales;
+      record.discount += Number((item as any).discountAmount || 0);
+      record.returnAmount += allocatedReturnAmount;
+      record.netSales += netLineSales;
       record.cost += cost;
-      record.profit += grossSales - cost;
+      record.profit += netLineSales - cost;
     }
   }
 
@@ -1196,9 +1424,10 @@ async getCategoryWiseSales(query?: ReportQueryDto) {
 
 async getProductWiseSales(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const sales =
-    await this.getSalesWithItems(query);
+    await this.getSalesWithItems(query, user);
 
   const productMap = new Map<
     string,
@@ -1228,6 +1457,10 @@ async getProductWiseSales(
       if (!product) {
         continue;
       }
+
+      const returnRatio = this.getSaleReturnRatio(
+        sale as PosSale & { __reportReturnAmount?: number },
+      );
 
       const productId =
         String(product.id);
@@ -1260,15 +1493,15 @@ async getProductWiseSales(
       const record =
         productMap.get(productId)!;
 
-      const quantity = Number(
-        item.quantity || 0,
-      );
+      const originalQuantity = Number(item.quantity || 0);
+      const quantity = originalQuantity * (1 - returnRatio);
 
-      const salesAmount = Number(
+      const originalSalesAmount = Number(
         item.lineTotal ??
           Number(item.unitPrice || 0) *
-            quantity,
+            originalQuantity,
       );
+      const salesAmount = originalSalesAmount * (1 - returnRatio);
 
       const purchasePrice = Number(
         (product as any).purchasePrice || 0,
@@ -1277,10 +1510,15 @@ async getProductWiseSales(
       const cost =
         purchasePrice * quantity;
 
+     const allocatedReturnAmount =
+  originalSalesAmount * returnRatio;
+
       record.quantitySold += quantity;
 
       record.grossSales +=
-        salesAmount;
+        originalSalesAmount;
+      record.returnAmount += allocatedReturnAmount;
+      record.discount += Number((item as any).discountAmount || 0);
 
       record.netSales +=
         salesAmount;
@@ -1399,9 +1637,10 @@ async getProductWiseSales(
 
 async getProfitAnalysis(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const sales =
-    await this.getSalesWithItems(query);
+    await this.getSalesWithItems(query, user);
 
   const productMap = new Map<
     string,
@@ -1428,6 +1667,10 @@ async getProfitAnalysis(
         continue;
       }
 
+      const returnRatio = this.getSaleReturnRatio(
+        sale as PosSale & { __reportReturnAmount?: number },
+      );
+
       const productId =
         String(product.id);
 
@@ -1452,15 +1695,15 @@ async getProfitAnalysis(
       const record =
         productMap.get(productId)!;
 
-      const quantity =
-        Number(item.quantity || 0);
+      const originalQuantity = Number(item.quantity || 0);
+      const quantity = originalQuantity * (1 - returnRatio);
 
-      const salesAmount =
-        Number(
-          item.lineTotal ??
-            Number(item.unitPrice || 0) *
-              quantity,
-        );
+      const originalSalesAmount = Number(
+        item.lineTotal ??
+          Number(item.unitPrice || 0) *
+            originalQuantity,
+      );
+      const salesAmount = originalSalesAmount * (1 - returnRatio);
 
       const purchasePrice =
         Number(
@@ -1604,9 +1847,10 @@ async getProfitAnalysis(
 
 async getBestSellingProducts(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const result =
-    await this.getProductWiseSales(query);
+    await this.getProductWiseSales(query, user);
 
   const limit = query?.limit || 10;
 
@@ -1651,6 +1895,7 @@ async getBestSellingProducts(
 
 async getSlowMovingProducts(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const days = query?.days || 30;
 
@@ -1671,6 +1916,7 @@ async getSlowMovingProducts(
   const sales = await this.getSalesBetweenDates(
     startDate,
     endDate,
+    user,
   );
 
   const soldMap = new Map<
@@ -1799,6 +2045,7 @@ async getSlowMovingProducts(
 
 async getDeadStock(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const days = query?.days || 90;
 
@@ -1823,6 +2070,7 @@ async getDeadStock(
     await this.getSalesBetweenDates(
       new Date(2000, 0, 1),
       endDate,
+      user,
     );
 
   const lastSaleMap =
@@ -1993,6 +2241,7 @@ async getDeadStock(
 
 private async getSalesWithItems(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const qb =
     this.posSaleRepository
@@ -2009,6 +2258,8 @@ private async getSalesWithItems(
           ],
         },
       );
+
+  this.applySaleScope(qb, user);
 
   if (query?.startDate) {
     qb.andWhere(
@@ -2030,12 +2281,35 @@ private async getSalesWithItems(
     );
   }
 
-  qb.orderBy(
-    'sale.createdAt',
-    'DESC',
-  );
+  const sales = await qb
+    .orderBy(
+      'sale.createdAt',
+      'DESC',
+    )
+    .getMany();
 
-  return qb.getMany();
+  const saleIds = sales.map((sale) => sale.id);
+  if (saleIds.length === 0) return sales;
+
+  const returns = await this.posReturnRepository
+    .createQueryBuilder('ret')
+    .where('ret.posSaleId IN (:...saleIds)', { saleIds })
+    .getMany();
+
+  const returnMap = new Map<string, number>();
+  for (const ret of returns) {
+    returnMap.set(
+      ret.posSaleId,
+      (returnMap.get(ret.posSaleId) ?? 0) + Number(ret.totalReturnAmount || 0),
+    );
+  }
+
+  for (const sale of sales) {
+    (sale as PosSale & { __reportReturnAmount?: number }).__reportReturnAmount =
+      returnMap.get(sale.id) ?? 0;
+  }
+
+  return sales;
 }
 
 
@@ -2046,6 +2320,7 @@ private async getSalesWithItems(
 private async getSalesBetweenDates(
   startDate: Date,
   endDate: Date,
+  user?: any,
 ) {
   const endExclusive =
     new Date(endDate);
@@ -2054,7 +2329,7 @@ private async getSalesBetweenDates(
     endExclusive.getDate() + 1,
   );
 
-  return this.posSaleRepository
+  const qb = this.posSaleRepository
     .createQueryBuilder('sale')
     .leftJoinAndSelect(
       'sale.items',
@@ -2079,7 +2354,11 @@ private async getSalesBetweenDates(
       {
         endDate: endExclusive,
       },
-    )
+    );
+
+  this.applySaleScope(qb, user);
+
+  return qb
     .orderBy(
       'sale.createdAt',
       'DESC',
@@ -2091,7 +2370,7 @@ private async getSalesBetweenDates(
 // 10. INVENTORY / STOCK REPORT
 // =========================================================
 
-async getInventoryStockReport() {
+async getInventoryStockReport(user?: any) {
   const products = await this.productRepository.find({
     relations: {
       category: true,
@@ -2102,8 +2381,10 @@ async getInventoryStockReport() {
     },
   });
 
+  const stockMap = await this.getStockMap(user);
+
   const records = products.map((product) => {
-    const stock = Number(product.stockQuantity || 0);
+    const stock = Number(stockMap.get(String(product.id)) ?? 0);
     const reorderLevel = Number(product.reorderLevel || 0);
 
     let status = 'IN_STOCK';
@@ -2175,6 +2456,7 @@ async getInventoryStockReport() {
 
 async getStockMovementReport(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const qb =
     this.stockMovementRepository
@@ -2214,6 +2496,8 @@ async getStockMovementReport(
     'movement.createdAt',
     'DESC',
   );
+
+  this.applyMovementScope(qb, user);
 
   const movements =
     await qb.getMany();
@@ -2320,7 +2604,7 @@ async getStockMovementReport(
 // 12. STOCK VALUATION REPORT
 // =========================================================
 
-async getStockValuationReport() {
+async getStockValuationReport(user?: any) {
   const products =
     await this.productRepository.find({
       relations: {
@@ -2331,11 +2615,13 @@ async getStockValuationReport() {
       },
     });
 
+  const stockMap = await this.getStockMap(user);
+
   const records = products.map(
     (product) => {
       const quantity =
         Number(
-          product.stockQuantity || 0,
+          stockMap.get(String(product.id)) ?? 0,
         );
 
       const purchasePrice =
@@ -2453,7 +2739,7 @@ async getStockValuationReport() {
 // 13. LOW STOCK REPORT
 // =========================================================
 
-async getLowStockReport() {
+async getLowStockReport(user?: any) {
   const products =
     await this.productRepository.find({
       relations: {
@@ -2464,11 +2750,13 @@ async getLowStockReport() {
       },
     });
 
+  const stockMap = await this.getStockMap(user);
+
   const records = products
     .filter((product) => {
       const stock =
         Number(
-          product.stockQuantity || 0,
+          stockMap.get(String(product.id)) ?? 0,
         );
 
       const reorderLevel =
@@ -2485,7 +2773,7 @@ async getLowStockReport() {
     .map((product) => {
       const stock =
         Number(
-          product.stockQuantity || 0,
+          stockMap.get(String(product.id)) ?? 0,
         );
 
       const reorderLevel =
@@ -2562,7 +2850,7 @@ async getLowStockReport() {
 // 14. OUT OF STOCK REPORT
 // =========================================================
 
-async getOutOfStockReport() {
+async getOutOfStockReport(user?: any) {
   const products =
     await this.productRepository.find({
       relations: {
@@ -2573,11 +2861,13 @@ async getOutOfStockReport() {
       },
     });
 
+  const stockMap = await this.getStockMap(user);
+
   const records = products
     .filter(
       (product) =>
         Number(
-          product.stockQuantity || 0,
+          stockMap.get(String(product.id)) ?? 0,
         ) === 0,
     )
     .map((product) => ({
@@ -2629,6 +2919,7 @@ async getOutOfStockReport() {
 
 async getSupplierReport(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const suppliers = await this.supplierRepository.find({
     order: {
@@ -2908,10 +3199,17 @@ async getSupplierReport(
 // STEP 12 - CUSTOMER REPORT
 // =========================================================
 
-async getCustomerReport(query?: ReportQueryDto) {
-  // ---------------------------------------------------------
-  // GET ALL CUSTOMERS
-  // ---------------------------------------------------------
+async getCustomerReport(query?: ReportQueryDto, user?: any) {
+  console.log('========== CUSTOMER REPORT START ==========');
+  console.log('Query:', query);
+  console.log('User:', {
+    id: user?.id,
+    role: user?.role,
+    locationId: user?.locationId,
+    tillId: user?.tillId,
+  });
+
+  console.log('STEP 1 - customers');
 
   const customers = await this.customerRepository.find({
     order: {
@@ -2919,9 +3217,17 @@ async getCustomerReport(query?: ReportQueryDto) {
     },
   });
 
+  console.log(
+    'STEP 1 OK - customers:',
+    customers.length,
+  );
+
+  // REST OF YOUR EXISTING CODE BELOW
+
   // ---------------------------------------------------------
   // GET CUSTOMER SALES
   // ---------------------------------------------------------
+console.log('STEP 2 - sales query');
 
   const salesQb = this.posSaleRepository
     .createQueryBuilder('sale')
@@ -2948,7 +3254,9 @@ async getCustomerReport(query?: ReportQueryDto) {
   // ---------------------------------------------------------
 
   if (query?.endDate) {
-    const nextDate = this.getNextDate(query.endDate);
+    const nextDate = this.getNextDate(
+      query.endDate,
+    );
 
     salesQb.andWhere(
       'sale.createdAt < :endDate',
@@ -2958,17 +3266,19 @@ async getCustomerReport(query?: ReportQueryDto) {
     );
   }
 
-  // ---------------------------------------------------------
-  // SORT
-  // ---------------------------------------------------------
-
   salesQb.orderBy(
     'sale.createdAt',
     'DESC',
   );
 
+  this.applySaleScope(salesQb, user);
+
   const sales = await salesQb.getMany();
 
+  console.log(
+  'STEP 2 OK - sales:',
+  sales.length,
+);
   // ---------------------------------------------------------
   // GET RETURNS
   // ---------------------------------------------------------
@@ -2980,15 +3290,21 @@ async getCustomerReport(query?: ReportQueryDto) {
   let returns: PosReturn[] = [];
 
   if (saleIds.length > 0) {
-    returns = await this.posReturnRepository
-      .createQueryBuilder('ret')
-      .where(
-        'ret.posSaleId IN (:...saleIds)',
-        {
-          saleIds,
-        },
-      )
-      .getMany();
+    returns =
+      await this.posReturnRepository
+        .createQueryBuilder('ret')
+        .where(
+          'ret.posSaleId IN (:...saleIds)',
+          {
+            saleIds,
+          },
+        )
+        .getMany();
+
+        console.log(
+  'STEP 3 OK - returns:',
+  returns.length,
+);
   }
 
   // ---------------------------------------------------------
@@ -3000,12 +3316,16 @@ async getCustomerReport(query?: ReportQueryDto) {
 
   for (const ret of returns) {
     const currentAmount =
-      returnsBySaleId.get(ret.posSaleId) ?? 0;
+      returnsBySaleId.get(
+        ret.posSaleId,
+      ) ?? 0;
 
     returnsBySaleId.set(
       ret.posSaleId,
       currentAmount +
-        Number(ret.totalReturnAmount || 0),
+        Number(
+          ret.totalReturnAmount || 0,
+        ),
     );
   }
 
@@ -3025,17 +3345,11 @@ async getCustomerReport(query?: ReportQueryDto) {
     >();
 
   // ---------------------------------------------------------
-  // SALE ID -> CUSTOMER MAP
-  //
-  // IMPORTANT:
-  // CustomerPayment.salesInvoiceId references PosSale.id
-  // which is UUID.
-  //
-  // DO NOT use invoiceNumber here.
+  // INVOICE -> CUSTOMER MAP
   // ---------------------------------------------------------
 
   const saleCustomerMap =
-    new Map<string, number>();
+  new Map<string, number>();
 
   // ---------------------------------------------------------
   // PROCESS SALES
@@ -3050,32 +3364,27 @@ async getCustomerReport(query?: ReportQueryDto) {
     }
 
     // -------------------------------------------------------
-    // SALE TOTAL
+    // SALE STATUS
     // -------------------------------------------------------
 
     const grandTotal = Number(
       sale.grandTotal || 0,
     );
 
-    // -------------------------------------------------------
-    // RETURN AMOUNT
-    // -------------------------------------------------------
-
     const returnAmount = Number(
       (
-        returnsBySaleId.get(sale.id) ?? 0
+        returnsBySaleId.get(
+          sale.id,
+        ) ?? 0
       ).toFixed(2),
     );
-
-    // -------------------------------------------------------
-    // CALCULATE NET SALE
-    // -------------------------------------------------------
 
     let netSaleAmount = 0;
 
     // COMPLETED
     if (
-      sale.status === SaleStatus.COMPLETED
+      sale.status ===
+      SaleStatus.COMPLETED
     ) {
       netSaleAmount = grandTotal;
     }
@@ -3093,7 +3402,8 @@ async getCustomerReport(query?: ReportQueryDto) {
 
     // FULLY RETURNED
     else if (
-      sale.status === SaleStatus.RETURNED
+      sale.status ===
+      SaleStatus.RETURNED
     ) {
       netSaleAmount = 0;
     }
@@ -3103,22 +3413,16 @@ async getCustomerReport(query?: ReportQueryDto) {
       continue;
     }
 
-    // -------------------------------------------------------
-    // CUSTOMER ID
-    // -------------------------------------------------------
-
     const customerId =
       Number(sale.customerId);
-
-    if (!Number.isFinite(customerId)) {
-      continue;
-    }
 
     // -------------------------------------------------------
     // CREATE CUSTOMER RECORD
     // -------------------------------------------------------
 
-    if (!customerMap.has(customerId)) {
+    if (
+      !customerMap.has(customerId)
+    ) {
       customerMap.set(
         customerId,
         {
@@ -3159,113 +3463,93 @@ async getCustomerReport(query?: ReportQueryDto) {
     }
 
     // -------------------------------------------------------
-    // IMPORTANT PAYMENT MAPPING
-    //
-    // CustomerPayment.salesInvoiceId
-    //        ↓
-    // PosSale.id
-    //
-    // PosSale.id is UUID.
+    // SAVE INVOICE -> CUSTOMER
     // -------------------------------------------------------
 
     saleCustomerMap.set(
-      sale.id,
-      customerId,
-    );
+  sale.id,
+  customerId,
+);
   }
 
   // ---------------------------------------------------------
   // GET CUSTOMER PAYMENTS
   // ---------------------------------------------------------
 
-  const saleIdsForPayments =
-    Array.from(
-      saleCustomerMap.keys(),
+let payments: CustomerPayment[] = [];
+
+if (saleIds.length > 0) {
+  console.log('STEP 4A - saleIds:', saleIds);
+
+  try {
+    payments = await this.customerPaymentRepository
+      .createQueryBuilder('payment')
+      .where(
+        'payment.salesInvoiceId IN (:...saleIds)',
+        { saleIds },
+      )
+      .getMany();
+
+    console.log(
+      'STEP 4B - payments query successful:',
+      payments.length,
     );
-
-  let payments: CustomerPayment[] = [];
-
-  if (saleIdsForPayments.length > 0) {
-    payments =
-      await this.customerPaymentRepository
-        .createQueryBuilder('payment')
-        .where(
-          'payment.salesInvoiceId IN (:...saleIdsForPayments)',
-          {
-            saleIdsForPayments,
-          },
-        )
-        .getMany();
+  } catch (error) {
+    console.error(
+      '❌ STEP 4 PAYMENT QUERY ERROR:',
+      error,
+    );
+    throw error;
   }
+}
 
-  // ---------------------------------------------------------
-  // ADD PAYMENTS TO CUSTOMER
-  // ---------------------------------------------------------
+for (const payment of payments) {
+  if (!payment.salesInvoiceId) continue;
 
-  for (const payment of payments) {
-    if (!payment.salesInvoiceId) {
-      continue;
-    }
+  const customerId =
+    saleCustomerMap.get(payment.salesInvoiceId);
 
-    // salesInvoiceId = PosSale.id
-    const customerId =
-      saleCustomerMap.get(
-        payment.salesInvoiceId,
-      );
+  if (customerId === undefined) continue;
 
-    if (customerId === undefined) {
-      continue;
-    }
+  const customer = customerMap.get(customerId);
 
-    const customer =
-      customerMap.get(customerId);
+  if (!customer) continue;
 
-    if (!customer) {
-      continue;
-    }
-
-    customer.totalPaidAmount +=
-      Number(payment.amount || 0);
-  }
-
+  customer.totalPaidAmount += Number(
+    payment.amount || 0,
+  );
+}
   // ---------------------------------------------------------
   // BUILD FINAL RECORDS
   // ---------------------------------------------------------
-
   const records = customers.map(
     (customer) => {
       const customerId =
         Number(customer.id);
 
       const data =
-        customerMap.get(customerId) || {
+        customerMap.get(
+          customerId,
+        ) || {
           totalOrders: 0,
           totalSalesAmount: 0,
           totalPaidAmount: 0,
           lastPurchaseDate: null,
         };
 
-      // -----------------------------------------------------
-      // TOTAL SALES
-      // -----------------------------------------------------
-
       const totalSalesAmount =
         Number(
-          data.totalSalesAmount.toFixed(2),
+          data.totalSalesAmount.toFixed(
+            2,
+          ),
         );
-
-      // -----------------------------------------------------
-      // TOTAL PAID
-      // -----------------------------------------------------
 
       const totalPaidAmount =
         Number(
-          data.totalPaidAmount.toFixed(2),
+          data.totalPaidAmount.toFixed(
+            2,
+          ),
         );
-
-      // -----------------------------------------------------
-      // OUTSTANDING
-      // -----------------------------------------------------
 
       const outstandingAmount =
         Number(
@@ -3336,21 +3620,24 @@ async getCustomerReport(query?: ReportQueryDto) {
   const totalSalesAmount =
     records.reduce(
       (sum, item) =>
-        sum + item.totalSalesAmount,
+        sum +
+        item.totalSalesAmount,
       0,
     );
 
   const totalPaidAmount =
     records.reduce(
       (sum, item) =>
-        sum + item.totalPaidAmount,
+        sum +
+        item.totalPaidAmount,
       0,
     );
 
   const totalOutstandingAmount =
     records.reduce(
       (sum, item) =>
-        sum + item.outstandingAmount,
+        sum +
+        item.outstandingAmount,
       0,
     );
 
@@ -3363,7 +3650,12 @@ async getCustomerReport(query?: ReportQueryDto) {
   // ---------------------------------------------------------
   // RETURN REPORT
   // ---------------------------------------------------------
+console.log(
+  'STEP 5 OK - records:',
+  records.length,
+);
 
+console.log('========== CUSTOMER REPORT END ==========');
   return {
     report: 'Customer Report',
 
@@ -3382,13 +3674,15 @@ async getCustomerReport(query?: ReportQueryDto) {
       activeCustomers:
         records.filter(
           (item) =>
-            item.status === 'ACTIVE',
+            item.status ===
+            'ACTIVE',
         ).length,
 
       inactiveCustomers:
         records.filter(
           (item) =>
-            item.status === 'INACTIVE',
+            item.status ===
+            'INACTIVE',
         ).length,
 
       customersWithPurchases,
@@ -3397,17 +3691,23 @@ async getCustomerReport(query?: ReportQueryDto) {
 
       totalSalesAmount:
         Number(
-          totalSalesAmount.toFixed(2),
+          totalSalesAmount.toFixed(
+            2,
+          ),
         ),
 
       totalPaidAmount:
         Number(
-          totalPaidAmount.toFixed(2),
+          totalPaidAmount.toFixed(
+            2,
+          ),
         ),
 
       totalOutstandingAmount:
         Number(
-          totalOutstandingAmount.toFixed(2),
+          totalOutstandingAmount.toFixed(
+            2,
+          ),
         ),
     },
 
@@ -3421,6 +3721,7 @@ async getCustomerReport(query?: ReportQueryDto) {
 
 async getPurchaseReport(
   query?: ReportQueryDto,
+  user?: any,
 ) {
   const purchaseOrders =
     await this.purchaseOrderRepository.find({
@@ -3883,7 +4184,7 @@ async getPurchaseReport(
 
 // 14. EXPENSE REPORT
 
-async getExpenseReport(query?: ReportQueryDto) {
+async getExpenseReport(query?: ReportQueryDto, user?: any) {
   const qb = this.financeTransactionRepository
     .createQueryBuilder('t')
     .leftJoinAndSelect('t.supplier', 'supplier')
@@ -3947,6 +4248,8 @@ async getExpenseReport(query?: ReportQueryDto) {
       },
     );
   }
+
+  this.applyFinanceTransactionScope(qb, user);
 
   qb.orderBy('t.transactionDate', 'DESC')
     .addOrderBy('t.id', 'DESC');

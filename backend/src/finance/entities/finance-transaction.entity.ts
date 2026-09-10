@@ -8,9 +8,12 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+
 import { Customer } from '../../customers/entities/customer.entity';
 import { Supplier } from '../../suppliers/entities/supplier.entity';
 import { PurchaseInvoice } from '../../purchasing/entities/purchase-invoice.entity';
+import { Location } from '../../inventory/entities/location.entity';
+import { Till } from './../../tills/entities/till.entity';
 
 export enum TransactionType {
   INCOME = 'INCOME',
@@ -32,7 +35,10 @@ export class FinanceTransaction {
   transactionNumber!: string;
 
   @Index()
-  @Column({ type: 'date', default: () => 'CURRENT_DATE' })
+  @Column({
+    type: 'date',
+    default: () => 'CURRENT_DATE',
+  })
   transactionDate!: string;
 
   @Index()
@@ -49,7 +55,10 @@ export class FinanceTransaction {
   })
   paymentMethod!: FinancePaymentMethod;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({
+    type: 'varchar',
+    length: 255,
+  })
   category!: string;
 
   @Column({ type: 'text' })
@@ -63,32 +72,75 @@ export class FinanceTransaction {
   })
   amount!: number;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   reference?: string | null;
 
   @Index()
-  @Column({ type: 'int', nullable: true })
+  @Column({
+    type: 'uuid',
+    nullable: true,
+  })
+  locationId!: string | null;
+
+  @ManyToOne(() => Location, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'locationId' })
+  location?: Location | null;
+
+  @Index()
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
   customerId?: number | null;
 
-  @ManyToOne(() => Customer, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Customer, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'customerId' })
   customer?: Customer | null;
 
   @Index()
-  @Column({ type: 'int', nullable: true })
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
   supplierId?: number | null;
 
-  @ManyToOne(() => Supplier, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Supplier, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'supplierId' })
   supplier?: Supplier | null;
 
   @Index()
-  @Column({ type: 'int', nullable: true })
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
   purchaseInvoiceId?: number | null;
 
-  @ManyToOne(() => PurchaseInvoice, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => PurchaseInvoice, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'purchaseInvoiceId' })
   purchaseInvoice?: PurchaseInvoice | null;
+
+  @Index()
+@Column({
+  type: 'int',
+  nullable: true,
+})
+tillId!: number | null;
 
   @CreateDateColumn()
   createdAt!: Date;

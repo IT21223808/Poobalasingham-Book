@@ -389,10 +389,7 @@ export class PurchasingController {
     );
   }
 
-  // =========================================================
   // DASHBOARD
-  // =========================================================
-
   @Get('dashboard')
   getDashboard() {
     return this.purchasingService.getDashboard();

@@ -48,7 +48,7 @@ export class AuthService {
      * Public registration creates only a basic USER.
      *
      * OWNER / MANAGER / CASHIER users must be created
-     * from the Users Management module.
+     * from Users Management module.
      */
     const user = await this.usersService.create({
       firstName: registerDto.firstName,
@@ -116,6 +116,50 @@ export class AuthService {
     }
 
     // =======================================================
+    // BRANCH VALIDATION
+    // =======================================================
+
+    /*
+     * USER role is not allowed to access POS.
+     *
+     * OWNER / MANAGER / CASHIER must have a branch.
+     *
+     * OWNER is assigned to Main Branch during bootstrap.
+     */
+    if (
+      user.role === UserRole.OWNER ||
+      user.role === UserRole.MANAGER ||
+      user.role === UserRole.CASHIER
+    ) {
+      if (!user.locationId) {
+        throw new UnauthorizedException(
+          'User is not assigned to a branch/location.',
+        );
+      }
+    }
+
+    // -------------------------------------------------------
+    // CASHIER TILL VALIDATION
+    // -------------------------------------------------------
+
+    if (user.role === UserRole.CASHIER) {
+      if (!user.tillId) {
+        throw new UnauthorizedException(
+          'Cashier is not assigned to a till.',
+        );
+      }
+
+      if (
+        !user.till ||
+        user.till.locationId !== user.locationId
+      ) {
+        throw new UnauthorizedException(
+          'Cashier till does not belong to the assigned branch.',
+        );
+      }
+    }
+
+    // =======================================================
     // JWT PAYLOAD
     // =======================================================
 
@@ -155,14 +199,14 @@ export class AuthService {
         role: user.role,
 
         // ---------------------------------------------------
-        // Branch
+        // Branch ID
         // ---------------------------------------------------
 
         locationId:
           user.locationId ?? null,
 
         // ---------------------------------------------------
-        // Till
+        // Till ID
         // ---------------------------------------------------
 
         tillId:
@@ -194,55 +238,127 @@ export class AuthService {
     };
   }
 
+  // =========================================================
+  // BOOTSTRAP OWNER
+  // =========================================================
+
   async bootstrapOwner(registerDto: RegisterDto) {
-  const ownerExists = await this.usersService.hasOwner();
+    // -------------------------------------------------------
+    // OWNER ALREADY EXISTS
+    // -------------------------------------------------------
 
-  if (ownerExists) {
-    throw new ConflictException(
-      'Owner account already exists',
-    );
+    const ownerExists =
+      await this.usersService.hasOwner();
+
+    if (ownerExists) {
+      throw new ConflictException(
+        'Owner account already exists',
+      );
+    }
+
+    // -------------------------------------------------------
+    // EMAIL CHECK
+    // -------------------------------------------------------
+
+    const existingUser =
+      await this.usersService.findByEmail(
+        registerDto.email,
+      );
+
+    if (existingUser) {
+      throw new ConflictException(
+        'Email already exists',
+      );
+    }
+
+    // -------------------------------------------------------
+    // PASSWORD
+    // -------------------------------------------------------
+
+    const hashedPassword =
+      await bcrypt.hash(
+        registerDto.password,
+        10,
+      );
+
+    // -------------------------------------------------------
+    // MAIN BRANCH
+    // -------------------------------------------------------
+
+    /*
+     * Owner is assigned to Main Branch.
+     *
+     * This makes the default flow:
+     *
+     * Owner Login
+     *      ↓
+     * Main Branch
+     *      ↓
+     * POS
+     *
+     * The branch is stored in JWT after login.
+     */
+    const mainBranchId =
+      await this.usersService.getMainBranchId();
+
+    if (!mainBranchId) {
+      throw new ConflictException(
+        'Main Branch does not exist. Please create Main Branch before creating the owner account.',
+      );
+    }
+
+    // -------------------------------------------------------
+    // CREATE OWNER
+    // -------------------------------------------------------
+
+    const user =
+      await this.usersService.create({
+        firstName: registerDto.firstName,
+        lastName: registerDto.lastName,
+        email: registerDto.email,
+        password: hashedPassword,
+        role: UserRole.OWNER,
+
+        // OWNER → Main Branch
+        locationId: mainBranchId,
+
+        // Owner does not use a cashier till
+        tillId: null,
+
+        isActive: true,
+      });
+
+    return {
+      message:
+        'Owner account created successfully',
+
+      user: {
+        id: user.id,
+
+        firstName: user.firstName,
+
+        lastName: user.lastName,
+
+        email: user.email,
+
+        role: user.role,
+
+        locationId:
+          user.locationId,
+
+        tillId:
+          user.tillId,
+
+        location: user.location
+          ? {
+              id: user.location.id,
+              name: user.location.name,
+            }
+          : null,
+
+        isActive:
+          user.isActive,
+      },
+    };
   }
-
-  const existingUser =
-    await this.usersService.findByEmail(
-      registerDto.email,
-    );
-
-  if (existingUser) {
-    throw new ConflictException(
-      'Email already exists',
-    );
-  }
-
-  const hashedPassword =
-    await bcrypt.hash(
-      registerDto.password,
-      10,
-    );
-
-  const user = await this.usersService.create({
-    firstName: registerDto.firstName,
-    lastName: registerDto.lastName,
-    email: registerDto.email,
-    password: hashedPassword,
-    role: UserRole.OWNER,
-    locationId: null,
-    tillId: null,
-    isActive: true,
-  });
-
-  return {
-    message: 'Owner account created successfully',
-    user: {
-      id: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      role: user.role,
-      locationId: user.locationId,
-      tillId: user.tillId,
-      isActive: user.isActive,
-    },
-  };
-}
 }

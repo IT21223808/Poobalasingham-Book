@@ -12,6 +12,7 @@ import {
 
 import { Location } from '../../inventory/entities/location.entity';
 import { Till } from '../../tills/entities/till.entity';
+
 import { PosSaleItem } from './pos-sale-item.entity';
 import { PosPayment } from './pos-payment.entity';
 
@@ -24,9 +25,12 @@ export enum SaleStatus {
 
 @Entity('pos_sales')
 export class PosSale {
+  
+  // ID
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  // INVOICE NUMBER
   @Index({ unique: true })
   @Column({
     type: 'varchar',
@@ -36,6 +40,7 @@ export class PosSale {
   })
   invoiceNumber!: string;
 
+  // CLIENT SALE ID
   @Index({ unique: true })
   @Column({
     type: 'varchar',
@@ -45,7 +50,13 @@ export class PosSale {
   })
   clientSaleId!: string | null;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  // AMOUNTS
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    default: 0,
+  })
   subtotal!: number;
 
   @Column({
@@ -66,12 +77,20 @@ export class PosSale {
   })
   grandTotal!: number;
 
+  // ============================================================
+  // STATUS
+  // ============================================================
+
   @Column({
     type: 'enum',
     enum: SaleStatus,
     default: SaleStatus.COMPLETED,
   })
   status!: SaleStatus;
+
+  // ============================================================
+  // CUSTOMER
+  // ============================================================
 
   @Column({
     type: 'integer',
@@ -88,6 +107,10 @@ export class PosSale {
   })
   customerName!: string | null;
 
+  // ============================================================
+  // CASHIER
+  // ============================================================
+
   @Column({
     type: 'varchar',
     length: 100,
@@ -96,44 +119,59 @@ export class PosSale {
   })
   cashierId!: string | null;
 
+  // ============================================================
+  // NOTES
+  // ============================================================
+
   @Column({
     type: 'text',
     nullable: true,
   })
   notes!: string | null;
 
+  // ============================================================
+  // BRANCH / LOCATION
+  // ============================================================
+
   @Index()
   @Column({
     type: 'uuid',
     name: 'location_id',
-    nullable: true,
+    nullable: false,
   })
-  locationId!: string | null;
+  locationId!: string;
 
   @ManyToOne(() => Location, {
-    nullable: true,
+    nullable: false,
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({
     name: 'location_id',
   })
-  location!: Location | null;
+  location!: Location;
 
-  @Index()
-  @Column({
-    type: 'integer',
-    name: 'till_id',
-    nullable: true,
-  })
-  tillId!: number | null;
+  // ============================================================
+  // TILL
+  // ============================================================
 
-  @ManyToOne(() => Till, {
-    nullable: true,
-    onDelete: 'SET NULL',
-  })
-  @JoinColumn({
-    name: 'till_id',
-  })
-  till!: Till | null;
+ @Index()
+@Column({
+  type: 'integer',
+  name: 'till_id',
+  nullable: true,
+})
+tillId!: number | null;
+
+@ManyToOne(() => Till, {
+  nullable: true,
+  onDelete: 'SET NULL',
+})
+@JoinColumn({ name: 'till_id' })
+till!: Till | null;
+
+  // ============================================================
+  // SALE ITEMS
+  // ============================================================
 
   @OneToMany(
     () => PosSaleItem,
@@ -144,6 +182,10 @@ export class PosSale {
   )
   items!: PosSaleItem[];
 
+  // ============================================================
+  // PAYMENTS
+  // ============================================================
+
   @OneToMany(
     () => PosPayment,
     (payment) => payment.posSale,
@@ -152,6 +194,10 @@ export class PosSale {
     },
   )
   payments!: PosPayment[];
+
+  // ============================================================
+  // CREATED / UPDATED
+  // ============================================================
 
   @CreateDateColumn({
     name: 'created_at',

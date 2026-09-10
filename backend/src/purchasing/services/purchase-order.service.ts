@@ -543,25 +543,25 @@ export class PurchaseOrderService {
   // FIND ONE PURCHASE ORDER
   // ============================================================
 
-  async findPurchaseOrder(
-    id: number,
-  ) {
+  async findPurchaseOrder(id: number) {
+  try {
+    console.log("🔍 Finding Purchase Order ID:", id);
+
     const purchaseOrder =
-      await this.purchaseOrderRepository.findOne(
-        {
-          where: {
-            id,
-          },
-
-          relations: {
-            supplier: true,
-
-            items: {
-              product: true,
-            },
+      await this.purchaseOrderRepository.findOne({
+        where: { id },
+        relations: {
+          supplier: true,
+          items: {
+            product: true,
           },
         },
-      );
+      });
+
+    console.log(
+      "✅ Purchase Order Result:",
+      JSON.stringify(purchaseOrder, null, 2),
+    );
 
     if (!purchaseOrder) {
       throw new NotFoundException(
@@ -570,8 +570,22 @@ export class PurchaseOrderService {
     }
 
     return purchaseOrder;
-  }
+  } catch (error) {
+    console.error("❌ FIND PURCHASE ORDER ERROR:");
 
+    if (error instanceof Error) {
+      console.error("Message:", error.message);
+      console.error("Stack:", error.stack);
+    } else {
+      console.error(
+        "Unknown error:",
+        JSON.stringify(error, null, 2),
+      );
+    }
+
+    throw error;
+  }
+}
   // ============================================================
   // FIND ALL PURCHASE ORDERS
   // ============================================================

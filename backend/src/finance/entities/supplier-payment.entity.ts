@@ -49,6 +49,14 @@ export class SupplierPayment {
   })
   amount!: number;
 
+  @Index()
+@Column({ type: 'uuid', nullable: true })
+locationId!: string | null;
+
+@Index()
+@Column({ type: 'integer', nullable: true })
+tillId!: number | null;
+
   @Column({
     type: 'enum',
     enum: FinancePaymentMethod,

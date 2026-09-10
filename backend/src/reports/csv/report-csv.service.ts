@@ -17,10 +17,12 @@ export class ReportCsvService {
 
   async exportDailySalesCsv(
     date?: string,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getDailySalesReport(
         date,
+        user,
       );
 
     const headers = [
@@ -83,11 +85,13 @@ export class ReportCsvService {
   async exportMonthlySalesCsv(
     year?: number,
     month?: number,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getMonthlySalesReport(
         year,
         month,
+        user,
       );
 
     const headers = [
@@ -137,10 +141,12 @@ export class ReportCsvService {
 
   async exportAnnualSalesCsv(
     year?: number,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getAnnualSalesReport(
         year,
+        user,
       );
 
     const headers = [
@@ -190,10 +196,12 @@ export class ReportCsvService {
 
   async exportCategoryWiseSalesCsv(
     query: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getCategoryWiseSales(
         query,
+        user,
       );
 
     const headers = [
@@ -254,10 +262,12 @@ export class ReportCsvService {
 
   async exportProductWiseSalesCsv(
     query: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getProductWiseSales(
         query,
+        user,
       );
 
     const headers = [
@@ -325,10 +335,12 @@ export class ReportCsvService {
 
   async exportProfitAnalysisCsv(
     query: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getProfitAnalysis(
         query,
+        user,
       );
 
     const headers = [
@@ -392,10 +404,12 @@ export class ReportCsvService {
 
   async exportBestSellingProductsCsv(
     query: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getBestSellingProducts(
         query,
+        user,
       );
 
     const headers = [
@@ -465,10 +479,12 @@ export class ReportCsvService {
 
   async exportSlowMovingProductsCsv(
     query: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getSlowMovingProducts(
         query,
+        user,
       );
 
     const headers = [
@@ -530,10 +546,12 @@ export class ReportCsvService {
 
   async exportDeadStockCsv(
     query: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getDeadStock(
         query,
+        user,
       );
 
     const headers = [
@@ -586,91 +604,92 @@ export class ReportCsvService {
     );
   }
 
-  
-async exportExpenseCsv(
-  query?: ReportQueryDto,
-): Promise<string> {
-  const report =
-    await this.reportsService.getExpenseReport(query);
+  // =========================================================
+  // 10. EXPENSE REPORT CSV
+  // =========================================================
 
-  const rows = this.toRows(report);
+  async exportExpenseCsv(
+    query?: ReportQueryDto,
+    user?: any,
+  ): Promise<string> {
+    const report =
+      await this.reportsService.getExpenseReport(
+        query,
+        user,
+      );
 
-  if (!rows.length) {
+    const rows =
+      this.toRows(report);
+
+    if (!rows.length) {
+      return [
+        'Expense Report',
+        '',
+        'No expense records found',
+      ].join('\n');
+    }
+
+    const headers = [
+      'Transaction ID',
+      'Transaction Number',
+      'Expense Date',
+      'Category',
+      'Description',
+      'Payment Method',
+      'Reference',
+      'Amount',
+      'Supplier Code',
+      'Supplier Name',
+      'Purchase Invoice Number',
+    ];
+
+    const csvRows =
+      rows.map(
+        (row: any) =>
+          [
+            row.transactionId,
+            row.transactionNumber,
+            row.expenseDate,
+            row.category,
+            row.description,
+            row.paymentMethod,
+            row.reference,
+            row.amount,
+            row.supplierCode,
+            row.supplierName,
+            row.purchaseInvoiceNumber,
+          ]
+            .map(
+              (value) =>
+                this.escapeCsvValue(value),
+            )
+            .join(','),
+      );
+
     return [
-      'Expense Report',
-      '',
-      'No expense records found',
+      headers
+        .map(
+          (header) =>
+            this.escapeCsvValue(header),
+        )
+        .join(','),
+
+      ...csvRows,
     ].join('\n');
   }
 
-  const headers = [
-    'Transaction ID',
-    'Transaction Number',
-    'Expense Date',
-    'Category',
-    'Description',
-    'Payment Method',
-    'Reference',
-    'Amount',
-    'Supplier Code',
-    'Supplier Name',
-    'Purchase Invoice Number',
-  ];
-
-  const escapeCsv = (value: any): string => {
-    if (
-      value === null ||
-      value === undefined
-    ) {
-      return '';
-    }
-
-    const text = String(value);
-
-    if (
-      text.includes(',') ||
-      text.includes('"') ||
-      text.includes('\n')
-    ) {
-      return `"${text.replace(/"/g, '""')}"`;
-    }
-
-    return text;
-  };
-
-  const csvRows = rows.map((row: any) =>
-    [
-      row.transactionId,
-      row.transactionNumber,
-      row.expenseDate,
-      row.category,
-      row.description,
-      row.paymentMethod,
-      row.reference,
-      row.amount,
-      row.supplierCode,
-      row.supplierName,
-      row.purchaseInvoiceNumber,
-    ]
-      .map(escapeCsv)
-      .join(','),
-  );
-
-  return [
-    headers.map(escapeCsv).join(','),
-    ...csvRows,
-  ].join('\n');
-}
   // =========================================================
-  // 10. SUPPLIER REPORT CSV
+  // 11. SUPPLIER REPORT CSV
   // =========================================================
 
   async exportSupplierReportCsv(
     query: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getSupplierReport(
         query,
+        user,
       );
 
     const headers = [
@@ -758,15 +777,17 @@ async exportExpenseCsv(
   }
 
   // =========================================================
-  // 11. CUSTOMER REPORT CSV
+  // 12. CUSTOMER REPORT CSV
   // =========================================================
 
   async exportCustomerReportCsv(
     query?: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getCustomerReport(
         query,
+        user,
       );
 
     const headers = [
@@ -834,15 +855,17 @@ async exportExpenseCsv(
   }
 
   // =========================================================
-  // 12. PURCHASE REPORT CSV
+  // 13. PURCHASE REPORT CSV
   // =========================================================
 
   async exportPurchaseReportCsv(
     query?: ReportQueryDto,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.reportsService.getPurchaseReport(
         query,
+        user,
       );
 
     const headers = [
@@ -916,86 +939,19 @@ async exportExpenseCsv(
   }
 
   // =========================================================
-  // 13. EXPENSE REPORT CSV
-  // =========================================================
-
-  async exportExpenseReportCsv(
-    query?: ReportQueryDto,
-  ): Promise<string> {
-    const report =
-      await this.reportsService.getExpenseReport(
-        query,
-      );
-
-    const headers = [
-      'Expense_Date',
-      'Transaction_Number',
-      'Category',
-      'Description',
-      'Payment_Method',
-      'Reference',
-      'Supplier_Code',
-      'Supplier_Name',
-      'Purchase_Invoice',
-      'Amount',
-    ];
-
-    const records =
-      this.toRows(report);
-
-    const rows = records.map(
-      (record: any) => ({
-        Expense_Date:
-          record.expenseDate ?? '',
-
-        Transaction_Number:
-          record.transactionNumber ?? '',
-
-        Category:
-          record.category ?? '',
-
-        Description:
-          record.description ?? '',
-
-        Payment_Method:
-          record.paymentMethod ?? '',
-
-        Reference:
-          record.reference ?? '',
-
-        Supplier_Code:
-          record.supplierCode ?? '',
-
-        Supplier_Name:
-          record.supplierName ?? '',
-
-        Purchase_Invoice:
-          record.purchaseInvoiceNumber ??
-          '',
-
-        Amount:
-          record.amount ?? 0,
-      }),
-    );
-
-    return this.generateCsv(
-      headers,
-      rows,
-    );
-  }
-
-  // =========================================================
   // 14. PROFIT & LOSS CSV
   // =========================================================
 
   async exportProfitLossCsv(
     startDate?: string,
     endDate?: string,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.financeService.getProfitLossReport(
         startDate,
         endDate,
+        user,
       );
 
     const data =
@@ -1055,15 +1011,18 @@ async exportExpenseCsv(
         Amount: revenue,
       },
       {
-        Particular: 'Cost of Goods Sold',
-        Amount: costOfGoodsSold,
+        Particular:
+          'Cost of Goods Sold',
+        Amount:
+          costOfGoodsSold,
       },
       {
         Particular: 'Gross Profit',
         Amount: grossProfit,
       },
       {
-        Particular: 'Operating Expenses',
+        Particular:
+          'Operating Expenses',
         Amount: expenses,
       },
       {
@@ -1084,10 +1043,12 @@ async exportExpenseCsv(
 
   async exportBalanceSheetCsv(
     asOfDate?: string,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.financeService.getBalanceSheetReport(
         asOfDate,
+        user,
       );
 
     const data =
@@ -1196,11 +1157,13 @@ async exportExpenseCsv(
   async exportCashFlowCsv(
     startDate?: string,
     endDate?: string,
+    user?: any,
   ): Promise<string> {
     const report =
       await this.financeService.getCashFlowReport(
         startDate,
         endDate,
+        user,
       );
 
     const data =
@@ -1333,7 +1296,10 @@ async exportExpenseCsv(
   // =========================================================
 
   private addFinancialSectionRows(
-    rows: Record<string, unknown>[],
+    rows: Record<
+      string,
+      unknown
+    >[],
     section: string,
     source: any,
     fallbackLabel: string,
@@ -1392,6 +1358,38 @@ async exportExpenseCsv(
   }
 
   // =========================================================
+  // CSV ESCAPE HELPER
+  // =========================================================
+
+  private escapeCsvValue(
+    value: unknown,
+  ): string {
+    if (
+      value === null ||
+      value === undefined
+    ) {
+      return '';
+    }
+
+    const stringValue =
+      String(value);
+
+    if (
+      stringValue.includes(',') ||
+      stringValue.includes('"') ||
+      stringValue.includes('\n') ||
+      stringValue.includes('\r')
+    ) {
+      return `"${stringValue.replace(
+        /"/g,
+        '""',
+      )}"`;
+    }
+
+    return stringValue;
+  }
+
+  // =========================================================
   // COMMON CSV GENERATOR
   // =========================================================
 
@@ -1402,37 +1400,14 @@ async exportExpenseCsv(
       unknown
     >[],
   ): string {
-    const escapeCsvValue = (
-      value: unknown,
-    ): string => {
-      if (
-        value === null ||
-        value === undefined
-      ) {
-        return '';
-      }
-
-      const stringValue =
-        String(value);
-
-      if (
-        stringValue.includes(',') ||
-        stringValue.includes('"') ||
-        stringValue.includes('\n') ||
-        stringValue.includes('\r')
-      ) {
-        return `"${stringValue.replace(
-          /"/g,
-          '""',
-        )}"`;
-      }
-
-      return stringValue;
-    };
-
     const headerLine =
       headers
-        .map(escapeCsvValue)
+        .map(
+          (header) =>
+            this.escapeCsvValue(
+              header,
+            ),
+        )
         .join(',');
 
     const dataLines =
@@ -1441,7 +1416,7 @@ async exportExpenseCsv(
           headers
             .map(
               (header) =>
-                escapeCsvValue(
+                this.escapeCsvValue(
                   row[header],
                 ),
             )

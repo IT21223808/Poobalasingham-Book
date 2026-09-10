@@ -5,8 +5,11 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   Index,
+  JoinColumn,ManyToOne
 } from 'typeorm';
 import { PosReturnItem } from './pos-return-item.entity';
+import { Till } from '../../tills/entities/till.entity';
+import { Location } from '../../inventory/entities/location.entity';
 
 @Entity('pos_returns')
 export class PosReturn {
@@ -25,6 +28,36 @@ export class PosReturn {
 
   @Column({ type: 'integer', name: 'customer_id', nullable: true })
   customerId!: number | null;
+
+  @Index()
+@Column({
+  type: 'uuid',
+  name: 'location_id',
+  nullable: false,
+})
+locationId!: string;
+
+@ManyToOne(() => Location, {
+  nullable: false,
+  onDelete: 'RESTRICT',
+})
+@JoinColumn({ name: 'location_id' })
+location!: Location;
+
+@Index()
+@Column({
+  type: 'integer',
+  name: 'till_id',
+  nullable: true,
+})
+tillId!: number | null;
+
+@ManyToOne(() => Till, {
+  nullable: true,
+  onDelete: 'SET NULL',
+})
+@JoinColumn({ name: 'till_id' })
+till!: Till | null;
 
   @Column({ type: 'varchar', length: 100, name: 'cashier_id', nullable: true })
   cashierId!: string | null;

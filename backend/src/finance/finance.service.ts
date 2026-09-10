@@ -68,6 +68,66 @@ export class FinanceService {
   ) {}
 
   // =========================================================
+  // BRANCH / TILL SECURITY SCOPE
+  // OWNER   -> all branches / all tills
+  // MANAGER -> own branch / all tills
+  // CASHIER -> own branch / own till
+  // =========================================================
+
+  private normalizeRole(role?: string): string {
+    const normalized = String(role || '').toUpperCase();
+    if (normalized === 'ADMIN') return 'OWNER';
+    if (normalized === 'STAFF') return 'CASHIER';
+    return normalized;
+  }
+
+  private resolveFinanceScope(user: any) {
+    const role = this.normalizeRole(user?.role);
+
+    if (role === 'OWNER') {
+      return { isOwner: true, locationId: null as string | null, tillId: null as number | null };
+    }
+
+    if (!user?.locationId) {
+      throw new BadRequestException('Logged-in user is not assigned to a branch.');
+    }
+
+    if (role === 'CASHIER') {
+      if (user?.tillId === null || user?.tillId === undefined) {
+        throw new BadRequestException('Cashier is not assigned to a till.');
+      }
+      return {
+        isOwner: false,
+        locationId: String(user.locationId),
+        tillId: Number(user.tillId),
+      };
+    }
+
+    return {
+      isOwner: false,
+      locationId: String(user.locationId),
+      tillId: null as number | null,
+    };
+  }
+
+  private applyFinanceScope(qb: SelectQueryBuilder<FinanceTransaction>, user: any, alias = 't') {
+    const scope = this.resolveFinanceScope(user);
+    if (scope.isOwner) return scope;
+
+    qb.andWhere(`${alias}.locationId = :financeLocationId`, {
+      financeLocationId: scope.locationId,
+    });
+
+    if (scope.tillId !== null) {
+      qb.andWhere(`${alias}.tillId = :financeTillId`, {
+        financeTillId: scope.tillId,
+      });
+    }
+
+    return scope;
+  }
+
+  // =========================================================
   // HELPER: DATE RANGE GENERATOR
   // =========================================================
   private getDateRangeFromPeriod(period?: string, startDate?: string, endDate?: string) {
@@ -230,13 +290,15 @@ export class FinanceService {
   // 2. CENTRAL FINANCE TRANSACTIONS
   // =========================================================
 
-  async createTransaction(dto: CreateFinanceTransactionDto): Promise<FinanceTransaction> {
+  async createTransaction(dto: CreateFinanceTransactionDto, user: any): Promise<FinanceTransaction> {
     if (dto.amount <= 0) {
       throw new BadRequestException('Transaction amount must be greater than 0');
     }
 
     const transactionNumber = await this.generateTransactionNumber(this.transactionRepo);
     const date = dto.transactionDate || new Date().toISOString().slice(0, 10);
+
+    const scope = this.resolveFinanceScope(user);
 
     const transaction = this.transactionRepo.create({
       transactionNumber,
@@ -250,17 +312,21 @@ export class FinanceService {
       customerId: dto.customerId || null,
       supplierId: dto.supplierId || null,
       purchaseInvoiceId: dto.purchaseInvoiceId || null,
+      locationId: scope.isOwner ? ((dto as any).locationId ?? null) : scope.locationId,
+      tillId: scope.isOwner ? ((dto as any).tillId ?? null) : scope.tillId,
     });
 
     return await this.transactionRepo.save(transaction);
   }
 
-  async findAllTransactions(query?: FinanceQueryDto) {
+  async findAllTransactions(query?: FinanceQueryDto, user?: any) {
     const qb = this.transactionRepo
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.customer', 'customer')
       .leftJoinAndSelect('t.supplier', 'supplier')
       .leftJoinAndSelect('t.purchaseInvoice', 'purchaseInvoice');
+
+    this.applyFinanceScope(qb, user);
 
     if (query?.type) {
       qb.andWhere('t.type = :type', { type: query.type });
@@ -325,15 +391,17 @@ export class FinanceService {
     };
   }
 
-  async findOneTransaction(id: number): Promise<FinanceTransaction> {
-    const txn = await this.transactionRepo.findOne({
-      where: { id },
-      relations: {
-        customer: true,
-        supplier: true,
-        purchaseInvoice: true,
-      },
-    });
+  async findOneTransaction(id: number, user?: any): Promise<FinanceTransaction> {
+    const qb = this.transactionRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.customer', 'customer')
+      .leftJoinAndSelect('t.supplier', 'supplier')
+      .leftJoinAndSelect('t.purchaseInvoice', 'purchaseInvoice')
+      .where('t.id = :id', { id });
+
+    this.applyFinanceScope(qb, user);
+
+    const txn = await qb.getOne();
 
     if (!txn) {
       throw new NotFoundException(`Finance transaction with ID ${id} not found`);
@@ -341,8 +409,8 @@ export class FinanceService {
     return txn;
   }
 
-  async updateTransaction(id: number, dto: UpdateFinanceTransactionDto): Promise<FinanceTransaction> {
-    const txn = await this.findOneTransaction(id);
+  async updateTransaction(id: number, dto: UpdateFinanceTransactionDto, user?: any): Promise<FinanceTransaction> {
+    const txn = await this.findOneTransaction(id, user);
 
     if (dto.transactionDate) txn.transactionDate = dto.transactionDate;
     if (dto.type) txn.type = dto.type;
@@ -361,8 +429,8 @@ export class FinanceService {
     return await this.transactionRepo.save(txn);
   }
 
-  async deleteTransaction(id: number): Promise<{ success: boolean; message: string }> {
-    const txn = await this.findOneTransaction(id);
+  async deleteTransaction(id: number, user?: any): Promise<{ success: boolean; message: string }> {
+    const txn = await this.findOneTransaction(id, user);
     await this.transactionRepo.remove(txn);
     return { success: true, message: `Transaction #${txn.transactionNumber} deleted successfully.` };
   }
@@ -371,21 +439,24 @@ export class FinanceService {
   // 3. CASH BOOK & BANK BOOK
   // =========================================================
 
-  async getCashBook(query?: FinanceQueryDto) {
+  async getCashBook(query?: FinanceQueryDto, user?: any) {
     const qb = this.transactionRepo
       .createQueryBuilder('t')
       .where('t.paymentMethod = :method', { method: FinancePaymentMethod.CASH });
+
+    this.applyFinanceScope(qb, user);
 
     const range = this.getDateRangeFromPeriod(query?.period, query?.startDate, query?.endDate);
 
     // Calculate opening balance before startDate if filtered
     let openingBalance = 0;
     if (range.start) {
-      const priorTxns = await this.transactionRepo
+      const priorQb = this.transactionRepo
         .createQueryBuilder('t')
         .where('t.paymentMethod = :method', { method: FinancePaymentMethod.CASH })
-        .andWhere('t.transactionDate < :start', { start: range.start })
-        .getMany();
+        .andWhere('t.transactionDate < :start', { start: range.start });
+      this.applyFinanceScope(priorQb, user);
+      const priorTxns = await priorQb.getMany();
 
       for (const pt of priorTxns) {
         const amt = Number(pt.amount || 0);
@@ -452,20 +523,23 @@ export class FinanceService {
     };
   }
 
-  async getBankBook(query?: FinanceQueryDto) {
+  async getBankBook(query?: FinanceQueryDto, user?: any) {
     const qb = this.transactionRepo
       .createQueryBuilder('t')
       .where('t.paymentMethod = :method', { method: FinancePaymentMethod.BANK });
+
+    this.applyFinanceScope(qb, user);
 
     const range = this.getDateRangeFromPeriod(query?.period, query?.startDate, query?.endDate);
 
     let openingBalance = 0;
     if (range.start) {
-      const priorTxns = await this.transactionRepo
+      const priorQb = this.transactionRepo
         .createQueryBuilder('t')
         .where('t.paymentMethod = :method', { method: FinancePaymentMethod.BANK })
-        .andWhere('t.transactionDate < :start', { start: range.start })
-        .getMany();
+        .andWhere('t.transactionDate < :start', { start: range.start });
+      this.applyFinanceScope(priorQb, user);
+      const priorTxns = await priorQb.getMany();
 
       for (const pt of priorTxns) {
         const amt = Number(pt.amount || 0);
@@ -536,7 +610,7 @@ export class FinanceService {
   // 4. INCOME
   // =========================================================
 
-  async createIncome(dto: CreateIncomeDto): Promise<FinanceTransaction> {
+  async createIncome(dto: CreateIncomeDto, user: any): Promise<FinanceTransaction> {
     return await this.createTransaction({
       transactionDate: dto.date,
       type: TransactionType.INCOME,
@@ -546,21 +620,21 @@ export class FinanceService {
       amount: dto.amount,
       reference: dto.reference,
       customerId: dto.customerId,
-    });
+    }, user);
   }
 
-  async findAllIncome(query?: FinanceQueryDto) {
+  async findAllIncome(query?: FinanceQueryDto, user?: any) {
     return await this.findAllTransactions({
       ...query,
       type: TransactionType.INCOME,
-    });
+    }, user);
   }
 
   // =========================================================
   // 5. EXPENSES
   // =========================================================
 
-  async createExpense(dto: CreateExpenseDto): Promise<FinanceTransaction> {
+  async createExpense(dto: CreateExpenseDto, user: any): Promise<FinanceTransaction> {
     return await this.createTransaction({
       transactionDate: dto.date,
       type: TransactionType.EXPENSE,
@@ -571,21 +645,23 @@ export class FinanceService {
       reference: dto.reference,
       supplierId: dto.supplierId,
       purchaseInvoiceId: dto.purchaseInvoiceId,
-    });
+    }, user);
   }
 
-  async findAllExpenses(query?: FinanceQueryDto) {
+  async findAllExpenses(query?: FinanceQueryDto, user?: any) {
     return await this.findAllTransactions({
       ...query,
       type: TransactionType.EXPENSE,
-    });
+    }, user);
   }
 
   // =========================================================
   // 6. SUPPLIER PAYMENTS (WITH ATOMIC TRANSACTION)
   // =========================================================
 
-  async createSupplierPayment(dto: CreateSupplierPaymentDto) {
+  async createSupplierPayment(dto: CreateSupplierPaymentDto, user: any) {
+    const scope = this.resolveFinanceScope(user);
+
     if (dto.amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than 0');
     }
@@ -669,6 +745,8 @@ export class FinanceService {
         reference: dto.reference || paymentNumber,
         supplierId: supplier.id,
         purchaseInvoiceId: invoice.id,
+        locationId: scope.isOwner ? null : scope.locationId,
+        tillId: scope.isOwner ? null : scope.tillId,
       });
 
       await queryRunner.manager.save(FinanceTransaction, financeTxn);
@@ -711,32 +789,78 @@ export class FinanceService {
     }
   }
 
-  async findAllSupplierPayments(query?: { supplierId?: number; purchaseInvoiceId?: number; search?: string }) {
-    const qb = this.supplierPaymentRepo
-      .createQueryBuilder('p')
-      .leftJoinAndSelect('p.supplier', 'supplier')
-      .leftJoinAndSelect('p.purchaseInvoice', 'invoice');
+  async findAllSupplierPayments(
+  query?: {
+    supplierId?: number;
+    purchaseInvoiceId?: number;
+    search?: string;
+  },
+  user?: any,
+) {
+  const qb = this.supplierPaymentRepo
+    .createQueryBuilder('p')
+    .leftJoinAndSelect('p.supplier', 'supplier')
+    .leftJoinAndSelect('p.purchaseInvoice', 'invoice');
 
-    if (query?.supplierId) {
-      qb.andWhere('p.supplierId = :supplierId', { supplierId: query.supplierId });
-    }
+  const scope = this.resolveFinanceScope(user);
 
-    if (query?.purchaseInvoiceId) {
-      qb.andWhere('p.purchaseInvoiceId = :invoiceId', { invoiceId: query.purchaseInvoiceId });
-    }
+  if (!scope.isOwner) {
+    qb.andWhere(
+      'invoice.locationId = :locationId',
+      {
+        locationId: scope.locationId,
+      },
+    );
 
-    if (query?.search && query.search.trim()) {
+    if (scope.tillId !== null) {
       qb.andWhere(
-        '(LOWER(p.paymentNumber) LIKE LOWER(:s) OR LOWER(p.reference) LIKE LOWER(:s) OR LOWER(supplier.supplierName) LIKE LOWER(:s) OR LOWER(invoice.invoiceNumber) LIKE LOWER(:s))',
-        { s: `%${query.search.trim()}%` },
+        'p.tillId = :tillId',
+        {
+          tillId: scope.tillId,
+        },
       );
     }
-
-    qb.orderBy('p.paymentDate', 'DESC').addOrderBy('p.id', 'DESC');
-    return await qb.getMany();
   }
 
-  async findOneSupplierPayment(id: number): Promise<SupplierPayment> {
+  if (query?.supplierId) {
+    qb.andWhere(
+      'p.supplierId = :supplierId',
+      {
+        supplierId: query.supplierId,
+      },
+    );
+  }
+
+  if (query?.purchaseInvoiceId) {
+    qb.andWhere(
+      'p.purchaseInvoiceId = :invoiceId',
+      {
+        invoiceId: query.purchaseInvoiceId,
+      },
+    );
+  }
+
+  if (query?.search?.trim()) {
+    qb.andWhere(
+      `(
+        LOWER(p.paymentNumber) LIKE LOWER(:s)
+        OR LOWER(p.reference) LIKE LOWER(:s)
+        OR LOWER(supplier.supplierName) LIKE LOWER(:s)
+        OR LOWER(invoice.invoiceNumber) LIKE LOWER(:s)
+      )`,
+      {
+        s: `%${query.search.trim()}%`,
+      },
+    );
+  }
+
+  qb.orderBy('p.paymentDate', 'DESC')
+    .addOrderBy('p.id', 'DESC');
+
+  return qb.getMany();
+}
+
+  async findOneSupplierPayment(id: number, user?: any): Promise<SupplierPayment> {
     const payment = await this.supplierPaymentRepo.findOne({
       where: { id },
       relations: {
@@ -755,7 +879,9 @@ export class FinanceService {
   // 7. CUSTOMER PAYMENTS (WITH ATOMIC TRANSACTION)
   // =========================================================
 
-  async createCustomerPayment(dto: CreateCustomerPaymentDto) {
+  async createCustomerPayment(dto: CreateCustomerPaymentDto, user: any) {
+    const scope = this.resolveFinanceScope(user);
+
     if (dto.amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than 0');
     }
@@ -784,6 +910,15 @@ export class FinanceService {
           posSale = await queryRunner.manager.findOne(PosSale, {
             where: { id: dto.salesInvoiceId },
           });
+        }
+      }
+
+      if (posSale && !scope.isOwner) {
+        if (String((posSale as any).locationId) !== String(scope.locationId)) {
+          throw new NotFoundException('Sales invoice not found');
+        }
+        if (scope.tillId !== null && Number((posSale as any).tillId) !== scope.tillId) {
+          throw new NotFoundException('Sales invoice not found');
         }
       }
 
@@ -817,6 +952,8 @@ export class FinanceService {
         amount: Number(dto.amount),
         reference: dto.reference || paymentNumber,
         customerId: customer.id,
+        locationId: scope.isOwner ? (posSale ? (posSale as any).locationId ?? null : null) : scope.locationId,
+        tillId: scope.isOwner ? (posSale ? (posSale as any).tillId ?? null : null) : scope.tillId,
       });
 
       await queryRunner.manager.save(FinanceTransaction, financeTxn);
@@ -838,32 +975,76 @@ export class FinanceService {
     }
   }
 
-  async findAllCustomerPayments(query?: { customerId?: number; salesInvoiceId?: string; search?: string }) {
-    const qb = this.customerPaymentRepo
-      .createQueryBuilder('p')
-      .leftJoinAndSelect('p.customer', 'customer')
-      .leftJoinAndSelect('p.salesInvoice', 'salesInvoice');
+  async findAllCustomerPayments(
+  query?: {
+    customerId?: number;
+    salesInvoiceId?: string;
+    search?: string;
+  },
+  user?: any,
+) {
+  const qb = this.customerPaymentRepo
+    .createQueryBuilder('p')
+    .leftJoinAndSelect('p.customer', 'customer');
 
-    if (query?.customerId) {
-      qb.andWhere('p.customerId = :customerId', { customerId: query.customerId });
-    }
+  const scope = this.resolveFinanceScope(user);
 
-    if (query?.salesInvoiceId) {
-      qb.andWhere('p.salesInvoiceId = :invoiceId', { invoiceId: query.salesInvoiceId });
-    }
+  if (!scope.isOwner) {
+    qb.andWhere(
+      'p.locationId = :locationId',
+      {
+        locationId: scope.locationId,
+      },
+    );
 
-    if (query?.search && query.search.trim()) {
+    if (scope.tillId !== null) {
       qb.andWhere(
-        '(LOWER(p.paymentNumber) LIKE LOWER(:s) OR LOWER(p.reference) LIKE LOWER(:s) OR LOWER(customer.customerName) LIKE LOWER(:s) OR LOWER(p.salesInvoiceId) LIKE LOWER(:s))',
-        { s: `%${query.search.trim()}%` },
+        'p.tillId = :tillId',
+        {
+          tillId: scope.tillId,
+        },
       );
     }
-
-    qb.orderBy('p.paymentDate', 'DESC').addOrderBy('p.id', 'DESC');
-    return await qb.getMany();
   }
 
-  async findOneCustomerPayment(id: number): Promise<CustomerPayment> {
+  if (query?.customerId) {
+    qb.andWhere(
+      'p.customerId = :customerId',
+      {
+        customerId: query.customerId,
+      },
+    );
+  }
+
+  if (query?.salesInvoiceId) {
+    qb.andWhere(
+      'p.salesInvoiceId = :salesInvoiceId',
+      {
+        salesInvoiceId: query.salesInvoiceId,
+      },
+    );
+  }
+
+  if (query?.search?.trim()) {
+    qb.andWhere(
+      `(
+        LOWER(p.paymentNumber) LIKE LOWER(:s)
+        OR LOWER(p.reference) LIKE LOWER(:s)
+        OR LOWER(customer.name) LIKE LOWER(:s)
+      )`,
+      {
+        s: `%${query.search.trim()}%`,
+      },
+    );
+  }
+
+  qb.orderBy('p.paymentDate', 'DESC')
+    .addOrderBy('p.id', 'DESC');
+
+  return qb.getMany();
+}
+
+  async findOneCustomerPayment(id: number, user?: any): Promise<CustomerPayment> {
     const payment = await this.customerPaymentRepo.findOne({
       where: { id },
       relations: {
@@ -889,7 +1070,7 @@ export class FinanceService {
     overdueOnly?: boolean;
     startDate?: string;
     endDate?: string;
-  }) {
+  }, user?: any) {
     const qb = this.purchaseInvoiceRepo
       .createQueryBuilder('inv')
       .leftJoinAndSelect('inv.supplier', 'supplier')
@@ -1006,9 +1187,16 @@ export class FinanceService {
     overdueOnly?: boolean;
     startDate?: string;
     endDate?: string;
-  }) {
+  }, user?: any) {
     // Collect customer sales and payments
     const salesQb = this.posSaleRepo.createQueryBuilder('sale');
+    const scope = this.resolveFinanceScope(user);
+    if (!scope.isOwner) {
+      salesQb.andWhere('sale.locationId = :financeLocationId', { financeLocationId: scope.locationId });
+      if (scope.tillId !== null) {
+        salesQb.andWhere('sale.tillId = :financeTillId', { financeTillId: scope.tillId });
+      }
+    }
 
     if (query?.customerId) {
       salesQb.andWhere('sale.customerId = :customerId', { customerId: query.customerId });
@@ -1106,11 +1294,12 @@ export class FinanceService {
   // 10. FINANCE DASHBOARD
   // =========================================================
 
-  async getDashboard(query?: FinanceQueryDto) {
+  async getDashboard(query?: FinanceQueryDto, user?: any) {
     const range = this.getDateRangeFromPeriod(query?.period || 'month', query?.startDate, query?.endDate);
 
     // 1. Transactions Query
     const txnQb = this.transactionRepo.createQueryBuilder('t');
+    this.applyFinanceScope(txnQb, user);
     if (range.start) txnQb.andWhere('t.transactionDate >= :start', { start: range.start });
     if (range.end) txnQb.andWhere('t.transactionDate <= :end', { end: range.end });
 
@@ -1127,7 +1316,9 @@ export class FinanceService {
     const netProfit = Number((totalIncome - totalExpenses).toFixed(2));
 
     // 2. All-Time Cash and Bank Balances
-    const allTxns = await this.transactionRepo.find();
+    const allTxnQb = this.transactionRepo.createQueryBuilder('t');
+    this.applyFinanceScope(allTxnQb, user);
+    const allTxns = await allTxnQb.getMany();
     let cashBalance = 0;
     let bankBalance = 0;
 
@@ -1141,19 +1332,23 @@ export class FinanceService {
     }
 
     // 3. Accounts Payable Summary
-    const apData = await this.getAccountsPayable();
+    const apData = await this.getAccountsPayable(undefined, user);
     const accountsPayable = apData.summary.totalOutstanding;
 
     // 4. Accounts Receivable Summary
-    const arData = await this.getAccountsReceivable();
+    const arData = await this.getAccountsReceivable(undefined, user);
     const accountsReceivable = arData.summary.totalOutstanding;
 
     // 5. Recent 8 Transactions
-    const recentTransactions = await this.transactionRepo.find({
-      relations: { customer: true, supplier: true },
-      order: { transactionDate: 'DESC', id: 'DESC' },
-      take: 8,
-    });
+    const recentQb = this.transactionRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.customer', 'customer')
+      .leftJoinAndSelect('t.supplier', 'supplier')
+      .orderBy('t.transactionDate', 'DESC')
+      .addOrderBy('t.id', 'DESC')
+      .take(8);
+    this.applyFinanceScope(recentQb, user);
+    const recentTransactions = await recentQb.getMany();
 
     // 6. Monthly Income vs Expenses (Last 6 Months)
     const monthlyData: { month: string; income: number; expense: number; profit: number }[] = [];
@@ -1216,11 +1411,13 @@ export class FinanceService {
 
   // =========================================================
   // 11. FINANCIAL REPORTS
+  // =========================================================
 
   // A. PROFIT & LOSS REPORT
-  async getProfitLossReport(startDate?: string, endDate?: string) {
+  async getProfitLossReport(startDate?: string, endDate?: string, user?: any) {
     const range = this.getDateRangeFromPeriod('custom', startDate, endDate);
     const qb = this.transactionRepo.createQueryBuilder('t');
+    this.applyFinanceScope(qb, user);
 
     if (range.start) qb.andWhere('t.transactionDate >= :start', { start: range.start });
     if (range.end) qb.andWhere('t.transactionDate <= :end', { end: range.end });
@@ -1271,341 +1468,168 @@ export class FinanceService {
       profitMargin: Number(profitMargin.toFixed(2)),
     };
   }
-// B. CASH FLOW REPORT
-async getCashFlowReport(startDate?: string, endDate?: string) {
-  const range = this.getDateRangeFromPeriod('custom', startDate, endDate);
 
+  // B. CASH FLOW REPORT
+  async getCashFlowReport(startDate?: string, endDate?: string, user?: any) {
+    const range = this.getDateRangeFromPeriod('custom', startDate, endDate);
 
-  // 1. Calculate opening balances before the report period
-  let openingCash = 0;
-  let openingBank = 0;
+    // Calculate opening balances before startDate
+    let openingCash = 0;
+    let openingBank = 0;
 
-  if (range.start) {
-    const priorTxns = await this.transactionRepo
-      .createQueryBuilder('t')
-      .where('t.transactionDate < :start', {
-        start: range.start,
-      })
-      .getMany();
+    if (range.start) {
+      const priorQb = this.transactionRepo
+        .createQueryBuilder('t')
+        .where('t.transactionDate < :start', { start: range.start });
+      this.applyFinanceScope(priorQb, user);
+      const priorTxns = await priorQb.getMany();
 
-    for (const t of priorTxns) {
-      const amount = Number(t.amount || 0);
+      for (const t of priorTxns) {
+        const amt = Number(t.amount || 0);
+        if (t.paymentMethod === FinancePaymentMethod.CASH) {
+          openingCash += t.type === TransactionType.INCOME ? amt : -amt;
+        } else if (t.paymentMethod === FinancePaymentMethod.BANK) {
+          openingBank += t.type === TransactionType.INCOME ? amt : -amt;
+        }
+      }
+    }
 
+    const openingBalance = openingCash + openingBank;
+
+    // Period transactions
+    const qb = this.transactionRepo.createQueryBuilder('t');
+    this.applyFinanceScope(qb, user);
+    if (range.start) qb.andWhere('t.transactionDate >= :start', { start: range.start });
+    if (range.end) qb.andWhere('t.transactionDate <= :end', { end: range.end });
+
+    const periodTxns = await qb.getMany();
+
+    let cashIn = 0;
+    let cashOut = 0;
+    let bankIn = 0;
+    let bankOut = 0;
+
+    for (const t of periodTxns) {
+      const amt = Number(t.amount || 0);
       if (t.paymentMethod === FinancePaymentMethod.CASH) {
-        if (t.type === TransactionType.INCOME) {
-          openingCash += amount;
-        } else if (t.type === TransactionType.EXPENSE) {
-          openingCash -= amount;
-        }
-      }
-
-      if (t.paymentMethod === FinancePaymentMethod.BANK) {
-        if (t.type === TransactionType.INCOME) {
-          openingBank += amount;
-        } else if (t.type === TransactionType.EXPENSE) {
-          openingBank -= amount;
-        }
-      }
-    }
-  }
-
-  // 2. Get period transactions
-  const qb = this.transactionRepo.createQueryBuilder('t');
-
-  if (range.start) {
-    qb.andWhere('t.transactionDate >= :start', {
-      start: range.start,
-    });
-  }
-
-  if (range.end) {
-    qb.andWhere('t.transactionDate <= :end', {
-      end: range.end,
-    });
-  }
-
-  qb.orderBy('t.transactionDate', 'ASC').addOrderBy('t.id', 'ASC');
-
-  const periodTxns = await qb.getMany();
-
-  
-  // 3. Calculate cash flow
-  let cashIn = 0;
-  let cashOut = 0;
-  let bankIn = 0;
-  let bankOut = 0;
-
-  for (const t of periodTxns) {
-    const amount = Number(t.amount || 0);
-
-    if (t.paymentMethod === FinancePaymentMethod.CASH) {
-      if (t.type === TransactionType.INCOME) {
-        cashIn += amount;
-      } else if (t.type === TransactionType.EXPENSE) {
-        cashOut += amount;
+        if (t.type === TransactionType.INCOME) cashIn += amt;
+        else cashOut += amt;
+      } else if (t.paymentMethod === FinancePaymentMethod.BANK) {
+        if (t.type === TransactionType.INCOME) bankIn += amt;
+        else bankOut += amt;
       }
     }
 
-    if (t.paymentMethod === FinancePaymentMethod.BANK) {
-      if (t.type === TransactionType.INCOME) {
-        bankIn += amount;
-      } else if (t.type === TransactionType.EXPENSE) {
-        bankOut += amount;
-      }
-    }
-  }
+    const totalInflow = cashIn + bankIn;
+    const totalOutflow = cashOut + bankOut;
+    const netCashFlow = totalInflow - totalOutflow;
+    const closingBalance = openingBalance + netCashFlow;
 
-  // 4. Totals
-  const totalInflow = cashIn + bankIn;
-  const totalOutflow = cashOut + bankOut;
-
-  const netCashFlow = totalInflow - totalOutflow;
-
-  
-  // 5. Closing balances
-  const closingCash = openingCash + cashIn - cashOut;
-  const closingBank = openingBank + bankIn - bankOut;
-  const closingBalance = closingCash + closingBank;
-
-  return {
-    period: {
-      startDate: range.start || 'All Time',
-      endDate: range.end || 'Present',
-    },
-
-    openingBalance: {
-      cash: Number(openingCash.toFixed(2)),
-      bank: Number(openingBank.toFixed(2)),
-      total: Number((openingCash + openingBank).toFixed(2)),
-    },
-
-    inflows: {
-      cashIn: Number(cashIn.toFixed(2)),
-      bankIn: Number(bankIn.toFixed(2)),
-      total: Number(totalInflow.toFixed(2)),
-    },
-
-    outflows: {
-      cashOut: Number(cashOut.toFixed(2)),
-      bankOut: Number(bankOut.toFixed(2)),
-      total: Number(totalOutflow.toFixed(2)),
-    },
-
-    netCashFlow: Number(netCashFlow.toFixed(2)),
-
-    closingBalance: {
-      cash: Number(closingCash.toFixed(2)),
-      bank: Number(closingBank.toFixed(2)),
-      total: Number(closingBalance.toFixed(2)),
-    },
-
-    summary: {
-      totalInflows: Number(totalInflow.toFixed(2)),
-      totalOutflows: Number(totalOutflow.toFixed(2)),
+    return {
+      period: {
+        startDate: range.start || 'All Time',
+        endDate: range.end || 'Present',
+      },
+      openingBalance: {
+        cash: Number(openingCash.toFixed(2)),
+        bank: Number(openingBank.toFixed(2)),
+        total: Number(openingBalance.toFixed(2)),
+      },
+      inflows: {
+        cashIn: Number(cashIn.toFixed(2)),
+        bankIn: Number(bankIn.toFixed(2)),
+        total: Number(totalInflow.toFixed(2)),
+      },
+      outflows: {
+        cashOut: Number(cashOut.toFixed(2)),
+        bankOut: Number(bankOut.toFixed(2)),
+        total: Number(totalOutflow.toFixed(2)),
+      },
       netCashFlow: Number(netCashFlow.toFixed(2)),
-      closingCash: Number(closingCash.toFixed(2)),
-      closingBank: Number(closingBank.toFixed(2)),
-      closingBalance: Number(closingBalance.toFixed(2)),
-    },
-  };
-}
+      closingBalance: {
+        cash: Number((openingCash + cashIn - cashOut).toFixed(2)),
+        bank: Number((openingBank + bankIn - bankOut).toFixed(2)),
+        total: Number(closingBalance.toFixed(2)),
+      },
+    };
+  }
 
   // C. BALANCE SHEET REPORT (PRACTICAL ERP SUMMARY)
-async getBalanceSheetReport(asOfDate?: string) {
-  const cutoff =
-    asOfDate || new Date().toISOString().slice(0, 10);
+  async getBalanceSheetReport(asOfDate?: string, user?: any) {
+    const cutoff = asOfDate || new Date().toISOString().slice(0, 10);
 
-  
-  // 1. Finance Transactions up to the selected date
-  const txns = await this.transactionRepo
-    .createQueryBuilder('t')
-    .where('t.transactionDate <= :cutoff', {
-      cutoff,
-    })
-    .getMany();
+    // 1. Cash and Bank Balances
+    const balanceQb = this.transactionRepo
+      .createQueryBuilder('t')
+      .where('t.transactionDate <= :cutoff', { cutoff });
+    this.applyFinanceScope(balanceQb, user);
+    const txns = await balanceQb.getMany();
 
-  let cashBalance = 0;
-  let bankBalance = 0;
+    let cashBalance = 0;
+    let bankBalance = 0;
+    let totalIncome = 0;
+    let totalExpenses = 0;
 
-  for (const t of txns) {
-    const amount = Number(t.amount || 0);
+    for (const t of txns) {
+      const amt = Number(t.amount || 0);
+      if (t.type === TransactionType.INCOME) totalIncome += amt;
+      else totalExpenses += amt;
 
-    if (t.paymentMethod === FinancePaymentMethod.CASH) {
-      if (t.type === TransactionType.INCOME) {
-        cashBalance += amount;
-      } else if (t.type === TransactionType.EXPENSE) {
-        cashBalance -= amount;
+      if (t.paymentMethod === FinancePaymentMethod.CASH) {
+        cashBalance += t.type === TransactionType.INCOME ? amt : -amt;
+      } else if (t.paymentMethod === FinancePaymentMethod.BANK) {
+        bankBalance += t.type === TransactionType.INCOME ? amt : -amt;
       }
     }
 
-    if (t.paymentMethod === FinancePaymentMethod.BANK) {
-      if (t.type === TransactionType.INCOME) {
-        bankBalance += amount;
-      } else if (t.type === TransactionType.EXPENSE) {
-        bankBalance -= amount;
+    // 2. Accounts Receivable
+    const arData = await this.getAccountsReceivable({ endDate: cutoff }, user);
+    const accountsReceivable = arData.summary.totalOutstanding;
+
+    // 3. Inventory Valuation
+    const products = await this.productRepo.find();
+    let inventoryValue = 0;
+    for (const p of products) {
+      const stock = Number(p.stockQuantity || 0);
+      const cost = Number(p.purchasePrice || p.sellingPrice || 0);
+      if (stock > 0 && cost > 0) {
+        inventoryValue += stock * cost;
       }
     }
-  }
 
-  
-  // 2. Accounts Receivable
-  
-  const arData = await this.getAccountsReceivable({
-    endDate: cutoff,
-  });
+    const totalAssets = cashBalance + bankBalance + accountsReceivable + inventoryValue;
 
-  const accountsReceivable =
-    Number(arData.summary.totalOutstanding || 0);
+    // 4. Accounts Payable
+    const apData = await this.getAccountsPayable({ endDate: cutoff }, user);
+    const accountsPayable = apData.summary.totalOutstanding;
+    const totalLiabilities = accountsPayable;
 
-  // 3. Inventory Valuation
-  const products = await this.productRepo.find();
+    // 5. Working Equity & Retained Earnings
+    const netRetainedEarnings = totalIncome - totalExpenses;
+    const netWorkingCapital = totalAssets - totalLiabilities;
 
-  let inventoryValue = 0;
-
-  for (const product of products) {
-    const stockQuantity =
-      Number(product.stockQuantity || 0);
-
-    const purchaseCost =
-      Number(
-        product.purchasePrice ||
-        product.sellingPrice ||
-        0,
-      );
-
-    if (stockQuantity > 0 && purchaseCost > 0) {
-      inventoryValue +=
-        stockQuantity * purchaseCost;
-    }
-  }
-
-  // 4. Total Assets
-  const totalCurrentAssets =
-    cashBalance +
-    bankBalance +
-    accountsReceivable +
-    inventoryValue;
-
-  const totalAssets = totalCurrentAssets;
-
-  // 5. Accounts Payable
-  const apData = await this.getAccountsPayable({
-    endDate: cutoff,
-  });
-
-  const accountsPayable =
-    Number(apData.summary.totalOutstanding || 0);
-
-  // 6. Total Liabilities
-  const totalLiabilities = accountsPayable;
-
-  // 7. Retained Earnings
-  let totalIncome = 0;
-  let totalExpenses = 0;
-
-  for (const t of txns) {
-    const amount = Number(t.amount || 0);
-
-    if (t.type === TransactionType.INCOME) {
-      totalIncome += amount;
-    } else if (t.type === TransactionType.EXPENSE) {
-      totalExpenses += amount;
-    }
-  }
-
-  const retainedEarnings =
-    totalIncome - totalExpenses;
-
-  const totalEquity =
-    totalAssets - totalLiabilities;
-
-  // 9. Balance Check
-  const totalLiabilitiesAndEquity =
-    totalLiabilities + totalEquity;
-
-  const balanceDifference =
-    totalAssets - totalLiabilitiesAndEquity;
-
-  const isBalanced =
-    Math.abs(balanceDifference) < 0.01;
-
-  // 10. Return Report
-  return {
-    asOfDate: cutoff,
-
-    assets: {
-      currentAssets: {
-        cashOnHand: Number(
-          cashBalance.toFixed(2),
-        ),
-
-        bankAccounts: Number(
-          bankBalance.toFixed(2),
-        ),
-
-        accountsReceivable: Number(
-          accountsReceivable.toFixed(2),
-        ),
-
-        inventoryValuation: Number(
-          inventoryValue.toFixed(2),
-        ),
+    return {
+      asOfDate: cutoff,
+      assets: {
+        currentAssets: {
+          cashOnHand: Number(cashBalance.toFixed(2)),
+          bankAccounts: Number(bankBalance.toFixed(2)),
+          accountsReceivable: Number(accountsReceivable.toFixed(2)),
+          inventoryValuation: Number(inventoryValue.toFixed(2)),
+        },
+        totalAssets: Number(totalAssets.toFixed(2)),
       },
-
-      totalCurrentAssets: Number(
-        totalCurrentAssets.toFixed(2),
-      ),
-
-      totalAssets: Number(
-        totalAssets.toFixed(2),
-      ),
-    },
-
-    liabilities: {
-      currentLiabilities: {
-        accountsPayable: Number(
-          accountsPayable.toFixed(2),
-        ),
+      liabilities: {
+        currentLiabilities: {
+          accountsPayable: Number(accountsPayable.toFixed(2)),
+        },
+        totalLiabilities: Number(totalLiabilities.toFixed(2)),
       },
-
-      totalCurrentLiabilities: Number(
-        totalLiabilities.toFixed(2),
-      ),
-
-      totalLiabilities: Number(
-        totalLiabilities.toFixed(2),
-      ),
-    },
-
-    equity: {
-      retainedEarnings: Number(
-        retainedEarnings.toFixed(2),
-      ),
-
-      totalEquity: Number(
-        totalEquity.toFixed(2),
-      ),
-
-      totalLiabilitiesAndEquity: Number(
-        totalLiabilitiesAndEquity.toFixed(2),
-      ),
-    },
-
-    balanceCheck: {
-      totalAssets: Number(
-        totalAssets.toFixed(2),
-      ),
-
-      totalLiabilitiesAndEquity: Number(
-        totalLiabilitiesAndEquity.toFixed(2),
-      ),
-
-      difference: Number(
-        balanceDifference.toFixed(2),
-      ),
-
-      isBalanced,
-    },
-  };
-}
+      equity: {
+        retainedEarnings: Number(netRetainedEarnings.toFixed(2)),
+        netWorkingCapital: Number(netWorkingCapital.toFixed(2)),
+        totalLiabilitiesAndEquity: Number((totalLiabilities + netWorkingCapital).toFixed(2)),
+      },
+    };
+  }
 }

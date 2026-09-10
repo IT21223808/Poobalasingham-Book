@@ -6,7 +6,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
+  UpdateDateColumn,Index
 } from 'typeorm';
 
 import { PurchaseInvoiceItem } from './purchase-invoice-item.entity';
@@ -29,6 +29,10 @@ export class PurchaseInvoice {
 
   @Column({ unique: true })
   invoiceNumber!: string;
+
+  @Index()
+@Column({ type: 'uuid', nullable: true })
+locationId!: string | null;
 
   @Column({
     type: 'int',

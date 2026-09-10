@@ -13,8 +13,16 @@ import { Till } from '../../tills/entities/till.entity';
 
 @Entity('pos_held_bills')
 export class PosHeldBill {
+  // ============================================================
+  // ID
+  // ============================================================
+
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  // ============================================================
+  // HOLD NUMBER
+  // ============================================================
 
   @Index({ unique: true })
   @Column({
@@ -24,6 +32,10 @@ export class PosHeldBill {
     unique: true,
   })
   holdNumber!: string;
+
+  // ============================================================
+  // CUSTOMER
+  // ============================================================
 
   @Column({
     type: 'integer',
@@ -40,11 +52,19 @@ export class PosHeldBill {
   })
   customerName!: string | null;
 
+  // ============================================================
+  // CART
+  // ============================================================
+
   @Column({
     type: 'jsonb',
     name: 'cart_data',
   })
   cartData!: Record<string, any>;
+
+  // ============================================================
+  // AMOUNTS
+  // ============================================================
 
   @Column({
     type: 'decimal',
@@ -72,6 +92,10 @@ export class PosHeldBill {
   })
   grandTotal!: number;
 
+  // ============================================================
+  // CASHIER
+  // ============================================================
+
   @Index()
   @Column({
     type: 'varchar',
@@ -81,39 +105,49 @@ export class PosHeldBill {
   })
   cashierId!: string | null;
 
+  // ============================================================
+  // BRANCH / LOCATION
+  // ============================================================
+
   @Index()
   @Column({
     type: 'uuid',
     name: 'location_id',
-    nullable: true,
+    nullable: false,
   })
-  locationId!: string | null;
+  locationId!: string;
 
   @ManyToOne(() => Location, {
-    nullable: true,
-    onDelete: 'SET NULL',
+    nullable: false,
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({
     name: 'location_id',
   })
-  location!: Location | null;
+  location!: Location;
 
-  @Index()
-  @Column({
-    type: 'integer',
-    name: 'till_id',
-    nullable: true,
-  })
-  tillId!: number | null;
+  // ============================================================
+  // TILL
+  // ============================================================
 
-  @ManyToOne(() => Till, {
-    nullable: true,
-    onDelete: 'SET NULL',
-  })
-  @JoinColumn({
-    name: 'till_id',
-  })
-  till!: Till | null;
+ @Index()
+@Column({
+  type: 'integer',
+  name: 'till_id',
+  nullable: true,
+})
+tillId!: number | null;
+
+@ManyToOne(() => Till, {
+  nullable: true,
+  onDelete: 'SET NULL',
+})
+@JoinColumn({ name: 'till_id' })
+till!: Till | null;
+
+  // ============================================================
+  // CREATED AT
+  // ============================================================
 
   @CreateDateColumn({
     name: 'created_at',

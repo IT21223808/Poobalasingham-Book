@@ -1,46 +1,616 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
-} from "@nestjs/common";
+} from '@nestjs/common';
+
+import { DataSource,EntityManager,IsNull,Repository,} from 'typeorm';
+
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { PosSale,SaleStatus,} from './entities/pos-sale.entity';
+
+import { PosSaleItem } from './entities/pos-sale-item.entity';
+import { PosPayment } from './entities/pos-payment.entity';
+import { PosHeldBill } from './entities/pos-held-bill.entity';
+import { PosReturn } from './entities/pos-return.entity';
+import { PosReturnItem } from './entities/pos-return-item.entity';
+
+import { Product } from '../products/entities/product.entity';
+import { Location } from '../inventory/entities/location.entity';
+import { Till } from '../tills/entities/till.entity';
+
+import { CreatePosSaleDto } from './dto/create-pos-sale.dto';
+import { HoldBillDto } from './dto/hold-bill.dto';
+import { ReturnSaleDto } from './dto/return-sale.dto';
+
+import { UserRole } from '../users/user-role.enum';
+import { MailService } from '../mail/mail.service';
+
+import { PosOpeningBalance } from './entities/pos-opening-balance.entity';
 
 import {
-  DataSource,
-  EntityManager,
-  QueryRunner,
-} from "typeorm";
+  FinancePaymentMethod,
+  FinanceTransaction,
+  TransactionType,
+} from '../finance/entities/finance-transaction.entity';
 
-import {
-  PosSale,
-  SaleStatus,
-} from "./entities/pos-sale.entity";
+import { PosCashClosing } from './entities/pos-cash-closing.entity';
+import { CloseCashDto } from './dto/close-cash.dto';
 
-import { PosSaleItem } from "./entities/pos-sale-item.entity";
-import { PosPayment } from "./entities/pos-payment.entity";
-import { PosHeldBill } from "./entities/pos-held-bill.entity";
-import { PosReturn } from "./entities/pos-return.entity";
-import { PosReturnItem } from "./entities/pos-return-item.entity";
-import { Product } from "../products/entities/product.entity";
+/* AUTHENTICATED USER */
 
-import { CreatePosSaleDto } from "./dto/create-pos-sale.dto";
-import { HoldBillDto } from "./dto/hold-bill.dto";
-import { ReturnSaleDto } from "./dto/return-sale.dto";
+export interface PosAuthenticatedUser {
+  id: number;
+  email?: string;
+  role: UserRole | string;
+  locationId?: string | null;
+  tillId?: number | null;
+}
+
+/*  SALES QUERY */
+
+export interface PosSalesQuery {
+  search?: string;
+  limit?: number;
+}
 
 /* =========================================================
-   MAIL SERVICE
+   SERVICE
 ========================================================= */
-import { MailService } from "../mail/mail.service";
 
 @Injectable()
 export class PosService {
   constructor(
     private readonly dataSource: DataSource,
 
-    /* =====================================================
-       MAIL SERVICE
-    ===================================================== */
+    @InjectRepository(PosSale)
+    private readonly saleRepository: Repository<PosSale>,
+
+    @InjectRepository(PosSaleItem)
+    private readonly saleItemRepository: Repository<PosSaleItem>,
+
+    @InjectRepository(PosPayment)
+    private readonly paymentRepository: Repository<PosPayment>,
+
+    @InjectRepository(PosHeldBill)
+    private readonly heldBillRepository: Repository<PosHeldBill>,
+
+    @InjectRepository(PosReturn)
+    private readonly returnRepository: Repository<PosReturn>,
+
+    @InjectRepository(PosReturnItem)
+    private readonly returnItemRepository: Repository<PosReturnItem>,
+
+    @InjectRepository(Product)
+    private readonly productRepository: Repository<Product>,
+
+    @InjectRepository(Location)
+    private readonly locationRepository: Repository<Location>,
+
+    @InjectRepository(Till)
+    private readonly tillRepository: Repository<Till>,
+
+    @InjectRepository(PosOpeningBalance)
+    private readonly openingBalanceRepository: Repository<PosOpeningBalance>,
+
+    @InjectRepository(PosCashClosing)
+    private readonly cashClosingRepository: Repository<PosCashClosing>,
+
     private readonly mailService: MailService,
   ) {}
+
+  /* =========================================================
+     ROLE HELPERS
+  ========================================================= */
+
+  private normalizeRole(
+    role?: string | UserRole,
+  ): UserRole {
+    if (role === UserRole.ADMIN) {
+      return UserRole.OWNER;
+    }
+
+    if (role === UserRole.STAFF) {
+      return UserRole.CASHIER;
+    }
+
+    return role as UserRole;
+  }
+
+  /* =========================================================
+     BUSINESS DATE
+  ========================================================= */
+
+  private getBusinessDate(
+    date?: Date,
+  ): string {
+    const value = date ?? new Date();
+
+    return `${value.getFullYear()}-${String(
+      value.getMonth() + 1,
+    ).padStart(2, '0')}-${String(
+      value.getDate(),
+    ).padStart(2, '0')}`;
+  }
+
+  /* =========================================================
+     DATE VALIDATION
+  ========================================================= */
+
+  private validateBusinessDate(
+    businessDate: string,
+  ): string {
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        businessDate,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid business date.',
+      );
+    }
+
+    const [
+      year,
+      month,
+      day,
+    ] = businessDate
+      .split('-')
+      .map(Number);
+
+    const date = new Date(
+      year,
+      month - 1,
+      day,
+    );
+
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      throw new BadRequestException(
+        'Invalid business date.',
+      );
+    }
+
+    return businessDate;
+  }
+
+  /* =========================================================
+     LOCAL DAY RANGE
+  ========================================================= */
+
+  private getBusinessDateRange(
+    businessDate: string,
+  ): {
+    startOfDay: Date;
+    endOfDay: Date;
+  } {
+    this.validateBusinessDate(
+      businessDate,
+    );
+
+    const [
+      year,
+      month,
+      day,
+    ] = businessDate
+      .split('-')
+      .map(Number);
+
+    const startOfDay = new Date(
+      year,
+      month - 1,
+      day,
+      0,
+      0,
+      0,
+      0,
+    );
+
+    const endOfDay = new Date(
+      year,
+      month - 1,
+      day,
+      23,
+      59,
+      59,
+      999,
+    );
+
+    return {
+      startOfDay,
+      endOfDay,
+    };
+  }
+
+  /* =========================================================
+     USER VALIDATION
+  ========================================================= */
+
+  private validateUserScope(
+    user: PosAuthenticatedUser,
+  ): void {
+    if (!user) {
+      throw new ForbiddenException(
+        'Authenticated user is required.',
+      );
+    }
+
+    const role =
+      this.normalizeRole(user.role);
+
+    if (
+      role === UserRole.OWNER ||
+      role === UserRole.MANAGER ||
+      role === UserRole.CASHIER
+    ) {
+      if (!user.locationId) {
+        throw new ForbiddenException(
+          'User is not assigned to a branch.',
+        );
+      }
+    } else {
+      throw new ForbiddenException(
+        'User role is not allowed to use POS.',
+      );
+    }
+
+    if (
+      role === UserRole.CASHIER &&
+      (
+        user.tillId === null ||
+        user.tillId === undefined
+      )
+    ) {
+      throw new ForbiddenException(
+        'Cashier is not assigned to a till.',
+      );
+    }
+  }
+
+  /* =========================================================
+     LOCATION VALIDATION
+  ========================================================= */
+
+  private async validateLocation(
+    locationId:
+      | string
+      | null
+      | undefined,
+    manager?: EntityManager,
+  ): Promise<Location | null> {
+    if (!locationId) {
+      return null;
+    }
+
+    const repo = manager
+      ? manager.getRepository(Location)
+      : this.locationRepository;
+
+    const location =
+      await repo.findOne({
+        where: {
+          id: locationId,
+          isActive: true,
+        },
+      });
+
+    if (!location) {
+      throw new BadRequestException(
+        'Branch does not exist or is inactive.',
+      );
+    }
+
+    return location;
+  }
+
+  /* =========================================================
+     TILL VALIDATION
+  ========================================================= */
+
+  private async validateTill(
+    tillId:
+      | number
+      | null
+      | undefined,
+    locationId:
+      | string
+      | null
+      | undefined,
+    manager?: EntityManager,
+  ): Promise<Till | null> {
+    if (
+      tillId === null ||
+      tillId === undefined
+    ) {
+      return null;
+    }
+
+    const repo = manager
+      ? manager.getRepository(Till)
+      : this.tillRepository;
+
+    const till =
+      await repo.findOne({
+        where: {
+          id: tillId,
+          isActive: true,
+        },
+      });
+
+    if (!till) {
+      throw new BadRequestException(
+        'Till does not exist or is inactive.',
+      );
+    }
+
+    if (
+      locationId &&
+      till.locationId !== locationId
+    ) {
+      throw new ForbiddenException(
+        'Till does not belong to the selected branch.',
+      );
+    }
+
+    return till;
+  }
+
+  /* =========================================================
+     RESOLVE POS SCOPE
+  ========================================================= */
+
+  private async resolvePosScope(
+    user: PosAuthenticatedUser,
+  ): Promise<{
+    locationId: string;
+    tillId: number | null;
+  }> {
+    this.validateUserScope(user);
+
+    if (!user.locationId) {
+      throw new ForbiddenException(
+        'User is not assigned to a branch.',
+      );
+    }
+
+    await this.validateLocation(
+      user.locationId,
+    );
+
+    const role =
+      this.normalizeRole(user.role);
+
+    if (
+      role === UserRole.OWNER ||
+      role === UserRole.MANAGER
+    ) {
+      return {
+        locationId: user.locationId,
+        tillId: null,
+      };
+    }
+
+    if (role === UserRole.CASHIER) {
+      if (
+        user.tillId === null ||
+        user.tillId === undefined
+      ) {
+        throw new ForbiddenException(
+          'Cashier is not assigned to a till.',
+        );
+      }
+
+      await this.validateTill(
+        user.tillId,
+        user.locationId,
+      );
+
+      return {
+        locationId: user.locationId,
+        tillId: user.tillId,
+      };
+    }
+
+    throw new ForbiddenException(
+      'User role is not allowed to use POS.',
+    );
+  }
+
+  /* =========================================================
+     RESOLVE SALE SCOPE
+  ========================================================= */
+
+  private async resolveSaleScope(
+    _dtoLocationId:
+      | string
+      | undefined,
+    user: PosAuthenticatedUser,
+  ): Promise<{
+    locationId: string | null;
+    tillId: number | null;
+  }> {
+    return this.resolvePosScope(user);
+  }
+
+  /* =========================================================
+     SALE SCOPE
+  ========================================================= */
+
+  private applySaleScope(
+    qb: any,
+    user: PosAuthenticatedUser,
+    alias = 'sale',
+  ): void {
+    this.validateUserScope(user);
+
+    const role =
+      this.normalizeRole(user.role);
+
+    if (!user.locationId) {
+      throw new ForbiddenException(
+        'User is not assigned to a branch.',
+      );
+    }
+
+    qb.andWhere(
+      `${alias}.locationId = :scopeLocationId`,
+      {
+        scopeLocationId:
+          user.locationId,
+      },
+    );
+
+    if (role === UserRole.CASHIER) {
+      if (
+        user.tillId === null ||
+        user.tillId === undefined
+      ) {
+        throw new ForbiddenException(
+          'Cashier is not assigned to a till.',
+        );
+      }
+
+      qb.andWhere(
+        `${alias}.tillId = :scopeTillId`,
+        {
+          scopeTillId:
+            user.tillId,
+        },
+      );
+    }
+  }
+
+  /* =========================================================
+     HELD BILL SCOPE
+  ========================================================= */
+
+  private applyHeldBillScope(
+    qb: any,
+    user: PosAuthenticatedUser,
+    alias = 'held',
+  ): void {
+    this.validateUserScope(user);
+
+    const role =
+      this.normalizeRole(user.role);
+
+    if (!user.locationId) {
+      throw new ForbiddenException(
+        'User is not assigned to a branch.',
+      );
+    }
+
+    qb.andWhere(
+      `${alias}.locationId = :heldLocationId`,
+      {
+        heldLocationId:
+          user.locationId,
+      },
+    );
+
+    if (role === UserRole.CASHIER) {
+      if (
+        user.tillId === null ||
+        user.tillId === undefined
+      ) {
+        throw new ForbiddenException(
+          'Cashier is not assigned to a till.',
+        );
+      }
+
+      qb.andWhere(
+        `${alias}.tillId = :heldTillId`,
+        {
+          heldTillId:
+            user.tillId,
+        },
+      );
+    }
+  }
+
+  /* =========================================================
+     OPENING BALANCE WHERE
+  ========================================================= */
+
+  private buildOpeningBalanceWhere(
+    locationId: string,
+    tillId: number | null,
+    businessDate: string,
+  ) {
+    if (tillId !== null) {
+      return {
+        locationId,
+        tillId,
+        businessDate,
+      };
+    }
+
+    return {
+      locationId,
+      tillId: IsNull(),
+      businessDate,
+    };
+  }
+
+  /* =========================================================
+     CASH CLOSING WHERE
+  ========================================================= */
+
+  private buildCashClosingWhere(
+    locationId: string,
+    tillId: number | null,
+    businessDate: string,
+  ) {
+    if (tillId !== null) {
+      return {
+        locationId,
+        tillId,
+        businessDate,
+      };
+    }
+
+    return {
+      locationId,
+      tillId: IsNull(),
+      businessDate,
+    };
+  }
+
+  /* =========================================================
+     CHECK CASH CLOSING
+  ========================================================= */
+
+  private async ensureCashNotClosed(
+    locationId: string,
+    tillId: number | null,
+    businessDate: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const repo = manager
+      ? manager.getRepository(PosCashClosing)
+      : this.cashClosingRepository;
+
+    const existing =
+      await repo.findOne({
+        where:
+          this.buildCashClosingWhere(
+            locationId,
+            tillId,
+            businessDate,
+          ),
+      });
+
+    if (existing) {
+      throw new BadRequestException(
+        'Cash closing has already been completed for this branch/till for today.',
+      );
+    }
+  }
 
   /* =========================================================
      INVOICE NUMBER
@@ -49,37 +619,52 @@ export class PosService {
   private async generateInvoiceNumber(
     manager: EntityManager,
   ): Promise<string> {
-    const todayStr = new Date()
-      .toISOString()
-      .slice(0, 10)
-      .replace(/-/g, "");
+    const today =
+      this.getBusinessDate()
+        .replace(/-/g, '');
 
-    const prefix = `INV-${todayStr}-`;
+    const prefix =
+      `INV-${today}-`;
 
-    const lastSale = await manager
-      .createQueryBuilder(PosSale, "sale")
-      .where("sale.invoiceNumber LIKE :prefix", {
-        prefix: `${prefix}%`,
-      })
-      .orderBy("sale.invoiceNumber", "DESC")
-      .setLock("pessimistic_write")
-      .getOne();
+    const lastSale =
+      await manager
+        .getRepository(PosSale)
+        .createQueryBuilder('sale')
+        .select(
+          'sale.invoiceNumber',
+          'invoiceNumber',
+        )
+        .where(
+          'sale.invoiceNumber LIKE :prefix',
+          {
+            prefix: `${prefix}%`,
+          },
+        )
+        .orderBy(
+          'sale.invoiceNumber',
+          'DESC',
+        )
+        .getOne();
 
-    let seq = 1;
+    let sequence = 1;
 
-    if (lastSale?.invoiceNumber) {
-      const parts = lastSale.invoiceNumber.split("-");
+    if (
+      lastSale?.invoiceNumber
+    ) {
+      const match =
+        lastSale.invoiceNumber.match(
+          /-(\d+)$/,
+        );
 
-      if (parts.length === 3) {
-        const parsedSeq = parseInt(parts[2], 10);
-
-        if (!Number.isNaN(parsedSeq)) {
-          seq = parsedSeq + 1;
-        }
+      if (match) {
+        sequence =
+          Number(match[1]) + 1;
       }
     }
 
-    return `${prefix}${seq.toString().padStart(4, "0")}`;
+    return `${prefix}${String(
+      sequence,
+    ).padStart(4, '0')}`;
   }
 
   /* =========================================================
@@ -87,37 +672,51 @@ export class PosService {
   ========================================================= */
 
   private async generateHoldNumber(): Promise<string> {
-    const todayStr = new Date()
-      .toISOString()
-      .slice(0, 10)
-      .replace(/-/g, "");
+    const today =
+      this.getBusinessDate()
+        .replace(/-/g, '');
 
-    const prefix = `HOLD-${todayStr}-`;
+    const prefix =
+      `HOLD-${today}-`;
 
-    const lastHold = await this.dataSource
-      .getRepository(PosHeldBill)
-      .createQueryBuilder("hold")
-      .where("hold.holdNumber LIKE :prefix", {
-        prefix: `${prefix}%`,
-      })
-      .orderBy("hold.holdNumber", "DESC")
-      .getOne();
+    const lastHold =
+      await this.heldBillRepository
+        .createQueryBuilder('held')
+        .select(
+          'held.holdNumber',
+          'holdNumber',
+        )
+        .where(
+          'held.holdNumber LIKE :prefix',
+          {
+            prefix: `${prefix}%`,
+          },
+        )
+        .orderBy(
+          'held.holdNumber',
+          'DESC',
+        )
+        .getOne();
 
-    let seq = 1;
+    let sequence = 1;
 
-    if (lastHold?.holdNumber) {
-      const parts = lastHold.holdNumber.split("-");
+    if (
+      lastHold?.holdNumber
+    ) {
+      const match =
+        lastHold.holdNumber.match(
+          /-(\d+)$/,
+        );
 
-      if (parts.length === 3) {
-        const parsedSeq = parseInt(parts[2], 10);
-
-        if (!Number.isNaN(parsedSeq)) {
-          seq = parsedSeq + 1;
-        }
+      if (match) {
+        sequence =
+          Number(match[1]) + 1;
       }
     }
 
-    return `${prefix}${seq.toString().padStart(4, "0")}`;
+    return `${prefix}${String(
+      sequence,
+    ).padStart(4, '0')}`;
   }
 
   /* =========================================================
@@ -127,37 +726,111 @@ export class PosService {
   private async generateReturnNumber(
     manager: EntityManager,
   ): Promise<string> {
-    const todayStr = new Date()
-      .toISOString()
-      .slice(0, 10)
-      .replace(/-/g, "");
+    const today =
+      this.getBusinessDate()
+        .replace(/-/g, '');
 
-    const prefix = `RET-${todayStr}-`;
+    const prefix =
+      `RET-${today}-`;
 
-    const lastReturn = await manager
-      .createQueryBuilder(PosReturn, "ret")
-      .where("ret.returnNumber LIKE :prefix", {
-        prefix: `${prefix}%`,
-      })
-      .orderBy("ret.returnNumber", "DESC")
-      .setLock("pessimistic_write")
-      .getOne();
+    const lastReturn =
+      await manager
+        .getRepository(PosReturn)
+        .createQueryBuilder('ret')
+        .select(
+          'ret.returnNumber',
+          'returnNumber',
+        )
+        .where(
+          'ret.returnNumber LIKE :prefix',
+          {
+            prefix: `${prefix}%`,
+          },
+        )
+        .orderBy(
+          'ret.returnNumber',
+          'DESC',
+        )
+        .getOne();
 
-    let seq = 1;
+    let sequence = 1;
 
-    if (lastReturn?.returnNumber) {
-      const parts = lastReturn.returnNumber.split("-");
+    if (
+      lastReturn?.returnNumber
+    ) {
+      const match =
+        lastReturn.returnNumber.match(
+          /-(\d+)$/,
+        );
 
-      if (parts.length === 3) {
-        const parsedSeq = parseInt(parts[2], 10);
-
-        if (!Number.isNaN(parsedSeq)) {
-          seq = parsedSeq + 1;
-        }
+      if (match) {
+        sequence =
+          Number(match[1]) + 1;
       }
     }
 
-    return `${prefix}${seq.toString().padStart(4, "0")}`;
+    return `${prefix}${String(
+      sequence,
+    ).padStart(4, '0')}`;
+  }
+
+  /* =========================================================
+     FINANCE NUMBER
+  ========================================================= */
+
+  private async generateFinanceTransactionNumber(
+    manager: EntityManager,
+  ): Promise<string> {
+    const today =
+      this.getBusinessDate()
+        .replace(/-/g, '');
+
+    const prefix =
+      `FIN-${today}-`;
+
+    const lastTransaction =
+      await manager
+        .getRepository(
+          FinanceTransaction,
+        )
+        .createQueryBuilder(
+          'transaction',
+        )
+        .select(
+          'transaction.transactionNumber',
+          'transactionNumber',
+        )
+        .where(
+          'transaction.transactionNumber LIKE :prefix',
+          {
+            prefix: `${prefix}%`,
+          },
+        )
+        .orderBy(
+          'transaction.transactionNumber',
+          'DESC',
+        )
+        .getOne();
+
+    let sequence = 1;
+
+    if (
+      lastTransaction?.transactionNumber
+    ) {
+      const match =
+        lastTransaction.transactionNumber.match(
+          /-(\d+)$/,
+        );
+
+      if (match) {
+        sequence =
+          Number(match[1]) + 1;
+      }
+    }
+
+    return `${prefix}${String(
+      sequence,
+    ).padStart(4, '0')}`;
   }
 
   /* =========================================================
@@ -165,22 +838,49 @@ export class PosService {
   ========================================================= */
 
   private async findSaleByClientSaleId(
-    clientSaleId?: string,
+    clientSaleId:
+      | string
+      | undefined,
+    user?: PosAuthenticatedUser,
   ): Promise<PosSale | null> {
     if (!clientSaleId) {
       return null;
     }
 
-    return await this.dataSource
-      .getRepository(PosSale)
-      .createQueryBuilder("sale")
-      .leftJoinAndSelect("sale.items", "items")
-      .leftJoinAndSelect("sale.payments", "payments")
-      .leftJoinAndSelect("sale.location", "location")
-      .where("sale.clientSaleId = :clientSaleId", {
-        clientSaleId,
-      })
-      .getOne();
+    const qb =
+      this.saleRepository
+        .createQueryBuilder('sale')
+        .leftJoinAndSelect(
+          'sale.items',
+          'items',
+        )
+        .leftJoinAndSelect(
+          'sale.payments',
+          'payments',
+        )
+        .leftJoinAndSelect(
+          'sale.location',
+          'location',
+        )
+        .leftJoinAndSelect(
+          'sale.till',
+          'till',
+        )
+        .where(
+          'sale.clientSaleId = :clientSaleId',
+          {
+            clientSaleId,
+          },
+        );
+
+    if (user) {
+      this.applySaleScope(
+        qb,
+        user,
+      );
+    }
+
+    return qb.getOne();
   }
 
   /* =========================================================
@@ -189,244 +889,461 @@ export class PosService {
 
   async createSale(
     dto: CreatePosSaleDto,
-    cashierId?: string,
+    user: PosAuthenticatedUser,
   ): Promise<PosSale> {
-    if (!dto.items || dto.items.length === 0) {
-      throw new BadRequestException(
-        "Cannot process sale with empty cart.",
-      );
-    }
-
-    if (!dto.payments || dto.payments.length === 0) {
-      throw new BadRequestException(
-        "At least one payment method is required.",
-      );
-    }
-
-    /* -------------------------------------------------------
-       Validate payment total
-    ------------------------------------------------------- */
-
-    const totalPayment = dto.payments.reduce(
-      (sum, payment) =>
-        sum + Number(payment.amount || 0),
-      0,
-    );
-
-    const grandTotal = Number(dto.grandTotal || 0);
+    this.validateUserScope(user);
 
     if (
-      Math.abs(totalPayment - grandTotal) > 0.01
+      !dto.items ||
+      dto.items.length === 0
     ) {
       throw new BadRequestException(
-        `Payment total (Rs. ${totalPayment.toFixed(
-          2,
-        )}) must equal grand total (Rs. ${grandTotal.toFixed(
-          2,
-        )})`,
+        'Sale must contain at least one item.',
       );
     }
 
-    /* -------------------------------------------------------
-       First idempotency check
-    ------------------------------------------------------- */
+    if (
+      !dto.payments ||
+      dto.payments.length === 0
+    ) {
+      throw new BadRequestException(
+        'At least one payment method is required.',
+      );
+    }
+
+    /* =====================================================
+       PAYMENT VALIDATION
+    ===================================================== */
+
+    const totalPayment =
+      dto.payments.reduce(
+        (sum, payment) =>
+          sum +
+          Number(
+            payment.amount || 0,
+          ),
+        0,
+      );
+
+    const grandTotal =
+      Number(
+        dto.grandTotal || 0,
+      );
+
+    if (
+      !Number.isFinite(
+        grandTotal,
+      ) ||
+      grandTotal < 0
+    ) {
+      throw new BadRequestException(
+        'Grand total must be a valid amount.',
+      );
+    }
+
+    if (
+      Math.abs(
+        totalPayment -
+          grandTotal,
+      ) > 0.01
+    ) {
+      throw new BadRequestException(
+        `Payment total (${totalPayment.toFixed(
+          2,
+        )}) does not match grand total (${grandTotal.toFixed(
+          2,
+        )}).`,
+      );
+    }
+
+    /* =====================================================
+       SERVER SIDE SCOPE
+    ===================================================== */
+
+    const scope =
+      await this.resolveSaleScope(
+        dto.locationId,
+        user,
+      );
+
+    if (!scope.locationId) {
+      throw new ForbiddenException(
+        'POS sale requires a branch/location.',
+      );
+    }
+
+    const businessDate =
+      this.getBusinessDate();
+
+    /* =====================================================
+       OPENING BALANCE REQUIRED
+    ===================================================== */
+
+    await this.ensureOpeningBalanceExists(
+      scope.locationId,
+      scope.tillId,
+      user,
+    );
+
+    /* =====================================================
+       CASH CLOSING CHECK
+    ===================================================== */
+
+    await this.ensureCashNotClosed(
+      scope.locationId,
+      scope.tillId,
+      businessDate,
+    );
+
+    /* =====================================================
+       IDEMPOTENCY
+    ===================================================== */
 
     if (dto.clientSaleId) {
-      const existingSale =
+      const existing =
         await this.findSaleByClientSaleId(
           dto.clientSaleId,
+          user,
         );
 
-      if (existingSale) {
-        return existingSale;
+      if (existing) {
+        return existing;
       }
     }
 
-    const queryRunner: QueryRunner =
+    const queryRunner =
       this.dataSource.createQueryRunner();
 
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      /* -----------------------------------------------------
-         Second idempotency check inside transaction
-      ----------------------------------------------------- */
+      const manager =
+        queryRunner.manager;
+
+      /* ===================================================
+         SECOND IDEMPOTENCY CHECK
+      =================================================== */
 
       if (dto.clientSaleId) {
-        const existingSale =
-          await queryRunner.manager
-            .createQueryBuilder(PosSale, "sale")
-            .leftJoinAndSelect("sale.items", "items")
-            .leftJoinAndSelect(
-              "sale.payments",
-              "payments",
-            )
-            .leftJoinAndSelect(
-              "sale.location",
-              "location",
-            )
-            .where(
-              "sale.clientSaleId = :clientSaleId",
-              {
-                clientSaleId:
-                  dto.clientSaleId,
-              },
-            )
-            .getOne();
+        const existing =
+          await this.findSaleByClientSaleId(
+            dto.clientSaleId,
+            user,
+          );
 
-        if (existingSale) {
-          await queryRunner.commitTransaction();
-          return existingSale;
+        if (existing) {
+          await queryRunner.rollbackTransaction();
+          return existing;
         }
       }
 
-      /* -----------------------------------------------------
-         Aggregate product quantities
-         Prevent duplicate product IDs in payload
-      ----------------------------------------------------- */
+      /* ===================================================
+         LOCK OPENING BALANCE
+      =================================================== */
 
-      const requestedQuantityMap =
-        new Map<string, number>();
+      const opening =
+        await manager
+          .getRepository(
+            PosOpeningBalance,
+          )
+          .createQueryBuilder(
+            'opening',
+          )
+          .setLock(
+            'pessimistic_write',
+          )
+          .where(
+            'opening.locationId = :locationId',
+            {
+              locationId:
+                scope.locationId,
+            },
+          )
+          .andWhere(
+            scope.tillId !== null
+              ? 'opening.tillId = :tillId'
+              : 'opening.tillId IS NULL',
+            scope.tillId !== null
+              ? {
+                  tillId:
+                    scope.tillId,
+                }
+              : {},
+          )
+          .andWhere(
+            'opening.businessDate = :businessDate',
+            {
+              businessDate,
+            },
+          )
+          .getOne();
 
-      for (const item of dto.items) {
-        const current =
-          requestedQuantityMap.get(
-            item.productId,
-          ) || 0;
-
-        requestedQuantityMap.set(
-          item.productId,
-          current + item.quantity,
+      if (!opening) {
+        throw new BadRequestException(
+          'Opening balance has not been set for this POS. Please enter the opening balance before starting billing.',
         );
       }
 
-      /* -----------------------------------------------------
-         Lock + validate all products
-      ----------------------------------------------------- */
+      /* ===================================================
+         LOCK CASH CLOSING
+      =================================================== */
 
-      const lockedProducts =
-        new Map<string, Product>();
+      const existingClosing =
+        await manager
+          .getRepository(
+            PosCashClosing,
+          )
+          .createQueryBuilder(
+            'closing',
+          )
+          .setLock(
+            'pessimistic_write',
+          )
+          .where(
+            'closing.locationId = :locationId',
+            {
+              locationId:
+                scope.locationId,
+            },
+          )
+          .andWhere(
+            scope.tillId !== null
+              ? 'closing.tillId = :tillId'
+              : 'closing.tillId IS NULL',
+            scope.tillId !== null
+              ? {
+                  tillId:
+                    scope.tillId,
+                }
+              : {},
+          )
+          .andWhere(
+            'closing.businessDate = :businessDate',
+            {
+              businessDate,
+            },
+          )
+          .getOne();
+
+      if (existingClosing) {
+        throw new BadRequestException(
+          'Cash closing has already been completed for this POS.',
+        );
+      }
+
+      /* ===================================================
+         AGGREGATE QUANTITIES
+      =================================================== */
+
+      const quantities =
+        new Map<string, number>();
+
+      for (
+        const item of dto.items
+      ) {
+        const quantity =
+          Number(
+            item.quantity,
+          );
+
+        if (
+          !Number.isFinite(
+            quantity,
+          ) ||
+          quantity <= 0
+        ) {
+          throw new BadRequestException(
+            'Product quantity must be greater than zero.',
+          );
+        }
+
+        const current =
+          quantities.get(
+            item.productId,
+          ) || 0;
+
+        quantities.set(
+          item.productId,
+          current + quantity,
+        );
+      }
+
+      /* ===================================================
+         LOCK PRODUCTS
+      =================================================== */
+
+      const products =
+        new Map<
+          string,
+          Product
+        >();
 
       for (
         const [
           productId,
-          requestedQuantity,
-        ] of requestedQuantityMap
+          quantity,
+        ] of quantities
       ) {
         const product =
-          await queryRunner.manager.findOne(
-            Product,
-            {
-              where: {
-                id: productId,
+          await manager
+            .getRepository(Product)
+            .createQueryBuilder(
+              'product',
+            )
+            .setLock(
+              'pessimistic_write',
+            )
+            .where(
+              'product.id = :productId',
+              {
+                productId,
               },
-              lock: {
-                mode: "pessimistic_write",
-              },
-            },
-          );
+            )
+            .getOne();
 
         if (!product) {
-          const originalItem =
-            dto.items.find(
-              (item) =>
-                item.productId ===
-                productId,
-            );
-
-          throw new BadRequestException(
-            `Product "${
-              originalItem?.productName ||
-              productId
-            }" (ID: ${productId}) not found.`,
+          throw new NotFoundException(
+            `Product "${productId}" not found.`,
           );
         }
 
         if (
-          Number(product.stockQuantity) <
-          requestedQuantity
+          Number(
+            product.stockQuantity,
+          ) < quantity
         ) {
           throw new BadRequestException(
-            `Insufficient stock for "${product.productName}". Available: ${product.stockQuantity}, Requested: ${requestedQuantity}`,
+            `Insufficient stock for "${product.productName}". Available: ${product.stockQuantity}, Requested: ${quantity}`,
           );
         }
 
-        lockedProducts.set(
+        products.set(
           productId,
           product,
         );
       }
 
-      /* -----------------------------------------------------
-         Generate invoice
-      ----------------------------------------------------- */
+      /* ===================================================
+         INVOICE NUMBER
+      =================================================== */
 
       const invoiceNumber =
         await this.generateInvoiceNumber(
-          queryRunner.manager,
+          manager,
         );
 
-      /* -----------------------------------------------------
-         Create sale
-      ----------------------------------------------------- */
+      /* ===================================================
+         CREATE SALE
+      =================================================== */
 
       const sale =
-        queryRunner.manager.create(
-          PosSale,
-          {
+        manager
+          .getRepository(PosSale)
+          .create({
             clientSaleId:
-              dto.clientSaleId || null,
+              dto.clientSaleId ??
+              null,
 
             invoiceNumber,
 
             subtotal:
-              dto.subtotal,
+              Number(
+                dto.subtotal || 0,
+              ),
 
             discountAmount:
-              dto.discountAmount || 0,
+              Number(
+                dto.discountAmount || 0,
+              ),
 
-            grandTotal:
-              dto.grandTotal,
+            grandTotal,
 
             status:
               SaleStatus.COMPLETED,
 
             customerId:
-              dto.customerId || null,
+              dto.customerId ??
+              null,
 
             customerName:
-              dto.customerName || null,
+              dto.customerName ??
+              null,
 
             cashierId:
-              cashierId || "System",
+              String(user.id),
 
             notes:
-              dto.notes || null,
+              dto.notes ??
+              null,
 
             locationId:
-              dto.locationId || null,
-          },
-        );
+              scope.locationId,
+
+            tillId:
+              scope.tillId,
+          });
 
       const savedSale =
-        await queryRunner.manager.save(
-          PosSale,
-          sale,
-        );
+        await manager
+          .getRepository(PosSale)
+          .save(sale);
 
-      /* -----------------------------------------------------
-         Sale items
-      ----------------------------------------------------- */
+      /* ===================================================
+         SALE ITEMS
+      =================================================== */
 
-      const saleItems: PosSaleItem[] = [];
+      const saleItems:
+        PosSaleItem[] = [];
 
-      for (const itemDto of dto.items) {
+      for (
+        const itemDto of dto.items
+      ) {
+        const unitPrice =
+          Number(
+            itemDto.unitPrice,
+          );
+
+        const quantity =
+          Number(
+            itemDto.quantity,
+          );
+
+        const lineTotal =
+          Number(
+            itemDto.lineTotal,
+          );
+
+        if (
+          !Number.isFinite(
+            unitPrice,
+          ) ||
+          unitPrice < 0
+        ) {
+          throw new BadRequestException(
+            'Invalid product unit price.',
+          );
+        }
+
+        if (
+          !Number.isFinite(
+            lineTotal,
+          ) ||
+          lineTotal < 0
+        ) {
+          throw new BadRequestException(
+            'Invalid product line total.',
+          );
+        }
+
         const saleItem =
-          queryRunner.manager.create(
-            PosSaleItem,
-            {
-              posSale: savedSale,
+          manager
+            .getRepository(
+              PosSaleItem,
+            )
+            .create({
+              posSale:
+                savedSale,
 
               productId:
                 itemDto.productId,
@@ -438,42 +1355,204 @@ export class PosService {
                 itemDto.productName,
 
               barcode:
-                itemDto.barcode || null,
+                itemDto.barcode ??
+                null,
 
-              unitPrice:
-                itemDto.unitPrice,
+              unitPrice,
 
-              quantity:
-                itemDto.quantity,
+              quantity,
 
               discountAmount:
-                itemDto.discountAmount || 0,
+                Number(
+                  itemDto.discountAmount ||
+                    0,
+                ),
 
-              lineTotal:
-                itemDto.lineTotal,
-            },
-          );
+              lineTotal,
+            });
 
-        saleItems.push(saleItem);
+        saleItems.push(
+          saleItem,
+        );
       }
 
-      await queryRunner.manager.save(
-        PosSaleItem,
-        saleItems,
-      );
+      await manager
+        .getRepository(
+          PosSaleItem,
+        )
+        .save(saleItems);
 
-      /* -----------------------------------------------------
-         Deduct each product once
-      ----------------------------------------------------- */
+      /* ===================================================
+         PAYMENTS
+      =================================================== */
+
+      const salePayments:
+        PosPayment[] = [];
+
+      for (
+        const payDto of dto.payments
+      ) {
+        const paymentAmount =
+          Number(
+            payDto.amount,
+          );
+
+        if (
+          !Number.isFinite(
+            paymentAmount,
+          ) ||
+          paymentAmount < 0
+        ) {
+          throw new BadRequestException(
+            'Payment amount must be valid.',
+          );
+        }
+
+        const payment =
+          manager
+            .getRepository(
+              PosPayment,
+            )
+            .create({
+              posSale:
+                savedSale,
+
+              paymentMethod:
+                payDto.paymentMethod,
+
+              amount:
+                paymentAmount,
+
+              amountReceived:
+                payDto.amountReceived !=
+                null
+                  ? Number(
+                      payDto.amountReceived,
+                    )
+                  : null,
+
+              changeAmount:
+                payDto.changeAmount !=
+                null
+                  ? Number(
+                      payDto.changeAmount,
+                    )
+                  : null,
+
+              referenceNumber:
+                payDto.referenceNumber ??
+                null,
+            });
+
+        salePayments.push(
+          payment,
+        );
+
+       /*  FINANCE - POS SALE */
+
+const paymentMethod =
+  String(
+    payDto.paymentMethod,
+  ).toUpperCase();
+
+let financePaymentMethod:
+  | FinancePaymentMethod
+  | null = null;
+
+if (paymentMethod === 'CASH') {
+  financePaymentMethod =
+    FinancePaymentMethod.CASH;
+} else if (
+  paymentMethod === 'CARD' ||
+  paymentMethod === 'QR'
+) {
+  financePaymentMethod =
+    FinancePaymentMethod.BANK;
+}
+
+if (financePaymentMethod) {
+  const transactionNumber =
+    await this.generateFinanceTransactionNumber(
+      manager,
+    );
+
+  const financeTransaction =
+    manager
+      .getRepository(
+        FinanceTransaction,
+      )
+      .create({
+        transactionNumber,
+
+        transactionDate:
+          businessDate,
+
+        type:
+          TransactionType.INCOME,
+
+        paymentMethod:
+          financePaymentMethod,
+
+        category:
+          'POS Sale',
+
+        description:
+          `POS Sale - ${savedSale.invoiceNumber}`,
+
+        amount:
+          paymentAmount,
+
+        reference:
+          savedSale.invoiceNumber,
+
+        customerId:
+          savedSale.customerId ??
+          null,
+
+        supplierId:
+          null,
+
+        purchaseInvoiceId:
+          null,
+
+        /* IMPORTANT */
+        locationId:
+          scope.locationId,
+
+        tillId:
+          scope.tillId,
+      });
+
+  await manager
+    .getRepository(
+      FinanceTransaction,
+    )
+    .save(
+      financeTransaction,
+    );
+}
+      }
+
+      await manager
+        .getRepository(
+          PosPayment,
+        )
+        .save(salePayments);
+
+      /* ===================================================
+         REDUCE STOCK
+      =================================================== */
 
       for (
         const [
           productId,
-          requestedQuantity,
-        ] of requestedQuantityMap
+          quantity,
+        ] of quantities
       ) {
         const product =
-          lockedProducts.get(productId);
+          products.get(
+            productId,
+          );
 
         if (!product) {
           continue;
@@ -482,134 +1561,96 @@ export class PosService {
         product.stockQuantity =
           Math.max(
             0,
-            Number(product.stockQuantity) -
-              requestedQuantity,
+            Number(
+              product.stockQuantity,
+            ) -
+              quantity,
           );
 
-        await queryRunner.manager.save(
-          Product,
-          product,
-        );
+        await manager
+          .getRepository(Product)
+          .save(product);
       }
 
-      /* -----------------------------------------------------
-         Payments
-      ----------------------------------------------------- */
-
-      const salePayments: PosPayment[] = [];
-
-      for (const payDto of dto.payments) {
-        const payment =
-          queryRunner.manager.create(
-            PosPayment,
-            {
-              posSale: savedSale,
-
-              paymentMethod:
-                payDto.paymentMethod,
-
-              amount:
-                payDto.amount,
-
-              amountReceived:
-                payDto.amountReceived ??
-                null,
-
-              changeAmount:
-                payDto.changeAmount ??
-                null,
-
-              referenceNumber:
-                payDto.referenceNumber ??
-                null,
-            },
-          );
-
-        salePayments.push(payment);
-      }
-
-      await queryRunner.manager.save(
-        PosPayment,
-        salePayments,
-      );
-
-      /* -----------------------------------------------------
-         Delete held bill
-      ----------------------------------------------------- */
+      /* ===================================================
+         DELETE HELD BILL
+      =================================================== */
 
       if (dto.heldBillId) {
-        await queryRunner.manager.delete(
-          PosHeldBill,
-          {
-            id: dto.heldBillId,
-          },
-        );
-      }
+        const heldQb =
+          manager
+            .getRepository(
+              PosHeldBill,
+            )
+            .createQueryBuilder(
+              'held',
+            )
+            .where(
+              'held.id = :heldBillId',
+              {
+                heldBillId:
+                  dto.heldBillId,
+              },
+            );
 
-      /* -----------------------------------------------------
-         Commit
-      ----------------------------------------------------- */
+        this.applyHeldBillScope(
+          heldQb,
+          user,
+        );
+
+        const heldBill =
+          await heldQb.getOne();
+
+        if (heldBill) {
+          await manager
+            .getRepository(
+              PosHeldBill,
+            )
+            .remove(
+              heldBill,
+            );
+        }
+      }
 
       await queryRunner.commitTransaction();
 
-      savedSale.items = saleItems;
-      savedSale.payments = salePayments;
+      savedSale.items =
+        saleItems;
+
+      savedSale.payments =
+        salePayments;
 
       return savedSale;
-    } catch (err: any) {
+    } catch (error: any) {
       if (
         queryRunner.isTransactionActive
       ) {
         await queryRunner.rollbackTransaction();
       }
 
-      /* -----------------------------------------------------
-         PostgreSQL unique violation
-         Exact-once retry protection
-      ----------------------------------------------------- */
-
-      const errorCode = err?.code;
-
-      const errorText = String(
-        err?.detail ||
-          err?.message ||
-          "",
-      );
-
-      const isClientSaleDuplicate =
-        errorCode === "23505" &&
-        (
-          errorText.includes(
-            "client_sale_id",
-          ) ||
-          errorText.includes(
-            "client_sale",
-          ) ||
-          errorText.includes(
-            "IDX_pos_sales_client_sale_id",
-          )
-        );
-
       if (
-        isClientSaleDuplicate &&
-        dto.clientSaleId
+        error?.code ===
+          '23505' &&
+        String(
+          error?.detail ||
+            error?.message ||
+            '',
+        ).includes(
+          'client_sale_id',
+        )
       ) {
-        const existingSale =
+        const existing =
           await this.findSaleByClientSaleId(
             dto.clientSaleId,
+            user,
           );
 
-        if (existingSale) {
-          return existingSale;
+        if (existing) {
+          return existing;
         }
       }
 
-      console.error(
-        "POS createSale error:",
-        err,
-      );
-
-      throw err;
+      throw error;
     } finally {
       await queryRunner.release();
     }
@@ -620,154 +1661,137 @@ export class PosService {
   ========================================================= */
 
   async getSales(
-    query?: {
-      search?: string;
-      limit?: number;
-    },
-  ) {
+    query?: PosSalesQuery,
+    user?: PosAuthenticatedUser,
+  ): Promise<PosSale[]> {
+    if (!user) {
+      throw new ForbiddenException(
+        'Authenticated user is required.',
+      );
+    }
+
     const qb =
-      this.dataSource
-        .getRepository(PosSale)
-        .createQueryBuilder("sale")
+      this.saleRepository
+        .createQueryBuilder('sale')
         .leftJoinAndSelect(
-          "sale.items",
-          "items",
+          'sale.items',
+          'items',
         )
         .leftJoinAndSelect(
-          "sale.payments",
-          "payments",
+          'sale.payments',
+          'payments',
         )
         .leftJoinAndSelect(
-          "sale.location",
-          "location",
+          'sale.location',
+          'location',
         )
-        .orderBy(
-          "sale.createdAt",
-          "DESC",
+        .leftJoinAndSelect(
+          'sale.till',
+          'till',
         );
 
+    this.applySaleScope(
+      qb,
+      user,
+    );
+
     if (
-      query?.search &&
-      query.search.trim()
+      query?.search?.trim()
     ) {
-      qb.where(
-        `
-        sale.invoiceNumber ILIKE :search
-        OR sale.customerName ILIKE :search
-        OR sale.cashierId ILIKE :search
-        OR location.name ILIKE :search
-        `,
+      const search =
+        `%${query.search.trim()}%`;
+
+      qb.andWhere(
+        `(
+          sale.invoiceNumber ILIKE :search
+          OR sale.customerName ILIKE :search
+          OR sale.cashierId ILIKE :search
+          OR location.name ILIKE :search
+          OR till.name ILIKE :search
+          OR till.code ILIKE :search
+        )`,
         {
-          search: `%${query.search.trim()}%`,
+          search,
         },
       );
     }
 
-    if (query?.limit) {
+    qb.orderBy(
+      'sale.createdAt',
+      'DESC',
+    );
+
+    if (
+      query?.limit &&
+      Number.isFinite(
+        query.limit,
+      )
+    ) {
       qb.take(
-        Math.max(
-          1,
-          query.limit,
+        Math.min(
+          Math.max(
+            1,
+            Math.floor(
+              query.limit,
+            ),
+          ),
+          500,
         ),
       );
     }
 
-    return await qb.getMany();
+    return qb.getMany();
   }
 
   /* =========================================================
-     GET SINGLE SALE
-     
-     IMPORTANT:
-     sale.id       = UUID
-     invoiceNumber = VARCHAR
-
-     Do NOT compare both columns using the same parameter
-     because PostgreSQL can try:
-     
-     varchar = uuid
-     
-     which causes:
-     operator does not exist: character varying = uuid
+     GET SALE
   ========================================================= */
 
   async getSaleById(
     idOrInvoice: string,
+    user: PosAuthenticatedUser,
   ): Promise<PosSale> {
-    const repo =
-      this.dataSource.getRepository(
-        PosSale,
-      );
+    this.validateUserScope(user);
 
-    let sale: PosSale | null = null;
-
-    /* -------------------------------------------------------
-       UUID validation
-    ------------------------------------------------------- */
-
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-    /* -------------------------------------------------------
-       If input is UUID, search only by sale.id
-    ------------------------------------------------------- */
-
-    if (uuidRegex.test(idOrInvoice)) {
-      sale = await repo
-        .createQueryBuilder("sale")
+    const qb =
+      this.saleRepository
+        .createQueryBuilder('sale')
         .leftJoinAndSelect(
-          "sale.items",
-          "items",
+          'sale.items',
+          'items',
         )
         .leftJoinAndSelect(
-          "sale.payments",
-          "payments",
+          'sale.payments',
+          'payments',
         )
         .leftJoinAndSelect(
-          "sale.location",
-          "location",
+          'sale.location',
+          'location',
+        )
+        .leftJoinAndSelect(
+          'sale.till',
+          'till',
         )
         .where(
-          "sale.id = :saleId",
+          `(sale.id = :id OR sale.invoiceNumber = :invoice)`,
           {
-            saleId: idOrInvoice,
+            id: idOrInvoice,
+            invoice:
+              idOrInvoice,
           },
-        )
-        .getOne();
-    }
+        );
 
-    /* -------------------------------------------------------
-       If not found / input is invoice number,
-       search only by invoiceNumber
-    ------------------------------------------------------- */
+    this.applySaleScope(
+      qb,
+      user,
+    );
 
-    if (!sale) {
-      sale = await repo
-        .createQueryBuilder("sale")
-        .leftJoinAndSelect(
-          "sale.items",
-          "items",
-        )
-        .leftJoinAndSelect(
-          "sale.payments",
-          "payments",
-        )
-        .leftJoinAndSelect(
-          "sale.location",
-          "location",
-        )
-        .where(
-          "sale.invoiceNumber = :invoiceNumber",
-          {
-            invoiceNumber: idOrInvoice,
-          },
-        )
-        .getOne();
-    }
+    const sale =
+      await qb.getOne();
 
     if (!sale) {
       throw new NotFoundException(
-        `Invoice/Sale "${idOrInvoice}" not found.`,
+        'Sale not found.',
       );
     }
 
@@ -781,82 +1805,50 @@ export class PosService {
   async sendEmailReceipt(
     idOrInvoice: string,
     customerEmail: string,
+    user: PosAuthenticatedUser,
   ) {
-    /* -------------------------------------------------------
-       Validate email
-    ------------------------------------------------------- */
-
     if (
       !customerEmail ||
       !customerEmail.trim()
     ) {
       throw new BadRequestException(
-        "Customer email is required.",
+        'Customer email is required.',
       );
     }
 
     const email =
       customerEmail.trim();
 
-    /* -------------------------------------------------------
-       Basic email format validation
-
-       FIXED:
-       Old:
-       /^[^\s@]+@[^\s@]+**\.**[^\s@]+$/
-
-       New:
-       /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    ------------------------------------------------------- */
-
     const emailRegex =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!emailRegex.test(email)) {
+    if (
+      !emailRegex.test(email)
+    ) {
       throw new BadRequestException(
-        "Please provide a valid customer email address.",
+        'Please provide a valid customer email address.',
       );
     }
 
-    /* -------------------------------------------------------
-       Get sale
-    ------------------------------------------------------- */
-
-    let sale: PosSale;
-
-    try {
-      sale =
-        await this.getSaleById(
-          idOrInvoice,
-        );
-    } catch (error) {
-      console.error(
-        "Error loading sale for email receipt:",
-        error,
+    const sale =
+      await this.getSaleById(
+        idOrInvoice,
+        user,
       );
-
-      throw error;
-    }
-
-    /* -------------------------------------------------------
-       Make sure sale has items
-    ------------------------------------------------------- */
 
     if (
       !sale.items ||
       sale.items.length === 0
     ) {
       throw new BadRequestException(
-        "Sale does not contain any items.",
+        'Sale does not contain any items.',
       );
     }
 
-    /* -------------------------------------------------------
-       Prepare payment information
-    ------------------------------------------------------- */
-
     const payments =
-      (sale.payments || []).map(
+      (
+        sale.payments || []
+      ).map(
         (payment) => ({
           paymentMethod:
             String(
@@ -870,10 +1862,6 @@ export class PosService {
         }),
       );
 
-    /* -------------------------------------------------------
-       Prepare receipt data
-    ------------------------------------------------------- */
-
     const receiptData = {
       invoiceNumber:
         String(
@@ -882,7 +1870,7 @@ export class PosService {
 
       customerName:
         sale.customerName ||
-        "Valued Customer",
+        'Valued Customer',
 
       items:
         sale.items.map(
@@ -890,7 +1878,7 @@ export class PosService {
             productName:
               String(
                 item.productName ||
-                  "",
+                  '',
               ),
 
             quantity:
@@ -933,89 +1921,27 @@ export class PosService {
         ),
     };
 
-    /* -------------------------------------------------------
-       Debug information
-    ------------------------------------------------------- */
-
-    console.log(
-      "=================================",
-    );
-
-    console.log(
-      "POS EMAIL RECEIPT",
-    );
-
-    console.log(
-      "Invoice:",
-      receiptData.invoiceNumber,
-    );
-
-    console.log(
-      "Customer:",
-      receiptData.customerName,
-    );
-
-    console.log(
-      "Email:",
-      email,
-    );
-
-    console.log(
-      "Items:",
-      receiptData.items.length,
-    );
-
-    console.log(
-      "Grand Total:",
-      receiptData.grandTotal,
-    );
-
-    console.log(
-      "=================================",
-    );
-
-    /* -------------------------------------------------------
-       Send email
-    ------------------------------------------------------- */
-
     try {
       await this.mailService.sendReceiptEmail(
         email,
         receiptData,
       );
-
-      console.log(
-        `POS receipt email sent successfully to ${email}`,
-      );
     } catch (error) {
       console.error(
-        "=================================",
-      );
-
-      console.error(
-        "POS EMAIL RECEIPT FAILED",
-      );
-
-      console.error(error);
-
-      console.error(
-        "=================================",
+        'POS receipt email failed:',
+        error,
       );
 
       throw new BadRequestException(
-        "Failed to send receipt email. Please check the email configuration and try again.",
+        'Failed to send receipt email. Please check the email configuration.',
       );
     }
-
-    /* -------------------------------------------------------
-       Success response
-    ------------------------------------------------------- */
 
     return {
       success: true,
 
       message:
-        "Receipt sent successfully.",
+        'Receipt sent successfully.',
 
       email,
 
@@ -1030,43 +1956,80 @@ export class PosService {
 
   async holdBill(
     dto: HoldBillDto,
-    cashierId?: string,
+    user: PosAuthenticatedUser,
   ): Promise<PosHeldBill> {
+    this.validateUserScope(user);
+
+    const scope =
+      await this.resolvePosScope(
+        user,
+      );
+
+    if (!scope.locationId) {
+      throw new ForbiddenException(
+        'Cannot hold bill without branch.',
+      );
+    }
+
+    const businessDate =
+      this.getBusinessDate();
+
+    await this.ensureOpeningBalanceExists(
+      scope.locationId,
+      scope.tillId,
+      user,
+    );
+
+    await this.ensureCashNotClosed(
+      scope.locationId,
+      scope.tillId,
+      businessDate,
+    );
+
     const holdNumber =
       await this.generateHoldNumber();
 
-    const repo =
-      this.dataSource.getRepository(
-        PosHeldBill,
-      );
-
     const heldBill =
-      repo.create({
+      this.heldBillRepository.create({
         holdNumber,
 
         customerId:
-          dto.customerId || null,
+          dto.customerId ??
+          null,
 
         customerName:
-          dto.customerName || null,
+          dto.customerName ??
+          null,
 
         cartData:
           dto.cartData,
 
         subtotal:
-          dto.subtotal,
+          Number(
+            dto.subtotal || 0,
+          ),
 
         discountAmount:
-          dto.discountAmount || 0,
+          Number(
+            dto.discountAmount || 0,
+          ),
 
         grandTotal:
-          dto.grandTotal,
+          Number(
+            dto.grandTotal || 0,
+          ),
 
         cashierId:
-          cashierId || "System",
+          String(user.id),
+
+        locationId:
+          scope.locationId,
+
+        tillId:
+          scope.tillId,
       });
 
-    return await repo.save(
+    return this.heldBillRepository.save(
       heldBill,
     );
   }
@@ -1075,16 +2038,32 @@ export class PosService {
      GET HELD BILLS
   ========================================================= */
 
-  async getHeldBills(): Promise<
-    PosHeldBill[]
-  > {
-    return await this.dataSource
-      .getRepository(PosHeldBill)
-      .find({
-        order: {
-          createdAt: "DESC",
-        },
-      });
+  async getHeldBills(
+    user: PosAuthenticatedUser,
+  ): Promise<PosHeldBill[]> {
+    const qb =
+      this.heldBillRepository
+        .createQueryBuilder('held')
+        .leftJoinAndSelect(
+          'held.location',
+          'location',
+        )
+        .leftJoinAndSelect(
+          'held.till',
+          'till',
+        );
+
+    this.applyHeldBillScope(
+      qb,
+      user,
+    );
+
+    qb.orderBy(
+      'held.createdAt',
+      'DESC',
+    );
+
+    return qb.getMany();
   }
 
   /* =========================================================
@@ -1093,22 +2072,39 @@ export class PosService {
 
   async deleteHeldBill(
     id: string,
-  ): Promise<void> {
-    const repo =
-      this.dataSource.getRepository(
-        PosHeldBill,
-      );
+    user: PosAuthenticatedUser,
+  ): Promise<{
+    success: boolean;
+  }> {
+    const qb =
+      this.heldBillRepository
+        .createQueryBuilder('held')
+        .where(
+          'held.id = :id',
+          { id },
+        );
 
-    const result =
-      await repo.delete(id);
+    this.applyHeldBillScope(
+      qb,
+      user,
+    );
 
-    if (
-      result.affected === 0
-    ) {
+    const heldBill =
+      await qb.getOne();
+
+    if (!heldBill) {
       throw new NotFoundException(
-        `Held bill "${id}" not found.`,
+        'Held bill not found.',
       );
     }
+
+    await this.heldBillRepository.remove(
+      heldBill,
+    );
+
+    return {
+      success: true,
+    };
   }
 
   /* =========================================================
@@ -1117,8 +2113,33 @@ export class PosService {
 
   async createReturn(
     dto: ReturnSaleDto,
-    cashierId?: string,
+    user: PosAuthenticatedUser,
   ): Promise<PosReturn> {
+    this.validateUserScope(user);
+
+    if (
+      !dto.items ||
+      dto.items.length === 0
+    ) {
+      throw new BadRequestException(
+        'Return must contain at least one item.',
+      );
+    }
+
+    const scope =
+      await this.resolvePosScope(
+        user,
+      );
+
+    const businessDate =
+      this.getBusinessDate();
+
+    await this.ensureCashNotClosed(
+      scope.locationId,
+      scope.tillId,
+      businessDate,
+    );
+
     const queryRunner =
       this.dataSource.createQueryRunner();
 
@@ -1126,40 +2147,69 @@ export class PosService {
     await queryRunner.startTransaction();
 
     try {
-      /* -----------------------------------------------------
-         Lock sale itself
-         Prevent concurrent returns
-      ----------------------------------------------------- */
+      const manager =
+        queryRunner.manager;
+
+      /* ===================================================
+         FIND SALE WITH SCOPE
+      =================================================== */
+
+      const saleQb =
+        manager
+          .getRepository(PosSale)
+          .createQueryBuilder(
+            'sale',
+          )
+          .leftJoinAndSelect(
+            'sale.items',
+            'items',
+          )
+          .where(
+            'sale.id = :saleId',
+            {
+              saleId:
+                dto.saleId,
+            },
+          );
+
+      this.applySaleScope(
+        saleQb,
+        user,
+        'sale',
+      );
 
       const sale =
-        await queryRunner.manager.findOne(
-          PosSale,
-          {
-            where: {
-              id: dto.saleId,
-            },
-
-            relations: {
-              items: true,
-            },
-
-            lock: {
-              mode:
-                "pessimistic_write",
-            },
-          },
-        );
+        await saleQb
+          .setLock(
+            'pessimistic_write',
+          )
+          .getOne();
 
       if (!sale) {
         throw new NotFoundException(
-          `Sale invoice "${dto.saleId}" not found.`,
+          'Sale not found.',
         );
       }
 
+      if (
+        sale.status ===
+        SaleStatus.CANCELLED
+      ) {
+        throw new BadRequestException(
+          'Cancelled sale cannot be returned.',
+        );
+      }
+
+      /* ===================================================
+         EXISTING RETURNS
+      =================================================== */
+
       const existingReturns =
-        await queryRunner.manager.find(
-          PosReturn,
-          {
+        await manager
+          .getRepository(
+            PosReturn,
+          )
+          .find({
             where: {
               posSaleId:
                 sale.id,
@@ -1168,19 +2218,20 @@ export class PosService {
             relations: {
               items: true,
             },
-          },
-        );
+          });
 
-      const returnedQtyMap: Record<
-        string,
-        number
-      > = {};
+      const returnedQtyMap:
+        Record<
+          string,
+          number
+        > = {};
 
       for (
         const ret of existingReturns
       ) {
         for (
-          const item of ret.items
+          const item of
+            ret.items || []
         ) {
           returnedQtyMap[
             item.productId
@@ -1190,14 +2241,21 @@ export class PosService {
                 item.productId
               ] || 0
             ) +
-            Number(item.quantity);
+            Number(
+              item.quantity,
+            );
         }
       }
 
-      let totalReturnAmount = 0;
+      let totalReturnAmount =
+        0;
 
-      const returnItems: PosReturnItem[] =
-        [];
+      const returnItems:
+        PosReturnItem[] = [];
+
+      /* ===================================================
+         PROCESS RETURN ITEMS
+      =================================================== */
 
       for (
         const retItemDto of dto.items
@@ -1211,7 +2269,7 @@ export class PosService {
 
         if (!originalItem) {
           throw new BadRequestException(
-            `Product "${retItemDto.productId}" was not part of original sale.`,
+            `Product "${retItemDto.productId}" was not part of this sale.`,
           );
         }
 
@@ -1220,53 +2278,70 @@ export class PosService {
             retItemDto.productId
           ] || 0;
 
-        const availableReturnable =
+        const remaining =
           Number(
             originalItem.quantity,
           ) -
           alreadyReturned;
 
+        const requestedQuantity =
+          Number(
+            retItemDto.quantity,
+          );
+
         if (
-          retItemDto.quantity <= 0
+          !Number.isFinite(
+            requestedQuantity,
+          ) ||
+          requestedQuantity <= 0
         ) {
           throw new BadRequestException(
-            "Return quantity must be greater than 0.",
+            'Return quantity must be greater than zero.',
           );
         }
 
         if (
-          retItemDto.quantity >
-          availableReturnable
+          requestedQuantity >
+          remaining
         ) {
           throw new BadRequestException(
-            `Cannot return ${retItemDto.quantity} unit(s) of "${originalItem.productName}". Maximum returnable quantity is ${availableReturnable}.`,
+            `Cannot return ${requestedQuantity} unit(s). Maximum returnable quantity is ${remaining}.`,
           );
         }
 
+        const refundPrice =
+          Number(
+            retItemDto.refundUnitPrice,
+          );
+
         if (
-          retItemDto.refundUnitPrice <
-          0
+          !Number.isFinite(
+            refundPrice,
+          ) ||
+          refundPrice < 0
         ) {
           throw new BadRequestException(
-            "Refund unit price cannot be negative.",
+            'Refund unit price must be a valid non-negative amount.',
           );
         }
 
         const lineTotal =
           Number(
-            retItemDto.refundUnitPrice,
-          ) *
-          Number(
-            retItemDto.quantity,
+            (
+              refundPrice *
+              requestedQuantity
+            ).toFixed(2),
           );
 
         totalReturnAmount +=
           lineTotal;
 
         const returnItem =
-          queryRunner.manager.create(
-            PosReturnItem,
-            {
+          manager
+            .getRepository(
+              PosReturnItem,
+            )
+            .create({
               productId:
                 retItemDto.productId,
 
@@ -1274,38 +2349,39 @@ export class PosService {
                 originalItem.productName,
 
               quantity:
-                retItemDto.quantity,
+                requestedQuantity,
 
               refundUnitPrice:
-                retItemDto.refundUnitPrice,
+                refundPrice,
 
               lineTotal,
-            },
-          );
+            });
 
         returnItems.push(
           returnItem,
         );
 
-        /* ---------------------------------------------------
-           Restore stock with lock
-        --------------------------------------------------- */
+        /* ===============================================
+           RESTORE STOCK
+        =============================================== */
 
         const product =
-          await queryRunner.manager.findOne(
-            Product,
-            {
-              where: {
-                id:
+          await manager
+            .getRepository(Product)
+            .createQueryBuilder(
+              'product',
+            )
+            .setLock(
+              'pessimistic_write',
+            )
+            .where(
+              'product.id = :productId',
+              {
+                productId:
                   retItemDto.productId,
               },
-
-              lock: {
-                mode:
-                  "pessimistic_write",
-              },
-            },
-          );
+            )
+            .getOne();
 
         if (!product) {
           throw new NotFoundException(
@@ -1317,25 +2393,37 @@ export class PosService {
           Number(
             product.stockQuantity,
           ) +
-          Number(
-            retItemDto.quantity,
-          );
+          requestedQuantity;
 
-        await queryRunner.manager.save(
-          Product,
-          product,
-        );
+        await manager
+          .getRepository(Product)
+          .save(product);
       }
+
+      totalReturnAmount =
+        Number(
+          totalReturnAmount.toFixed(2),
+        );
+
+      /* ===================================================
+         RETURN NUMBER
+      =================================================== */
 
       const returnNumber =
         await this.generateReturnNumber(
-          queryRunner.manager,
+          manager,
         );
 
+      /* ===================================================
+         CREATE RETURN
+      =================================================== */
+
       const posReturn =
-        queryRunner.manager.create(
-          PosReturn,
-          {
+        manager
+          .getRepository(
+            PosReturn,
+          )
+          .create({
             returnNumber,
 
             posSaleId:
@@ -1345,12 +2433,11 @@ export class PosService {
               sale.invoiceNumber,
 
             customerId:
-              sale.customerId ||
+              sale.customerId ??
               null,
 
             cashierId:
-              cashierId ||
-              "System",
+              String(user.id),
 
             totalReturnAmount,
 
@@ -1359,29 +2446,42 @@ export class PosService {
 
             items:
               returnItems,
-          },
-        );
+
+               locationId:
+        scope.locationId,
+
+      tillId:
+        scope.tillId,
+          });
 
       const savedReturn =
-        await queryRunner.manager.save(
-          PosReturn,
-          posReturn,
-        );
+        await manager
+          .getRepository(
+            PosReturn,
+          )
+          .save(
+            posReturn,
+          );
 
-      /* -----------------------------------------------------
-         Calculate final return state
-      ----------------------------------------------------- */
+      /* ===================================================
+         SALE STATUS
+      =================================================== */
 
-      let totalOriginalItems = 0;
-      let totalReturnedAllItems = 0;
+      let originalQuantity =
+        0;
+
+      let returnedQuantity =
+        0;
 
       for (
         const item of sale.items
       ) {
-        totalOriginalItems +=
-          Number(item.quantity);
+        originalQuantity +=
+          Number(
+            item.quantity,
+          );
 
-        totalReturnedAllItems +=
+        returnedQuantity +=
           (
             returnedQtyMap[
               item.productId
@@ -1389,16 +2489,16 @@ export class PosService {
           ) +
           Number(
             dto.items.find(
-              (returnItem) =>
-                returnItem.productId ===
+              (r) =>
+                r.productId ===
                 item.productId,
             )?.quantity || 0,
           );
       }
 
       if (
-        totalReturnedAllItems >=
-        totalOriginalItems
+        returnedQuantity >=
+        originalQuantity
       ) {
         sale.status =
           SaleStatus.RETURNED;
@@ -1407,10 +2507,79 @@ export class PosService {
           SaleStatus.PARTIALLY_RETURNED;
       }
 
-      await queryRunner.manager.save(
-        PosSale,
-        sale,
-      );
+      await manager
+        .getRepository(PosSale)
+        .save(sale);
+
+      /* ===================================================
+         REFUND -> CASH BOOK
+         
+         Current system treats POS refund
+         as cash refund.
+      =================================================== */
+
+      if (
+        totalReturnAmount > 0
+      ) {
+        const transactionNumber =
+          await this.generateFinanceTransactionNumber(
+            manager,
+          );
+
+        const refundTransaction =
+          manager
+            .getRepository(
+              FinanceTransaction,
+            )
+            .create({
+              transactionNumber,
+
+              transactionDate:
+                businessDate,
+
+              type:
+                TransactionType.EXPENSE,
+
+              paymentMethod:
+                FinancePaymentMethod.CASH,
+
+              category:
+                'POS Return',
+
+              description:
+                `POS Return - ${sale.invoiceNumber}`,
+
+              amount:
+                totalReturnAmount,
+
+              reference:
+                returnNumber,
+
+              customerId:
+                sale.customerId ??
+                null,
+
+              supplierId:
+                null,
+
+              purchaseInvoiceId:
+                null,
+
+                 locationId:
+        scope.locationId,
+
+      tillId:
+        scope.tillId,
+            });
+
+        await manager
+          .getRepository(
+            FinanceTransaction,
+          )
+          .save(
+            refundTransaction,
+          );
+      }
 
       await queryRunner.commitTransaction();
 
@@ -1429,74 +2598,404 @@ export class PosService {
   }
 
   /* =========================================================
-     CASH CLOSING SUMMARY
+     OPENING BALANCE SCOPE
   ========================================================= */
 
-  async getCashClosingSummary(
-    dateStr?: string,
+  private async resolveOpeningBalanceScope(
+    user: PosAuthenticatedUser,
+  ): Promise<{
+    locationId: string;
+    tillId: number | null;
+  }> {
+    return this.resolvePosScope(
+      user,
+    );
+  }
+
+  /* =========================================================
+     GET OPENING BALANCE
+  ========================================================= */
+
+  async getOpeningBalance(
+    user: PosAuthenticatedUser,
+    businessDate?: string,
   ) {
+    const scope =
+      await this.resolveOpeningBalanceScope(
+        user,
+      );
+
     const targetDate =
-      dateStr
-        ? new Date(dateStr)
-        : new Date();
+      this.validateBusinessDate(
+        businessDate ||
+          this.getBusinessDate(),
+      );
+
+    const where =
+      this.buildOpeningBalanceWhere(
+        scope.locationId,
+        scope.tillId,
+        targetDate,
+      );
+
+    const record =
+      await this.openingBalanceRepository.findOne(
+        {
+          where,
+
+          relations: {
+            location: true,
+            till: true,
+          },
+        },
+      );
+
+    if (!record) {
+      return null;
+    }
+
+    return {
+      id:
+        record.id,
+
+      locationId:
+        record.locationId,
+
+      tillId:
+        record.tillId,
+
+      openingBalance:
+        Number(
+          record.openingBalance || 0,
+        ),
+
+      businessDate:
+        record.businessDate,
+
+      createdBy:
+        record.createdBy,
+
+      createdAt:
+        record.createdAt,
+
+      location:
+        record.location
+          ? {
+              id:
+                record.location.id,
+
+              name:
+                record.location.name,
+            }
+          : null,
+
+      till:
+        record.till
+          ? {
+              id:
+                record.till.id,
+
+              name:
+                record.till.name,
+
+              code:
+                record.till.code,
+            }
+          : null,
+    };
+  }
+
+  /* =========================================================
+     SAVE OPENING BALANCE
+  ========================================================= */
+
+  async saveOpeningBalance(
+    user: PosAuthenticatedUser,
+    openingBalance: number,
+    businessDate?: string,
+  ) {
+    const scope =
+      await this.resolveOpeningBalanceScope(
+        user,
+      );
+
+    const amount =
+      Number(
+        openingBalance,
+      );
 
     if (
-      Number.isNaN(
-        targetDate.getTime(),
-      )
+      !Number.isFinite(amount) ||
+      amount < 0
     ) {
       throw new BadRequestException(
-        "Invalid date.",
+        'Opening balance must be a valid non-negative amount.',
       );
     }
 
-    const startOfDay =
-      new Date(targetDate);
+    const targetDate =
+      this.validateBusinessDate(
+        businessDate ||
+          this.getBusinessDate(),
+      );
 
-    startOfDay.setHours(
-      0,
-      0,
-      0,
-      0,
-    );
+    /* =====================================================
+       DO NOT ALLOW OPENING AFTER CLOSING
+    ===================================================== */
 
-    const endOfDay =
-      new Date(targetDate);
+    const closing =
+      await this.cashClosingRepository.findOne({
+        where:
+          this.buildCashClosingWhere(
+            scope.locationId,
+            scope.tillId,
+            targetDate,
+          ),
+      });
 
-    endOfDay.setHours(
-      23,
-      59,
-      59,
-      999,
-    );
+    if (closing) {
+      throw new BadRequestException(
+        'Cash closing has already been completed for this business date. Opening balance cannot be changed.',
+      );
+    }
 
-    /* -------------------------------------------------------
-       Sales
-    ------------------------------------------------------- */
+    const where =
+      this.buildOpeningBalanceWhere(
+        scope.locationId,
+        scope.tillId,
+        targetDate,
+      );
 
-    const sales =
-      await this.dataSource
-        .getRepository(PosSale)
-        .createQueryBuilder("sale")
+    const existing =
+      await this.openingBalanceRepository.findOne(
+        {
+          where,
+        },
+      );
+
+    if (existing) {
+      throw new BadRequestException(
+        'Opening balance already exists for this branch/till for this business date.',
+      );
+    }
+
+    const record =
+      this.openingBalanceRepository.create({
+        locationId:
+          scope.locationId,
+
+        tillId:
+          scope.tillId,
+
+        openingBalance:
+          amount,
+
+        businessDate:
+          targetDate,
+
+        createdBy:
+          Number(user.id),
+      });
+
+    const saved =
+      await this.openingBalanceRepository.save(
+        record,
+      );
+
+    return {
+      id:
+        saved.id,
+
+      locationId:
+        saved.locationId,
+
+      tillId:
+        saved.tillId,
+
+      openingBalance:
+        Number(
+          saved.openingBalance || 0,
+        ),
+
+      businessDate:
+        saved.businessDate,
+
+      createdBy:
+        saved.createdBy,
+
+      createdAt:
+        saved.createdAt,
+    };
+  }
+
+  /*   ENSURE OPENING BALANCE EXISTS */
+
+  private async ensureOpeningBalanceExists(
+    locationId: string,
+    tillId: number | null,
+    user: PosAuthenticatedUser,
+  ): Promise<void> {
+    this.validateUserScope(user);
+
+    if (
+      !user.locationId ||
+      user.locationId !== locationId
+    ) {
+      throw new ForbiddenException(
+        'Invalid POS branch scope.',
+      );
+    }
+
+    const role =
+      this.normalizeRole(user.role);
+
+    if (
+      role === UserRole.CASHIER &&
+      user.tillId !== tillId
+    ) {
+      throw new ForbiddenException(
+        'Invalid POS till scope.',
+      );
+    }
+
+    const businessDate =
+      this.getBusinessDate();
+
+    const where =
+      this.buildOpeningBalanceWhere(
+        locationId,
+        tillId,
+        businessDate,
+      );
+
+    const record =
+      await this.openingBalanceRepository.findOne(
+        {
+          where,
+        },
+      );
+
+    if (!record) {
+      throw new BadRequestException(
+        'Opening balance has not been set for this POS. Please enter the opening balance before starting billing.',
+      );
+    }
+  }
+
+  /* CASH CLOSING SUMMARY */
+
+  async getCashClosingSummary(
+    dateStr:
+      | string
+      | undefined,
+    user: PosAuthenticatedUser,
+  ) {
+    this.validateUserScope(user);
+
+    const scope =
+      await this.resolveOpeningBalanceScope(
+        user,
+      );
+
+    const businessDate =
+      this.validateBusinessDate(
+        dateStr ||
+          this.getBusinessDate(),
+      );
+
+    const {
+      startOfDay,
+      endOfDay,
+    } =
+      this.getBusinessDateRange(
+        businessDate,
+      );
+
+    /* OPENING CASH */
+
+    const openingWhere =
+      this.buildOpeningBalanceWhere(
+        scope.locationId,
+        scope.tillId,
+        businessDate,
+      );
+
+    const opening =
+      await this.openingBalanceRepository.findOne(
+        {
+          where:
+            openingWhere,
+        },
+      );
+
+    const openingCash =
+      Number(
+        opening?.openingBalance || 0,
+      );
+
+    /* =====================================================
+       SALES
+    ===================================================== */
+
+    const salesQb =
+      this.saleRepository
+        .createQueryBuilder(
+          'sale',
+        )
         .leftJoinAndSelect(
-          "sale.payments",
-          "payments",
+          'sale.payments',
+          'payments',
         )
         .where(
-          "sale.createdAt BETWEEN :start AND :end",
+          'sale.createdAt BETWEEN :start AND :end',
           {
-            start: startOfDay,
-            end: endOfDay,
+            start:
+              startOfDay,
+
+            end:
+              endOfDay,
           },
         )
         .andWhere(
-          "sale.status != :cancelled",
+          'sale.status != :cancelled',
           {
             cancelled:
               SaleStatus.CANCELLED,
           },
-        )
-        .getMany();
+        );
+
+    this.applySaleScope(
+      salesQb,
+      user,
+      'sale',
+    );
+
+    salesQb.andWhere(
+      'sale.locationId = :closingLocationId',
+      {
+        closingLocationId:
+          scope.locationId,
+      },
+    );
+
+    if (
+      scope.tillId !== null
+    ) {
+      salesQb.andWhere(
+        'sale.tillId = :closingTillId',
+        {
+          closingTillId:
+            scope.tillId,
+        },
+      );
+    } else {
+      salesQb.andWhere(
+        'sale.tillId IS NULL',
+      );
+    }
+
+    const sales =
+      await salesQb.getMany();
 
     let cashSales = 0;
     let cardSales = 0;
@@ -1506,70 +3005,112 @@ export class PosService {
     for (
       const sale of sales
     ) {
-      totalSales += Number(
-        sale.grandTotal || 0,
-      );
+      totalSales +=
+        Number(
+          sale.grandTotal || 0,
+        );
 
       for (
-        const payment of sale.payments
+        const payment of
+          sale.payments || []
       ) {
         const amount =
           Number(
             payment.amount || 0,
           );
 
-        if (
-          payment.paymentMethod ===
-          "CASH"
-        ) {
-          cashSales += amount;
-        }
+        const method =
+          String(
+            payment.paymentMethod,
+          ).toUpperCase();
 
-        if (
-          payment.paymentMethod ===
-          "CARD"
-        ) {
-          cardSales += amount;
-        }
+        switch (method) {
+          case 'CASH':
+            cashSales +=
+              amount;
+            break;
 
-        if (
-          payment.paymentMethod ===
-          "QR"
-        ) {
-          qrSales += amount;
+          case 'CARD':
+            cardSales +=
+              amount;
+            break;
+
+          case 'QR':
+            qrSales +=
+              amount;
+            break;
         }
       }
     }
 
-    /* -------------------------------------------------------
-       Returns
-    ------------------------------------------------------- */
+    /*  RETURNS */
+
+    const returnsQb =
+      this.returnRepository
+        .createQueryBuilder(
+          'ret',
+        )
+        .innerJoin(
+          PosSale,
+          'sale',
+          'sale.id = ret.pos_sale_id',
+        )
+        .where(
+          'ret.createdAt BETWEEN :start AND :end',
+          {
+            start:
+              startOfDay,
+
+            end:
+              endOfDay,
+          },
+        );
+
+    this.applySaleScope(
+      returnsQb,
+      user,
+      'sale',
+    );
+
+    returnsQb.andWhere(
+      'sale.locationId = :returnLocationId',
+      {
+        returnLocationId:
+          scope.locationId,
+      },
+    );
+
+    if (
+      scope.tillId !== null
+    ) {
+      returnsQb.andWhere(
+        'sale.tillId = :returnTillId',
+        {
+          returnTillId:
+            scope.tillId,
+        },
+      );
+    } else {
+      returnsQb.andWhere(
+        'sale.tillId IS NULL',
+      );
+    }
 
     const returns =
-      await this.dataSource
-        .getRepository(PosReturn)
-        .createQueryBuilder("ret")
-        .where(
-          "ret.createdAt BETWEEN :start AND :end",
-          {
-            start: startOfDay,
-            end: endOfDay,
-          },
-        )
-        .getMany();
+      await returnsQb.getMany();
 
     const totalRefunds =
       returns.reduce(
-        (sum, item) =>
+        (sum, ret) =>
           sum +
           Number(
-            item.totalReturnAmount ||
+            ret.totalReturnAmount ||
               0,
           ),
         0,
       );
 
-    const openingCash = 0;
+    /* EXPECTED CASH */
 
     const expectedCash =
       openingCash +
@@ -1577,14 +3118,22 @@ export class PosService {
       totalRefunds;
 
     return {
-      date: startOfDay
-        .toISOString()
-        .slice(0, 10),
+      date:
+        businessDate,
+
+      locationId:
+        scope.locationId,
+
+      tillId:
+        scope.tillId,
 
       totalTransactions:
         sales.length,
 
-      openingCash,
+      openingCash:
+        Number(
+          openingCash.toFixed(2),
+        ),
 
       cashSales:
         Number(
@@ -1619,5 +3168,396 @@ export class PosService {
           expectedCash.toFixed(2),
         ),
     };
+  }
+
+  /*  GET CASH CLOSING */
+
+  async getCashClosing(
+    dateStr:
+      | string
+      | undefined,
+    user: PosAuthenticatedUser,
+  ) {
+    this.validateUserScope(user);
+
+    const scope =
+      await this.resolvePosScope(
+        user,
+      );
+
+    const businessDate =
+      this.validateBusinessDate(
+        dateStr ||
+          this.getBusinessDate(),
+      );
+
+    /* EXISTING CLOSING*/
+
+    const existing =
+      await this.cashClosingRepository.findOne(
+        {
+          where:
+            this.buildCashClosingWhere(
+              scope.locationId,
+              scope.tillId,
+              businessDate,
+            ),
+        },
+      );
+
+    if (existing) {
+      return {
+        closed: true,
+
+        id:
+          existing.id,
+
+        date:
+          existing.businessDate,
+
+        locationId:
+          existing.locationId,
+
+        tillId:
+          existing.tillId,
+
+        openingBalance:
+          Number(
+            existing.openingBalance,
+          ),
+
+        cashSales:
+          Number(
+            existing.cashSales,
+          ),
+
+        refunds:
+          Number(
+            existing.refunds,
+          ),
+
+        expectedCash:
+          Number(
+            existing.expectedCash,
+          ),
+
+        actualCash:
+          Number(
+            existing.actualCash,
+          ),
+
+        difference:
+          Number(
+            existing.difference,
+          ),
+
+        closedBy:
+          existing.closedBy,
+
+        closedAt:
+          existing.closedAt,
+      };
+    }
+
+    /*  OPENING BALANCE */
+
+    const opening =
+      await this.openingBalanceRepository.findOne(
+        {
+          where:
+            this.buildOpeningBalanceWhere(
+              scope.locationId,
+              scope.tillId,
+              businessDate,
+            ),
+        },
+      );
+
+    if (!opening) {
+      throw new BadRequestException(
+        'Opening balance has not been set for this POS.',
+      );
+    }
+
+    /*  SUMMARY */
+
+    const summary =
+      await this.getCashClosingSummary(
+        businessDate,
+        user,
+      );
+
+    return {
+      closed: false,
+
+      date:
+        businessDate,
+
+      locationId:
+        scope.locationId,
+
+      tillId:
+        scope.tillId,
+
+      openingBalance:
+        Number(
+          summary.openingCash,
+        ),
+
+      cashSales:
+        Number(
+          summary.cashSales,
+        ),
+
+      refunds:
+        Number(
+          summary.totalRefunds,
+        ),
+
+      expectedCash:
+        Number(
+          summary.expectedCash,
+        ),
+
+      actualCash:
+        null,
+
+      difference:
+        null,
+
+      closedBy:
+        null,
+
+      closedAt:
+        null,
+    };
+  }
+
+  /* CLOSE CASH */
+
+  async closeCash(
+    dto: CloseCashDto,
+    user: PosAuthenticatedUser,
+  ) {
+    this.validateUserScope(user);
+
+    const scope =
+      await this.resolvePosScope(
+        user,
+      );
+
+    const closeData =
+      dto as any;
+
+    const actualCash =
+      Number(
+        closeData.actualCash,
+      );
+
+    if (
+      !Number.isFinite(
+        actualCash,
+      ) ||
+      actualCash < 0
+    ) {
+      throw new BadRequestException(
+        'Actual cash must be a valid non-negative amount.',
+      );
+    }
+
+    const businessDate =
+      this.validateBusinessDate(
+        closeData.businessDate ||
+          this.getBusinessDate(),
+      );
+
+    /*  OPENING BALANCE */
+
+    const opening =
+      await this.openingBalanceRepository.findOne(
+        {
+          where:
+            this.buildOpeningBalanceWhere(
+              scope.locationId,
+              scope.tillId,
+              businessDate,
+            ),
+        },
+      );
+
+    if (!opening) {
+      throw new BadRequestException(
+        'Opening balance has not been set for this POS.',
+      );
+    }
+
+    /* CHECK EXISTING CLOSING */
+
+    const existing =
+      await this.cashClosingRepository.findOne(
+        {
+          where:
+            this.buildCashClosingWhere(
+              scope.locationId,
+              scope.tillId,
+              businessDate,
+            ),
+        },
+      );
+
+    if (existing) {
+      return {
+        closed: true,
+
+        id:
+          existing.id,
+
+        date:
+          existing.businessDate,
+
+        locationId:
+          existing.locationId,
+
+        tillId:
+          existing.tillId,
+
+        openingBalance:
+          Number(
+            existing.openingBalance,
+          ),
+
+        cashSales:
+          Number(
+            existing.cashSales,
+          ),
+
+        refunds:
+          Number(
+            existing.refunds,
+          ),
+
+        expectedCash:
+          Number(
+            existing.expectedCash,
+          ),
+
+        actualCash:
+          Number(
+            existing.actualCash,
+          ),
+
+        difference:
+          Number(
+            existing.difference,
+          ),
+
+        closedBy:
+          existing.closedBy,
+
+        closedAt:
+          existing.closedAt,
+      };
+    }
+
+    /* GET SUMMARY */
+
+    const summary =
+      await this.getCashClosingSummary(
+        businessDate,
+        user,
+      );
+
+    const expectedCash =
+      Number(
+        summary.expectedCash,
+      );
+
+    const difference =
+      Number(
+        (
+          actualCash -
+          expectedCash
+        ).toFixed(2),
+      );
+
+    /*  SAVE CLOSING */
+
+    const closing =
+      this.cashClosingRepository.create({
+        locationId:
+          scope.locationId,
+
+        tillId:
+          scope.tillId,
+
+        businessDate,
+
+        openingBalance:
+          Number(
+            summary.openingCash,
+          ),
+
+        cashSales:
+          Number(
+            summary.cashSales,
+          ),
+
+        refunds:
+          Number(
+            summary.totalRefunds,
+          ),
+
+        expectedCash,
+
+        actualCash,
+
+        difference,
+
+        closedBy:
+          Number(user.id),
+      } as any);
+
+    const savedResult = await this.cashClosingRepository.save(closing);
+
+const saved = Array.isArray(savedResult)
+  ? savedResult[0]
+  : savedResult;
+
+return {
+  closed: true,
+  id: saved.id,
+  date: saved.businessDate,
+  locationId: saved.locationId,
+  tillId: saved.tillId,
+  openingBalance: Number(
+    saved.openingBalance,
+  ),
+  cashSales: Number(
+    saved.cashSales,
+  ),
+  refunds: Number(
+    saved.refunds,
+  ),
+  expectedCash: Number(
+    saved.expectedCash,
+  ),
+  actualCash: Number(
+    saved.actualCash,
+  ),
+  difference: Number(
+    saved.difference,
+  ),
+  closedBy: saved.closedBy,
+  closedAt: saved.closedAt,
+};
+  }
+  /* DATE FORMAT */
+
+  private formatDate(
+    date: Date,
+  ): string {
+    return this.getBusinessDate(
+      date,
+    );
   }
 }
