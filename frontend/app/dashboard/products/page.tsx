@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   Printer,
+  Barcode,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import JsBarcode from "jsbarcode";
@@ -341,20 +342,12 @@ export default function ProductsPage() {
       return;
     }
 
-    // ------------------------------------------
-    // Validate EAN-13
-    // ------------------------------------------
-
     if (!isValidEAN13(product.barcode)) {
       alert(
         `Barcode "${product.barcode}" is not a valid EAN-13 barcode.\n\nThe existing barcode has NOT been changed.`,
       );
       return;
     }
-
-    // ------------------------------------------
-    // Generate SVG
-    // ------------------------------------------
 
     const barcodeSvg =
       generateBarcodeSvg(product.barcode);
@@ -365,10 +358,6 @@ export default function ProductsPage() {
       );
       return;
     }
-
-    // ------------------------------------------
-    // Open print window
-    // ------------------------------------------
 
     const printWindow = window.open(
       "",
@@ -383,10 +372,6 @@ export default function ProductsPage() {
       return;
     }
 
-    // ------------------------------------------
-    // Safe values
-    // ------------------------------------------
-
     const productName = escapeHtml(
       product.productName || "Product",
     );
@@ -398,10 +383,6 @@ export default function ProductsPage() {
     const price = Number(
       product.sellingPrice ?? 0,
     ).toFixed(2);
-
-    // ------------------------------------------
-    // Print HTML
-    // ------------------------------------------
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -489,6 +470,7 @@ export default function ProductsPage() {
               display: block;
 
               width: 100%;
+
               max-width: 285px;
 
               height: auto;
@@ -602,29 +584,278 @@ export default function ProductsPage() {
   };
 
   // ======================================================
+  // PRODUCT CARD - MOBILE
+  // ======================================================
+
+  const renderMobileProductCard = (
+    product: Product,
+  ) => {
+    const stockQuantity = Number(
+      product.stockQuantity ?? 0,
+    );
+
+    const reorderLevel = Number(
+      product.reorderLevel ?? 0,
+    );
+
+    const isOutOfStock =
+      stockQuantity === 0;
+
+    const isLowStock =
+      stockQuantity > 0 &&
+      stockQuantity <= reorderLevel;
+
+    const validEAN13 =
+      !!product.barcode &&
+      isValidEAN13(product.barcode);
+
+    return (
+      <div
+        key={product.id}
+        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+      >
+        {/* PRODUCT HEADER */}
+
+        <div className="flex items-start gap-3">
+          {product.imageUrl ? (
+            <img
+              src={`http://localhost:5000${product.imageUrl}`}
+              alt={product.productName}
+              className="h-14 w-14 shrink-0 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+              <Package
+                size={22}
+                className="text-gray-400"
+              />
+            </div>
+          )}
+
+          <div className="min-w-0 flex-1">
+            <p className="break-words font-semibold text-gray-900">
+              {product.productName}
+            </p>
+
+            <p className="mt-1 text-xs text-gray-500">
+              {product.author || "No author"}
+            </p>
+
+            <p className="mt-1 font-mono text-xs font-medium text-gray-500">
+              {product.productCode}
+            </p>
+          </div>
+
+          {/* STATUS */}
+
+          <div className="shrink-0">
+            {isOutOfStock ? (
+              <span className="inline-flex rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-600">
+                Out
+              </span>
+            ) : isLowStock ? (
+              <span className="inline-flex rounded-full bg-yellow-50 px-2 py-1 text-[10px] font-semibold text-yellow-600">
+                Low
+              </span>
+            ) : (
+              <span className="inline-flex rounded-full bg-green-50 px-2 py-1 text-[10px] font-semibold text-green-600">
+                Stock
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* DETAILS */}
+
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3">
+          <div>
+            <p className="text-[11px] text-gray-400">
+              Category
+            </p>
+
+            <p className="mt-1 truncate text-sm font-medium text-gray-700">
+              {product.category?.name || "-"}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[11px] text-gray-400">
+              Subcategory
+            </p>
+
+            <p className="mt-1 truncate text-sm font-medium text-gray-700">
+              {product.subcategory?.name || "-"}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[11px] text-gray-400">
+              Selling Price
+            </p>
+
+            <p className="mt-1 text-sm font-bold text-gray-900">
+              Rs.{" "}
+              {Number(
+                product.sellingPrice ?? 0,
+              ).toFixed(2)}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[11px] text-gray-400">
+              Stock
+            </p>
+
+            <p className="mt-1 text-sm font-bold text-gray-900">
+              {stockQuantity}
+              <span className="ml-1 text-xs font-normal text-gray-400">
+                / {reorderLevel}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        {/* ISBN */}
+
+        {product.isbn && (
+          <div className="mt-3">
+            <p className="text-[11px] text-gray-400">
+              ISBN
+            </p>
+
+            <p className="mt-1 font-mono text-xs text-gray-700">
+              {product.isbn}
+            </p>
+          </div>
+        )}
+
+        {/* BARCODE */}
+
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Barcode
+              size={15}
+              className="text-gray-500"
+            />
+
+            <p className="text-xs font-semibold text-gray-600">
+              Barcode
+            </p>
+          </div>
+
+          {product.barcode ? (
+            validEAN13 ? (
+              <>
+                <div className="w-full overflow-hidden rounded-lg border border-gray-100 bg-white p-2">
+                  <div className="flex justify-center overflow-hidden">
+                    <BarcodeSvg
+                      value={product.barcode}
+                      width={1.35}
+                      height={42}
+                    />
+                  </div>
+                </div>
+
+                <p className="mt-2 text-center font-mono text-xs font-bold tracking-wide text-gray-900">
+                  {product.barcode}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePrintBarcode(product)
+                  }
+                  disabled={!validEAN13}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Printer size={15} />
+                  Print Barcode Label
+                </button>
+              </>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs font-semibold text-amber-700">
+                  Invalid EAN-13
+                </p>
+
+                <p className="mt-1 break-all font-mono text-xs text-gray-700">
+                  {product.barcode}
+                </p>
+              </div>
+            )
+          ) : (
+            <span className="inline-flex rounded-md bg-gray-50 px-2.5 py-1.5 text-xs text-gray-400">
+              No barcode
+            </span>
+          )}
+        </div>
+
+        {/* ACTIONS */}
+
+        <div className="mt-4 flex gap-2 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={() =>
+              handleEdit(product.id)
+            }
+            disabled={
+              deletingId === product.id
+            }
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Pencil size={16} />
+            Edit
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              handleDelete(product)
+            }
+            disabled={
+              deletingId === product.id
+            }
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {deletingId === product.id ? (
+              <span className="text-xs">
+                Deleting...
+              </span>
+            ) : (
+              <>
+                <Trash2 size={16} />
+                Delete
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ======================================================
   // JSX
   // ======================================================
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
 
       {/* ==================================================
           PAGE HEADER
       ================================================== */}
 
-      <div className="flex items-center justify-between">
-
-        <div>
-
-          <h1 className="text-2xl font-bold text-gray-900">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">
             Products
           </h1>
 
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-xs text-gray-500 sm:text-sm">
             Manage books and product inventory
           </p>
-
         </div>
+
+        {/* DESKTOP ADD BUTTON */}
 
         <button
           type="button"
@@ -633,114 +864,105 @@ export default function ProductsPage() {
               "/dashboard/products/form",
             )
           }
-          className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800"
+          className="hidden shrink-0 items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 sm:flex"
         >
-
           <Plus size={18} />
-
           Add Product
-
         </button>
 
+        {/* MOBILE ADD BUTTON */}
+
+        <button
+          type="button"
+          onClick={() =>
+            router.push(
+              "/dashboard/products/form",
+            )
+          }
+          title="Add Product"
+          aria-label="Add Product"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-white transition hover:bg-gray-800 sm:hidden"
+        >
+          <Plus size={20} />
+        </button>
       </div>
 
       {/* ==================================================
           SUMMARY CARDS
       ================================================== */}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
 
         {/* TOTAL PRODUCTS */}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="rounded-xl border border-gray-200 bg-white p-3 sm:p-5">
+          <div className="flex items-center gap-2 sm:gap-3">
 
-          <div className="flex items-center gap-3">
-
-            <div className="rounded-lg bg-blue-50 p-3">
-
+            <div className="rounded-lg bg-blue-50 p-2 sm:p-3">
               <Package
-                size={22}
-                className="text-blue-600"
+                size={18}
+                className="text-blue-600 sm:h-[22px] sm:w-[22px]"
               />
-
             </div>
 
-            <div>
-
-              <p className="text-sm text-gray-500">
-                Total Products
+            <div className="min-w-0">
+              <p className="text-[10px] leading-tight text-gray-500 sm:text-sm">
+                Total
               </p>
 
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="mt-1 text-lg font-bold text-gray-900 sm:text-2xl">
                 {products.length}
               </p>
-
             </div>
-
           </div>
-
         </div>
 
         {/* LOW STOCK */}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="rounded-xl border border-gray-200 bg-white p-3 sm:p-5">
+          <div className="flex items-center gap-2 sm:gap-3">
 
-          <div className="flex items-center gap-3">
-
-            <div className="rounded-lg bg-yellow-50 p-3">
-
+            <div className="rounded-lg bg-yellow-50 p-2 sm:p-3">
               <AlertTriangle
-                size={22}
-                className="text-yellow-600"
+                size={18}
+                className="text-yellow-600 sm:h-[22px] sm:w-[22px]"
               />
-
             </div>
 
-            <div>
-
-              <p className="text-sm text-gray-500">
-                Low Stock
+            <div className="min-w-0">
+              <p className="text-[10px] leading-tight text-gray-500 sm:text-sm">
+                Low
               </p>
 
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="mt-1 text-lg font-bold text-gray-900 sm:text-2xl">
                 {lowStockCount}
               </p>
-
             </div>
-
           </div>
-
         </div>
 
         {/* OUT OF STOCK */}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="rounded-xl border border-gray-200 bg-white p-3 sm:p-5">
+          <div className="flex items-center gap-2 sm:gap-3">
 
-          <div className="flex items-center gap-3">
-
-            <div className="rounded-lg bg-red-50 p-3">
-
+            <div className="rounded-lg bg-red-50 p-2 sm:p-3">
               <Package
-                size={22}
-                className="text-red-600"
+                size={18}
+                className="text-red-600 sm:h-[22px] sm:w-[22px]"
               />
-
             </div>
 
-            <div>
-
-              <p className="text-sm text-gray-500">
-                Out of Stock
+            <div className="min-w-0">
+              <p className="text-[10px] leading-tight text-gray-500 sm:text-sm">
+                Out
               </p>
 
-              <p className="text-2xl font-bold text-gray-900">
+              <p className="mt-1 text-lg font-bold text-gray-900 sm:text-2xl">
                 {outOfStockCount}
               </p>
-
             </div>
-
           </div>
-
         </div>
 
       </div>
@@ -749,9 +971,9 @@ export default function ProductsPage() {
           SEARCH
       ================================================== */}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
 
-        <div className="relative max-w-md">
+        <div className="relative w-full sm:max-w-md">
 
           <Search
             size={18}
@@ -760,7 +982,7 @@ export default function ProductsPage() {
 
           <input
             type="text"
-            placeholder="Search by name, code, barcode or ISBN..."
+            placeholder="Search products..."
             value={search}
             onChange={(e) =>
               setSearch(e.target.value)
@@ -769,22 +991,41 @@ export default function ProductsPage() {
           />
 
         </div>
+      </div>
+
+      {/* ==================================================
+          MOBILE PRODUCT LIST
+      ================================================== */}
+
+      <div className="space-y-3 md:hidden">
+
+        {loading ? (
+          <div className="rounded-xl border border-gray-200 bg-white px-5 py-12 text-center text-sm text-gray-500">
+            Loading products...
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="rounded-xl border border-gray-200 bg-white px-5 py-12 text-center text-sm text-gray-500">
+            No products found
+          </div>
+        ) : (
+          filteredProducts.map(
+            renderMobileProductCard,
+          )
+        )}
 
       </div>
 
       {/* ==================================================
-          PRODUCT TABLE
+          DESKTOP PRODUCT TABLE
       ================================================== */}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="hidden overflow-hidden rounded-xl border border-gray-200 bg-white md:block">
 
         <div className="overflow-x-auto">
 
           <table className="w-full min-w-[1450px]">
 
-            {/* ==================================================
-                TABLE HEADER
-            ================================================== */}
+            {/* TABLE HEADER */}
 
             <thead className="border-b border-gray-200 bg-gray-50">
 
@@ -826,59 +1067,45 @@ export default function ProductsPage() {
 
             </thead>
 
-            {/* ==================================================
-                TABLE BODY
-            ================================================== */}
+            {/* TABLE BODY */}
 
             <tbody className="divide-y divide-gray-100">
-
-              {/* LOADING */}
 
               {loading ? (
 
                 <tr>
-
                   <td
                     colSpan={8}
                     className="px-5 py-12 text-center text-sm text-gray-500"
                   >
                     Loading products...
                   </td>
-
                 </tr>
 
               ) : filteredProducts.length === 0 ? (
 
-                /* NO PRODUCTS */
-
                 <tr>
-
                   <td
                     colSpan={8}
                     className="px-5 py-12 text-center text-sm text-gray-500"
                   >
                     No products found
                   </td>
-
                 </tr>
 
               ) : (
-
-                /* PRODUCTS */
 
                 filteredProducts.map(
                   (product) => {
 
                     const stockQuantity =
                       Number(
-                        product.stockQuantity ??
-                          0,
+                        product.stockQuantity ?? 0,
                       );
 
                     const reorderLevel =
                       Number(
-                        product.reorderLevel ??
-                          0,
+                        product.reorderLevel ?? 0,
                       );
 
                     const isOutOfStock =
@@ -896,22 +1123,18 @@ export default function ProductsPage() {
                       );
 
                     return (
-
                       <tr
                         key={product.id}
                         className="transition hover:bg-gray-50"
                       >
 
-                        {/* ==================================================
-                            PRODUCT
-                        ================================================== */}
+                        {/* PRODUCT */}
 
                         <td className="px-5 py-4">
 
                           <div className="flex items-center gap-3">
 
                             {product.imageUrl ? (
-
                               <img
                                 src={`http://localhost:5000${product.imageUrl}`}
                                 alt={
@@ -919,22 +1142,16 @@ export default function ProductsPage() {
                                 }
                                 className="h-11 w-11 rounded-lg object-cover"
                               />
-
                             ) : (
-
                               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-100">
-
                                 <Package
                                   size={18}
                                   className="text-gray-400"
                                 />
-
                               </div>
-
                             )}
 
                             <div>
-
                               <p className="font-medium text-gray-900">
                                 {
                                   product.productName
@@ -945,16 +1162,13 @@ export default function ProductsPage() {
                                 {product.author ||
                                   "No author"}
                               </p>
-
                             </div>
 
                           </div>
 
                         </td>
 
-                        {/* ==================================================
-                            CODE
-                        ================================================== */}
+                        {/* CODE */}
 
                         <td className="px-5 py-4">
 
@@ -965,19 +1179,15 @@ export default function ProductsPage() {
                           </p>
 
                           {product.isbn && (
-
                             <p className="mt-1 text-xs text-gray-400">
                               ISBN:{" "}
                               {product.isbn}
                             </p>
-
                           )}
 
                         </td>
 
-                        {/* ==================================================
-                            BARCODE
-                        ================================================== */}
+                        {/* BARCODE */}
 
                         <td className="min-w-[280px] px-5 py-4">
 
@@ -985,12 +1195,8 @@ export default function ProductsPage() {
 
                             <div className="flex flex-col items-start">
 
-                              {/* EAN-13 SVG */}
-
                               {validEAN13 ? (
-
                                 <div className="w-[240px] overflow-hidden rounded-md border border-gray-100 bg-white p-1">
-
                                   <BarcodeSvg
                                     value={
                                       product.barcode
@@ -998,11 +1204,8 @@ export default function ProductsPage() {
                                     width={1.7}
                                     height={45}
                                   />
-
                                 </div>
-
                               ) : (
-
                                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
 
                                   <p className="text-xs font-semibold text-amber-700">
@@ -1016,18 +1219,13 @@ export default function ProductsPage() {
                                   </p>
 
                                 </div>
-
                               )}
-
-                              {/* Barcode Number */}
 
                               <p className="mt-2 font-mono text-sm font-bold tracking-wide text-gray-900">
                                 {
                                   product.barcode
                                 }
                               </p>
-
-                              {/* Print */}
 
                               <button
                                 type="button"
@@ -1041,30 +1239,23 @@ export default function ProductsPage() {
                                 }
                                 className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40"
                               >
-
                                 <Printer
                                   size={14}
                                 />
-
                                 Print Label
-
                               </button>
 
                             </div>
 
                           ) : (
-
                             <span className="inline-flex rounded-md bg-gray-50 px-2.5 py-1.5 text-xs text-gray-400">
                               No barcode
                             </span>
-
                           )}
 
                         </td>
 
-                        {/* ==================================================
-                            CATEGORY
-                        ================================================== */}
+                        {/* CATEGORY */}
 
                         <td className="px-5 py-4">
 
@@ -1084,28 +1275,21 @@ export default function ProductsPage() {
 
                         </td>
 
-                        {/* ==================================================
-                            SELLING PRICE
-                        ================================================== */}
+                        {/* SELLING PRICE */}
 
                         <td className="whitespace-nowrap px-5 py-4">
 
                           <p className="text-sm font-semibold text-gray-900">
-
                             Rs.{" "}
-
                             {Number(
                               product.sellingPrice ??
                                 0,
                             ).toFixed(2)}
-
                           </p>
 
                         </td>
 
-                        {/* ==================================================
-                            STOCK
-                        ================================================== */}
+                        {/* STOCK */}
 
                         <td className="px-5 py-4">
 
@@ -1120,9 +1304,7 @@ export default function ProductsPage() {
 
                         </td>
 
-                        {/* ==================================================
-                            STATUS
-                        ================================================== */}
+                        {/* STATUS */}
 
                         <td className="px-5 py-4">
 
@@ -1148,15 +1330,11 @@ export default function ProductsPage() {
 
                         </td>
 
-                        {/* ==================================================
-                            ACTIONS
-                        ================================================== */}
+                        {/* ACTIONS */}
 
                         <td className="px-5 py-4">
 
                           <div className="flex items-center justify-end gap-2">
-
-                            {/* EDIT */}
 
                             <button
                               type="button"
@@ -1172,12 +1350,8 @@ export default function ProductsPage() {
                               title="Edit Product"
                               className="rounded-lg p-2 text-gray-500 transition hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-
                               <Pencil size={18} />
-
                             </button>
-
-                            {/* DELETE */}
 
                             <button
                               type="button"
@@ -1196,15 +1370,11 @@ export default function ProductsPage() {
 
                               {deletingId ===
                               product.id ? (
-
                                 <span className="text-xs">
                                   Deleting...
                                 </span>
-
                               ) : (
-
                                 <Trash2 size={18} />
-
                               )}
 
                             </button>
@@ -1214,7 +1384,6 @@ export default function ProductsPage() {
                         </td>
 
                       </tr>
-
                     );
                   },
                 )

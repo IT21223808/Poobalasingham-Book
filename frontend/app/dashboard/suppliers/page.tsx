@@ -648,37 +648,50 @@ export default function SuppliersPage() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-full space-y-6">
 
-        {/* HEADER */}
+       {/* HEADER */}
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-blue-100 p-3">
-                <Building2 className="h-6 w-6 text-blue-600" />
-              </div>
+<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  <div>
+    <div className="flex items-center gap-3">
+      <div className="rounded-xl bg-blue-100 p-3">
+        <Building2 className="h-6 w-6 text-blue-600" />
+      </div>
 
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Supplier Management
-                </h1>
+      <div>
+        <div className="flex items-center">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Supplier Management
+          </h1>
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Manage supplier profiles and contact information
-                </p>
-              </div>
-            </div>
-          </div>
-
+          {/* MOBILE ADD BUTTON */}
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            title="Add Supplier"
+            aria-label="Add Supplier"
+            className="ml-3 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 sm:hidden"
           >
-            <Plus className="h-4 w-4" />
-            Add Supplier
+            <Plus className="h-5 w-5" />
           </button>
         </div>
 
+        <p className="mt-1 text-sm text-gray-500">
+          Manage supplier profiles and contact information
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {/* DESKTOP ADD BUTTON */}
+  <button
+    type="button"
+    onClick={openCreate}
+    className="hidden items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:inline-flex"
+  >
+    <Plus className="h-4 w-4" />
+    Add Supplier
+  </button>
+</div>
         {/* ALERTS */}
 
         {error && (

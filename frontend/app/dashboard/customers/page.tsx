@@ -756,34 +756,42 @@ export default function CustomersPage() {
     <div className="min-h-screen bg-gray-50 p-6">
 
       {/* ===================================================
-          HEADER
-      =================================================== */}
+    HEADER
+=================================================== */}
+<div className="mb-6 flex items-start justify-between gap-3 md:items-center">
+  <div className="min-w-0">
+    <div className="flex items-center gap-3">
+      <h1 className="text-2xl font-bold text-gray-900">
+        Customers
+      </h1>
 
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      {/* MOBILE + BUTTON */}
+      <button
+        type="button"
+        onClick={openCreateModal}
+        title="Add Customer"
+        aria-label="Add Customer"
+        className="inline-flex ml-33 h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 md:hidden"
+      >
+        <Plus size={18} />
+      </button>
+    </div>
 
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Customers
-          </h1>
+    <p className="mt-1 text-sm text-gray-500">
+      Manage your customers
+    </p>
+  </div>
 
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your customers
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={
-            openCreateModal
-          }
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-        >
-          <Plus size={18} />
-
-          Add Customer
-        </button>
-
-      </div>
+  {/* DESKTOP ADD BUTTON */}
+  <button
+    type="button"
+    onClick={openCreateModal}
+    className="hidden items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 md:inline-flex"
+  >
+    <Plus size={18} />
+    Add Customer
+  </button>
+</div>
 
       {/* ===================================================
           GLOBAL ERROR

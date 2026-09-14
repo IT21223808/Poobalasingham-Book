@@ -169,26 +169,35 @@ export default function LocationsPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-6">
 
-      {/* ================================= */}
+    {/* ================================= */}
       {/* HEADER */}
       {/* ================================= */}
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Inventory Locations
-          </h1>
+        <div className="flex items-center gap-2">
 
-          <p className="mt-1 text-sm text-slate-500">
-            Manage your stores, warehouses
-            and inventory locations
-          </p>
-        </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Locations
+            </h1>
 
-        <div className="flex gap-2">
+            <p className="mt-1 text-slate-500">
+              Manage your stores, warehouses
+              and inventory locations
+            </p>
+          </div>
 
+          {/* Mobile + icon */}
           <button
+            onClick={openCreateModal}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 sm:hidden"
+            title="Add Location"
+            aria-label="Add Location"
+          >
+            <Plus size={18} />
+          </button>
+ <button
             onClick={loadLocations}
             className="flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-600 transition hover:bg-slate-50"
             title="Refresh"
@@ -202,10 +211,16 @@ export default function LocationsPage() {
               }
             />
           </button>
+        </div>
 
+        <div className="flex gap-2">
+
+         
+
+          {/* Desktop Add button */}
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+            className="hidden items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 sm:flex"
           >
             <Plus size={18} />
             Add Location

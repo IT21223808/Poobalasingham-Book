@@ -38,26 +38,37 @@ export default function SalesChart({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold">
-          Sales Overview
-        </h2>
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <div className="mb-4 sm:mb-6">
+      <h2 className="text-lg font-semibold sm:text-xl">
+        Sales Overview
+      </h2>
 
-        <p className="text-sm text-slate-500">
-          Last 7 days sales performance
-        </p>
-      </div>
+      <p className="text-xs text-slate-500 sm:text-sm">
+        Last 7 days sales performance
+      </p>
+    </div>
 
-      <ResponsiveContainer width="100%" height={320}>
+    <div className="w-full">
+      <ResponsiveContainer
+        width="100%"
+        height={280}
+      >
         <AreaChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
 
-          <XAxis dataKey="date" />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 11 }}
+          />
 
           <YAxis
+            width={65}
+            tick={{ fontSize: 10 }}
             tickFormatter={(value) =>
-              `Rs. ${Number(value).toLocaleString("en-LK")}`
+              `Rs. ${Number(value).toLocaleString(
+                "en-LK",
+              )}`
             }
           />
 
@@ -76,5 +87,6 @@ export default function SalesChart({
         </AreaChart>
       </ResponsiveContainer>
     </div>
-  );
+  </div>
+);
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  BookOpen,
   Plus,
   Search,
   X,
@@ -174,7 +173,9 @@ export default function CatalogPage() {
     }, 3000);
   };
 
-  /* LOAD CATEGORIES */
+  /* =======================================================
+     LOAD CATEGORIES
+  ======================================================= */
 
   const loadCategories = async () => {
     try {
@@ -791,7 +792,9 @@ export default function CatalogPage() {
     );
   };
 
-  /* TAB CHANGE */
+  /* =======================================================
+     TAB CHANGE
+  ======================================================= */
 
   const changeTab = (
     tab: ActiveTab,
@@ -804,24 +807,27 @@ export default function CatalogPage() {
     setError("");
   };
 
-  /* RENDER */
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/*  HEADER */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
 
       <div className="border-b border-gray-200 bg-white">
-        <div className="w-full px-6 py-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+        <div className="w-full px-4 py-4 sm:px-6 sm:py-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <div className="flex items-center gap-3">
-                
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">
+                <div className="min-w-0">
+                  <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">
                     Catalog
                   </h1>
 
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-xs text-gray-500 sm:text-sm">
                     Manage categories and
                     subcategories
                   </p>
@@ -865,7 +871,7 @@ export default function CatalogPage() {
                   );
                 }
               }}
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 sm:w-auto"
             >
               <Plus size={17} />
 
@@ -878,56 +884,70 @@ export default function CatalogPage() {
         </div>
       </div>
 
-      {/* CONTENT */}
+      {/* =====================================================
+          CONTENT
+      ===================================================== */}
 
-      <main className="max-w-full px-6 py-6">
-        {/*  SUCCESS */}
+      <main className="max-w-full px-4 py-4 sm:px-6 sm:py-6">
+        {/* =================================================
+            SUCCESS
+        ================================================= */}
 
         {success && (
-          <div className="mb-5 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <div className="mb-5 flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-3 py-3 text-sm text-green-700 sm:items-center sm:px-4">
             <CheckCircle2
               size={18}
+              className="mt-0.5 shrink-0 sm:mt-0"
             />
 
-            <span>{success}</span>
+            <span className="min-w-0 break-words">
+              {success}
+            </span>
 
             <button
               type="button"
               onClick={() =>
                 setSuccess("")
               }
-              className="ml-auto"
+              className="ml-auto shrink-0"
             >
               <X size={16} />
             </button>
           </div>
         )}
 
-        {/* ERROR */}
+        {/* =================================================
+            ERROR
+        ================================================= */}
 
         {error && (
-          <div className="mb-5 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700 sm:items-center sm:px-4">
             <AlertCircle
               size={18}
+              className="mt-0.5 shrink-0 sm:mt-0"
             />
 
-            <span>{error}</span>
+            <span className="min-w-0 break-words">
+              {error}
+            </span>
 
             <button
               type="button"
               onClick={() =>
                 setError("")
               }
-              className="ml-auto"
+              className="ml-auto shrink-0"
             >
               <X size={16} />
             </button>
           </div>
         )}
 
-        {/* TABS */}
+        {/* =================================================
+            TABS
+        ================================================= */}
 
-        <div className="mb-6 flex w-fit items-center rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+        <div className="mb-6 flex w-full items-center rounded-xl border border-gray-200 bg-white p-1 shadow-sm sm:w-fit">
           <button
             type="button"
             onClick={() =>
@@ -935,19 +955,24 @@ export default function CatalogPage() {
                 "categories",
               )
             }
-            className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition ${
+            className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition sm:flex-none sm:px-5 ${
               activeTab ===
               "categories"
                 ? "bg-blue-700 text-white shadow-sm"
                 : "text-gray-600 hover:bg-gray-100"
             }`}
           >
-            <FolderTree size={17} />
+            <FolderTree
+              size={17}
+              className="shrink-0"
+            />
 
-            Categories
+            <span className="truncate">
+              Categories
+            </span>
 
             <span
-              className={`rounded-full px-2 py-0.5 text-xs ${
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
                 activeTab ===
                 "categories"
                   ? "bg-white/20 text-white"
@@ -965,19 +990,24 @@ export default function CatalogPage() {
                 "subcategories",
               )
             }
-            className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition ${
+            className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition sm:flex-none sm:px-5 ${
               activeTab ===
               "subcategories"
                 ? "bg-blue-700 text-white shadow-sm"
                 : "text-gray-600 hover:bg-gray-100"
             }`}
           >
-            <Layers size={17} />
+            <Layers
+              size={17}
+              className="shrink-0"
+            />
 
-            Subcategories
+            <span className="truncate">
+              Subcategories
+            </span>
 
             <span
-              className={`rounded-full px-2 py-0.5 text-xs ${
+              className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
                 activeTab ===
                 "subcategories"
                   ? "bg-white/20 text-white"
@@ -989,15 +1019,17 @@ export default function CatalogPage() {
           </button>
         </div>
 
-        {/* STATS */}
+        {/* =================================================
+            STATS
+        ================================================= */}
 
-        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
             <p className="text-sm text-gray-500">
               Total
             </p>
 
-            <p className="mt-1 text-2xl font-bold text-gray-900">
+            <p className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">
               {activeTab ===
               "categories"
                 ? categoryStats.total
@@ -1005,12 +1037,12 @@ export default function CatalogPage() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
             <p className="text-sm text-gray-500">
               Active
             </p>
 
-            <p className="mt-1 text-2xl font-bold text-green-600">
+            <p className="mt-1 text-xl font-bold text-green-600 sm:text-2xl">
               {activeTab ===
               "categories"
                 ? categoryStats.active
@@ -1018,12 +1050,12 @@ export default function CatalogPage() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
             <p className="text-sm text-gray-500">
               Inactive
             </p>
 
-            <p className="mt-1 text-2xl font-bold text-gray-500">
+            <p className="mt-1 text-xl font-bold text-gray-500 sm:text-2xl">
               {activeTab ===
               "categories"
                 ? categoryStats.inactive
@@ -1041,11 +1073,11 @@ export default function CatalogPage() {
               TOOLBAR
           ================================================= */}
 
-          <div className="border-b border-gray-200 p-4">
+          <div className="border-b border-gray-200 p-3 sm:p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               {/* SEARCH */}
 
-              <div className="relative flex-1">
+              <div className="relative min-w-0 flex-1">
                 <Search
                   size={18}
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -1073,7 +1105,7 @@ export default function CatalogPage() {
 
               {activeTab ===
                 "subcategories" && (
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
                   <select
                     value={
                       categoryFilter
@@ -1083,7 +1115,7 @@ export default function CatalogPage() {
                         e.target.value,
                       )
                     }
-                    className="h-10 min-w-[190px] appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-9 text-sm text-gray-700 outline-none focus:border-gray-400"
+                    className="h-10 w-full min-w-0 appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-9 text-sm text-gray-700 outline-none focus:border-gray-400 sm:min-w-[190px]"
                   >
                     <option value="all">
                       All Categories
@@ -1118,7 +1150,7 @@ export default function CatalogPage() {
 
               {/* STATUS */}
 
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <select
                   value={
                     statusFilter
@@ -1131,7 +1163,7 @@ export default function CatalogPage() {
                         | "inactive",
                     )
                   }
-                  className="h-10 min-w-[140px] appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-9 text-sm text-gray-700 outline-none focus:border-gray-400"
+                  className="h-10 w-full min-w-0 appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-9 text-sm text-gray-700 outline-none focus:border-gray-400 sm:min-w-[140px]"
                 >
                   <option value="all">
                     All Status
@@ -1159,7 +1191,7 @@ export default function CatalogPage() {
           ================================================= */}
 
           {loading ? (
-            <div className="flex min-h-[300px] items-center justify-center">
+            <div className="flex min-h-[300px] items-center justify-center px-4">
               <div className="flex items-center gap-3 text-sm text-gray-500">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900" />
 
@@ -1176,27 +1208,27 @@ export default function CatalogPage() {
               <table className="w-full min-w-[850px]">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Category
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Description
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Subcategories
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Status
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Created
                     </th>
 
-                    <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Actions
                     </th>
                   </tr>
@@ -1208,7 +1240,7 @@ export default function CatalogPage() {
                     <tr>
                       <td
                         colSpan={6}
-                        className="px-6 py-14 text-center"
+                        className="px-4 py-14 text-center sm:px-6"
                       >
                         <div className="flex flex-col items-center">
                           <FolderTree
@@ -1247,9 +1279,9 @@ export default function CatalogPage() {
                             }
                             className="transition hover:bg-gray-50"
                           >
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3 sm:px-6 sm:py-4">
                               <div className="flex items-center gap-3">
-                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
                                   <FolderTree
                                     size={
                                       17
@@ -1267,20 +1299,20 @@ export default function CatalogPage() {
                               </div>
                             </td>
 
-                            <td className="max-w-[280px] px-6 py-4">
+                            <td className="max-w-[280px] px-4 py-3 sm:px-6 sm:py-4">
                               <p className="truncate text-sm text-gray-500">
                                 {category.description ||
                                   "—"}
                               </p>
                             </td>
 
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3 sm:px-6 sm:py-4">
                               <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
                                 {count}
                               </span>
                             </td>
 
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3 sm:px-6 sm:py-4">
                               {category.isActive ? (
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
                                   <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
@@ -1294,17 +1326,15 @@ export default function CatalogPage() {
                               )}
                             </td>
 
-                            <td className="px-6 py-4 text-sm text-gray-500">
+                            <td className="px-4 py-3 text-sm text-gray-500 sm:px-6 sm:py-4">
                               {formatDate(
                                 category.createdAt,
                               )}
                             </td>
 
-                            {/* =================================
-                                CATEGORY ACTIONS
-                            ================================= */}
+                            {/* CATEGORY ACTIONS */}
 
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3 sm:px-6 sm:py-4">
                               <div className="flex items-center justify-end gap-2">
                                 {/* VIEW */}
 
@@ -1396,27 +1426,27 @@ export default function CatalogPage() {
               <table className="w-full min-w-[950px]">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Subcategory
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Category
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Description
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Status
                     </th>
 
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Created
                     </th>
 
-                    <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 sm:px-6">
                       Actions
                     </th>
                   </tr>
@@ -1428,7 +1458,7 @@ export default function CatalogPage() {
                     <tr>
                       <td
                         colSpan={6}
-                        className="px-6 py-14 text-center"
+                        className="px-4 py-14 text-center sm:px-6"
                       >
                         <div className="flex flex-col items-center">
                           <Layers
@@ -1458,9 +1488,9 @@ export default function CatalogPage() {
                           }
                           className="transition hover:bg-gray-50"
                         >
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-3 sm:px-6 sm:py-4">
                             <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
                                 <Layers
                                   size={
                                     17
@@ -1476,7 +1506,7 @@ export default function CatalogPage() {
                             </div>
                           </td>
 
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-3 sm:px-6 sm:py-4">
                             <span className="rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
                               {subcategory
                                 .category
@@ -1485,14 +1515,14 @@ export default function CatalogPage() {
                             </span>
                           </td>
 
-                          <td className="max-w-[260px] px-6 py-4">
+                          <td className="max-w-[260px] px-4 py-3 sm:px-6 sm:py-4">
                             <p className="truncate text-sm text-gray-500">
                               {subcategory.description ||
                                 "—"}
                             </p>
                           </td>
 
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-3 sm:px-6 sm:py-4">
                             {subcategory.isActive ? (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
                                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
@@ -1506,17 +1536,15 @@ export default function CatalogPage() {
                             )}
                           </td>
 
-                          <td className="px-6 py-4 text-sm text-gray-500">
+                          <td className="px-4 py-3 text-sm text-gray-500 sm:px-6 sm:py-4">
                             {formatDate(
                               subcategory.createdAt,
                             )}
                           </td>
 
-                          {/* =================================
-                              SUBCATEGORY ACTIONS
-                          ================================= */}
+                          {/* SUBCATEGORY ACTIONS */}
 
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-3 sm:px-6 sm:py-4">
                             <div className="flex items-center justify-end gap-2">
                               {/* VIEW */}
 
@@ -1607,13 +1635,13 @@ export default function CatalogPage() {
       ===================================================== */}
 
       {modal === "category" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-3 sm:p-4">
+          <div className="my-auto w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
             {/* HEADER */}
 
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4 sm:px-6">
+              <div className="min-w-0 pr-3">
+                <h2 className="text-base font-bold text-gray-900 sm:text-lg">
                   {editingId
                     ? "Edit Category"
                     : "Add Category"}
@@ -1629,7 +1657,7 @@ export default function CatalogPage() {
               <button
                 type="button"
                 onClick={resetModal}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
               >
                 <X size={19} />
               </button>
@@ -1637,7 +1665,7 @@ export default function CatalogPage() {
 
             {/* BODY */}
 
-            <div className="space-y-5 px-6 py-6">
+            <div className="max-h-[65vh] space-y-5 overflow-y-auto px-4 py-5 sm:max-h-none sm:px-6 sm:py-6">
               {/* NAME */}
 
               <div>
@@ -1685,8 +1713,8 @@ export default function CatalogPage() {
 
               {/* STATUS */}
 
-              <label className="flex cursor-pointer items-center justify-between rounded-xl border border-gray-200 p-4">
-                <div>
+              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-gray-200 p-4">
+                <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-800">
                     Active Status
                   </p>
@@ -1707,7 +1735,7 @@ export default function CatalogPage() {
                       e.target.checked,
                     )
                   }
-                  className="h-5 w-5 accent-gray-900"
+                  className="h-5 w-5 shrink-0 accent-gray-900"
                 />
               </label>
 
@@ -1722,11 +1750,11 @@ export default function CatalogPage() {
 
             {/* FOOTER */}
 
-            <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
               <button
                 type="button"
                 onClick={resetModal}
-                className="h-10 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 hover:bg-gray-100 sm:w-auto"
               >
                 Cancel
               </button>
@@ -1737,7 +1765,7 @@ export default function CatalogPage() {
                   handleCreateCategory
                 }
                 disabled={saving}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-gray-900 px-5 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-5 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {saving && (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -1757,13 +1785,13 @@ export default function CatalogPage() {
       ===================================================== */}
 
       {modal === "subcategory" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-3 sm:p-4">
+          <div className="my-auto w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
             {/* HEADER */}
 
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4 sm:px-6">
+              <div className="min-w-0 pr-3">
+                <h2 className="text-base font-bold text-gray-900 sm:text-lg">
                   {editingId
                     ? "Edit Subcategory"
                     : "Add Subcategory"}
@@ -1779,7 +1807,7 @@ export default function CatalogPage() {
               <button
                 type="button"
                 onClick={resetModal}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
               >
                 <X size={19} />
               </button>
@@ -1787,7 +1815,7 @@ export default function CatalogPage() {
 
             {/* BODY */}
 
-            <div className="space-y-5 px-6 py-6">
+            <div className="max-h-[65vh] space-y-5 overflow-y-auto px-4 py-5 sm:max-h-none sm:px-6 sm:py-6">
               {/* CATEGORY */}
 
               <div>
@@ -1888,8 +1916,8 @@ export default function CatalogPage() {
 
               {/* STATUS */}
 
-              <label className="flex cursor-pointer items-center justify-between rounded-xl border border-gray-200 p-4">
-                <div>
+              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-gray-200 p-4">
+                <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-800">
                     Active Status
                   </p>
@@ -1910,7 +1938,7 @@ export default function CatalogPage() {
                       e.target.checked,
                     )
                   }
-                  className="h-5 w-5 accent-gray-900"
+                  className="h-5 w-5 shrink-0 accent-gray-900"
                 />
               </label>
 
@@ -1925,11 +1953,11 @@ export default function CatalogPage() {
 
             {/* FOOTER */}
 
-            <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-4 py-4 sm:flex-row sm:justify-end sm:px-6">
               <button
                 type="button"
                 onClick={resetModal}
-                className="h-10 rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-600 hover:bg-gray-100 sm:w-auto"
               >
                 Cancel
               </button>
@@ -1940,7 +1968,7 @@ export default function CatalogPage() {
                   handleCreateSubcategory
                 }
                 disabled={saving}
-                className="inline-flex h-10 items-center gap-2 rounded-lg bg-gray-900 px-5 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-5 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {saving && (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -1961,13 +1989,13 @@ export default function CatalogPage() {
 
       {viewType &&
         viewItem && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/40 p-3 sm:p-4">
+            <div className="my-auto w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
               {/* HEADER */}
 
-              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4 sm:px-6">
+                <div className="flex min-w-0 items-center gap-3 pr-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
                     {viewType ===
                     "category" ? (
                       <FolderTree
@@ -1980,8 +2008,8 @@ export default function CatalogPage() {
                     )}
                   </div>
 
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900">
+                  <div className="min-w-0">
+                    <h2 className="text-base font-bold text-gray-900 sm:text-lg">
                       {viewType ===
                       "category"
                         ? "Category Details"
@@ -1997,7 +2025,7 @@ export default function CatalogPage() {
                 <button
                   type="button"
                   onClick={closeView}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                 >
                   <X size={19} />
                 </button>
@@ -2005,7 +2033,7 @@ export default function CatalogPage() {
 
               {/* BODY */}
 
-              <div className="space-y-4 px-6 py-6">
+              <div className="max-h-[70vh] space-y-4 overflow-y-auto px-4 py-5 sm:max-h-none sm:px-6 sm:py-6">
                 {/* NAME */}
 
                 <div className="rounded-xl border border-gray-200 p-4">
@@ -2013,7 +2041,7 @@ export default function CatalogPage() {
                     Name
                   </p>
 
-                  <p className="mt-1 text-base font-semibold text-gray-900">
+                  <p className="mt-1 break-words text-base font-semibold text-gray-900">
                     {viewItem.name}
                   </p>
                 </div>
@@ -2027,7 +2055,7 @@ export default function CatalogPage() {
                       Category
                     </p>
 
-                    <p className="mt-1 text-sm font-semibold text-gray-900">
+                    <p className="mt-1 break-words text-sm font-semibold text-gray-900">
                       {(
                         viewItem as Subcategory
                       ).category
@@ -2044,7 +2072,7 @@ export default function CatalogPage() {
                     Description
                   </p>
 
-                  <p className="mt-1 text-sm leading-6 text-gray-700">
+                  <p className="mt-1 break-words text-sm leading-6 text-gray-700">
                     {viewItem.description ||
                       "No description provided"}
                   </p>
@@ -2052,8 +2080,8 @@ export default function CatalogPage() {
 
                 {/* STATUS */}
 
-                <div className="flex items-center justify-between rounded-xl border border-gray-200 p-4">
-                  <div>
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 p-4">
+                  <div className="min-w-0">
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
                       Status
                     </p>
@@ -2066,12 +2094,12 @@ export default function CatalogPage() {
                   </div>
 
                   {viewItem.isActive ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
                       <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                       Active
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-500">
                       <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
                       Inactive
                     </span>
@@ -2095,11 +2123,11 @@ export default function CatalogPage() {
 
               {/* FOOTER */}
 
-              <div className="flex justify-end border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <div className="flex justify-end border-t border-gray-200 bg-gray-50 px-4 py-4 sm:px-6">
                 <button
                   type="button"
                   onClick={closeView}
-                  className="h-10 rounded-lg bg-gray-900 px-5 text-sm font-semibold text-white hover:bg-gray-800"
+                  className="h-10 w-full rounded-lg bg-gray-900 px-5 text-sm font-semibold text-white hover:bg-gray-800 sm:w-auto"
                 >
                   Close
                 </button>

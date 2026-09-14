@@ -259,6 +259,9 @@ export default function ERPLayout({
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(false);
 
+  const [mobileSidebarOpen, setMobileSidebarOpen] =
+  useState(false);
+
   const [checkingAccess, setCheckingAccess] =
     useState(true);
 
@@ -423,17 +426,27 @@ export default function ERPLayout({
       {/* ================= SIDEBAR ================= */}
 
       <Sidebar
-        collapsed={sidebarCollapsed}
-        onLogoClick={toggleSidebar}
-      />
+  collapsed={sidebarCollapsed}
+  onLogoClick={toggleSidebar}
+  mobileOpen={mobileSidebarOpen}
+  onMobileClose={() =>
+    setMobileSidebarOpen(false)
+  }
+/>
 
       {/* ================= RIGHT SIDE ================= */}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* ================= HEADER ================= */}
 
-        <Header />
-
+        <Header
+  onMenuClick={() =>
+    setMobileSidebarOpen(
+      (previous) => !previous,
+    )
+  }
+  mobileMenuOpen={mobileSidebarOpen}
+/>
         {/* ================= CONTENT ================= */}
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 lg:p-8">

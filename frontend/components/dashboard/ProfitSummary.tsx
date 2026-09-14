@@ -62,7 +62,7 @@ export default function ProfitSummary({
             </span>
           </div>
 
-          <p className="text-2xl font-bold text-emerald-600">
+          <p className="text-xl font-bold text-emerald-600">
             {formatCurrency(todayProfit)}
           </p>
 
@@ -76,12 +76,12 @@ export default function ProfitSummary({
           <div className="mb-3 flex items-center gap-2 text-slate-400">
             <CalendarDays size={17} />
 
-            <span className="text-xs font-medium uppercase tracking-wide">
+            <span className="text-xs  font-medium uppercase tracking-wide">
               Monthly Profit
             </span>
           </div>
 
-          <p className="text-2xl font-bold text-blue-600">
+          <p className="text-xl whitespace-nowrap font-bold text-blue-600">
             {formatCurrency(monthlyProfit)}
           </p>
 
@@ -100,7 +100,7 @@ export default function ProfitSummary({
             </span>
           </div>
 
-          <p className="text-2xl font-bold text-purple-600">
+          <p className="text-xl whitespace-nowrap font-bold text-purple-600">
             {formatCurrency(grossProfit)}
           </p>
 
@@ -119,7 +119,7 @@ export default function ProfitSummary({
             </span>
           </div>
 
-          <p className="text-2xl font-bold text-amber-600">
+          <p className="text-xl font-bold text-amber-600">
             {profitMargin.toFixed(2)}%
           </p>
 

@@ -62,7 +62,7 @@ export default function InventoryStatus({
             </span>
           </div>
 
-          <p className="text-2xl font-bold text-blue-600">
+          <p className="text-xl font-bold text-blue-600">
             {Number(
               totalStock || 0,
             ).toLocaleString("en-LK")}
@@ -83,7 +83,7 @@ export default function InventoryStatus({
             </span>
           </div>
 
-          <p className="text-2xl font-bold text-amber-600">
+          <p className="text-xl font-bold text-amber-600">
             {Number(
               lowStock || 0,
             ).toLocaleString("en-LK")}
@@ -104,7 +104,7 @@ export default function InventoryStatus({
             </span>
           </div>
 
-          <p className="text-2xl font-bold text-red-600">
+          <p className="text-xl font-bold text-red-600">
             {Number(
               outOfStock || 0,
             ).toLocaleString("en-LK")}
@@ -125,7 +125,7 @@ export default function InventoryStatus({
             </span>
           </div>
 
-          <p className="text-xl font-bold text-purple-600">
+          <p className="text-lg whitespace-nowrap font-bold text-purple-600">
             {formatCurrency(stockValue)}
           </p>
 

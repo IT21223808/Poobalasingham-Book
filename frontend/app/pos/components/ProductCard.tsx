@@ -10,10 +10,24 @@ interface ProductCardProps {
   inCartQty?: number;
 }
 
-export const getProductImageUrl = (url?: string): string | null => {
+export const getProductImageUrl = (
+  url?: string,
+): string | null => {
   if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace("/api", "") || "http://localhost:5000";
+
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://")
+  ) {
+    return url;
+  }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(
+      "/api",
+      "",
+    ) || "http://localhost:5000";
+
   return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
 };
 
@@ -23,30 +37,40 @@ export default function ProductCard({
   inCartQty = 0,
 }: ProductCardProps) {
   const [imageError, setImageError] = useState(false);
-  const isOutOfStock = (product.stockQuantity ?? 0) <= 0;
-  const sellingPrice = Number(product.sellingPrice || 0);
-  const imageUrl = getProductImageUrl(product.imageUrl);
+
+  const isOutOfStock =
+    (product.stockQuantity ?? 0) <= 0;
+
+  const sellingPrice = Number(
+    product.sellingPrice || 0,
+  );
+
+  const imageUrl = getProductImageUrl(
+    product.imageUrl,
+  );
 
   return (
     <button
       type="button"
       disabled={isOutOfStock}
       onClick={() => onAddToCart(product)}
-      className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-white p-4 text-left transition-all duration-200 shadow-2xs ${
+      className={`group relative flex min-w-0 flex-col justify-between overflow-hidden rounded-xl border bg-white p-3 text-left shadow-2xs transition-all duration-200 sm:p-4 ${
         isOutOfStock
           ? "cursor-not-allowed border-slate-200 opacity-60"
           : "border-slate-200 hover:border-blue-500 hover:shadow-md active:scale-[0.98]"
       }`}
     >
-      {/* Stock badge */}
-      <div className="absolute right-3 top-3 z-10">
+      {/* =================================================
+          STOCK BADGE
+      ================================================= */}
+      <div className="absolute right-2 top-2 z-10 sm:right-3 sm:top-3">
         {isOutOfStock ? (
-          <span className="rounded-md bg-red-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-red-700">
+          <span className="rounded-md bg-red-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-red-700 sm:text-xs">
             Out of Stock
           </span>
         ) : (
           <span
-            className={`rounded-md px-2.5 py-1 text-sm font-bold ${
+            className={`rounded-md px-2 py-1 text-xs font-bold sm:px-2.5 sm:text-sm ${
               (product.stockQuantity ?? 0) <= 5
                 ? "bg-amber-100 text-amber-900"
                 : "bg-emerald-100 text-emerald-900"
@@ -57,46 +81,77 @@ export default function ProductCard({
         )}
       </div>
 
-      {/* Cart quantity badge */}
+      {/* =================================================
+          CART QUANTITY
+      ================================================= */}
       {inCartQty > 0 && (
-        <div className="absolute left-3 top-3 z-10 flex h-7 min-w-7 items-center justify-center rounded-full bg-blue-600 px-1.5 text-xs font-black text-white shadow-sm border border-white">
+        <div className="absolute left-2 top-2 z-10 flex h-7 min-w-7 items-center justify-center rounded-full border border-white bg-blue-600 px-1.5 text-xs font-black text-white shadow-sm sm:left-3 sm:top-3">
           {inCartQty}
         </div>
       )}
 
-      {/* Image container */}
-      <div className="relative flex h-36 w-full items-center justify-center rounded-lg bg-slate-50 overflow-hidden mb-3">
+      {/* =================================================
+          IMAGE
+      ================================================= */}
+      <div className="relative mb-3 flex h-28 w-full items-center justify-center overflow-hidden rounded-lg bg-slate-50 sm:h-36">
         {imageUrl && !imageError ? (
           <img
             src={imageUrl}
             alt={product.productName}
             onError={() => setImageError(true)}
-            className="h-full w-full object-contain p-2 group-hover:scale-105 transition-transform duration-200"
+            className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-105"
           />
         ) : (
           <div className="flex flex-col items-center justify-center text-slate-400">
-            <BookOpen size={44} className="text-slate-300" />
-            <span className="mt-1 text-xs font-semibold text-slate-400">No Image</span>
+            <BookOpen
+              size={40}
+              className="text-slate-300 sm:h-11 sm:w-11"
+            />
+
+            <span className="mt-1 text-xs font-semibold text-slate-400">
+              No Image
+            </span>
           </div>
         )}
       </div>
 
-      {/* Details */}
-      <div className="flex flex-1 flex-col justify-between">
-        <div>
-          <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-slate-900 group-hover:text-blue-700">
+      {/* =================================================
+          DETAILS
+      ================================================= */}
+      <div className="flex min-w-0 flex-1 flex-col justify-between">
+        <div className="min-w-0">
+          {/* Product Name */}
+          <h3 className="line-clamp-2 text-base font-semibold leading-snug text-slate-900 group-hover:text-blue-700 sm:text-lg">
             {product.productName}
           </h3>
-          <p className="mt-1 text-sm font-mono text-slate-500 truncate">
-            {product.productCode} {product.barcode ? `• ${product.barcode}` : ""}
+
+          {/* Product Code */}
+          <p className="mt-1 break-words font-mono text-xs leading-5 text-slate-500 sm:text-sm">
+            {product.productCode}
           </p>
+
+          {/* Barcode */}
+          {product.barcode && (
+            <p className="break-all font-mono text-xs leading-5 text-slate-500 sm:text-sm">
+              Barcode: {product.barcode}
+            </p>
+          )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
-          <span className="text-2xl font-bold text-blue-700">
-            Rs. {sellingPrice.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+        {/* =================================================
+            PRICE + CATEGORY
+        ================================================= */}
+        <div className="mt-3 flex min-w-0 items-end justify-between gap-2 border-t border-slate-100 pt-3">
+          {/* Price */}
+          <span className="min-w-0 truncate text-lg font-bold text-blue-700 sm:text-2xl">
+            Rs.{" "}
+            {sellingPrice.toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+            })}
           </span>
-          <span className="text-sm font-medium text-slate-400">
+
+          {/* Category */}
+          <span className="max-w-[45%] shrink-0 text-right text-xs font-medium leading-4 text-slate-400 sm:text-sm">
             {product.category?.name || "General"}
           </span>
         </div>

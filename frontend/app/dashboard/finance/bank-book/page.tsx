@@ -132,7 +132,7 @@ export default function BankBookPage() {
 
       setError(
         err?.response?.data?.message ||
-          "Failed to load Bank Book data."
+        "Failed to load Bank Book data."
       );
     } finally {
       setLoading(false);
@@ -188,8 +188,11 @@ export default function BankBookPage() {
 
         {/* Controls */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Period */}
-          <div className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+
+          {/* PERIOD */}
+
+          <div className="flex flex-wrap items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+
             {[
               {
                 label: "Today",
@@ -216,43 +219,52 @@ export default function BankBookPage() {
                 value: "custom",
               },
             ].map((p) => (
+
               <button
-                key={p.value}
+                key={p.value || "all-time"}
+                type="button"
                 onClick={() =>
                   setPeriod(p.value)
                 }
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  period === p.value
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${period === p.value
                     ? "bg-blue-600 text-white shadow-sm"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  }`}
               >
                 {p.label}
               </button>
+
             ))}
+
           </div>
 
-          {/* Refresh */}
+          {/* REFRESH */}
+
           <button
+            type="button"
             onClick={fetchBankBook}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw
-              className={`h-3.5 w-3.5 ${
-                loading ? "animate-spin" : ""
-              }`}
+              className={`h-3.5 w-3.5 ${loading
+                  ? "animate-spin"
+                  : ""
+                }`}
             />
+
             Refresh
           </button>
+
         </div>
       </div>
 
       {/* Custom Date Filter */}
       {period === "custom" && (
         <div className="mb-6 flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-gray-500">
               Start Date
             </label>
 
@@ -260,14 +272,16 @@ export default function BankBookPage() {
               type="date"
               value={startDate}
               onChange={(e) =>
-                setStartDate(e.target.value)
+                setStartDate(
+                  e.target.value,
+                )
               }
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 focus:border-blue-500 focus:outline-none"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-gray-500">
               End Date
             </label>
 
@@ -275,19 +289,27 @@ export default function BankBookPage() {
               type="date"
               value={endDate}
               onChange={(e) =>
-                setEndDate(e.target.value)
+                setEndDate(
+                  e.target.value,
+                )
               }
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 focus:border-blue-500 focus:outline-none"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-blue-500"
             />
           </div>
 
           <button
+            type="button"
             onClick={fetchBankBook}
-            disabled={!startDate || !endDate || loading}
+            disabled={
+              loading ||
+              !startDate ||
+              !endDate
+            }
             className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Apply
           </button>
+
         </div>
       )}
 
@@ -372,14 +394,19 @@ export default function BankBookPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[240px] flex-1">
+      {/* ==================================================
+    SEARCH
+================================================== */}
+
+      <div className="mb-4 flex items-center gap-2">
+
+        <div className="relative flex-1">
+
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
 
           <input
             type="text"
-            placeholder="Search bank transactions by number, cheque ref, description, category..."
+            placeholder="Search by transaction no, description, reference, category..."
             value={search}
             onChange={(e) =>
               setSearch(e.target.value)
@@ -389,17 +416,20 @@ export default function BankBookPage() {
                 fetchBankBook();
               }
             }}
-            className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-xs focus:border-blue-500 focus:outline-none"
+            className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
           />
+
         </div>
 
         <button
+          type="button"
           onClick={fetchBankBook}
           disabled={loading}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+          className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Search
         </button>
+
       </div>
 
       {/* Bank Book Table */}
@@ -481,16 +511,16 @@ export default function BankBookPage() {
                     <td className="whitespace-nowrap px-5 py-3 text-right font-bold text-emerald-600">
                       {entry.bankIn > 0
                         ? formatCurrency(
-                            entry.bankIn
-                          )
+                          entry.bankIn
+                        )
                         : "—"}
                     </td>
 
                     <td className="whitespace-nowrap px-5 py-3 text-right font-bold text-rose-600">
                       {entry.bankOut > 0
                         ? formatCurrency(
-                            entry.bankOut
-                          )
+                          entry.bankOut
+                        )
                         : "—"}
                     </td>
 

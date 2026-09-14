@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 
 import {
   Bell,
+  Menu,
   Search,
+  X,
 } from "lucide-react";
 
 import NotificationDropdown from "@/components/ui/NotificationDropdown";
@@ -32,10 +34,14 @@ interface StoredUser {
 
 interface HeaderProps {
   userName?: string;
+  onMenuClick?: () => void;
+  mobileMenuOpen?: boolean;
 }
 
 export default function Header({
   userName = "User",
+  onMenuClick,
+  mobileMenuOpen = false,
 }: HeaderProps) {
   const router = useRouter();
 
@@ -77,10 +83,8 @@ export default function Header({
       }
     };
 
-    // Initial load
     loadUser();
 
-    // Reload when profile is updated
     window.addEventListener(
       "userUpdated",
       loadUser,
@@ -185,28 +189,68 @@ export default function Header({
     setOpenNotification(false);
   };
 
+  /* =========================================================
+     MOBILE MENU
+  ========================================================= */
+
+  const handleMenuClick = () => {
+    onMenuClick?.();
+  };
+
   return (
-    <header className="sticky top-0 z-40 flex h-20 items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6">
+    <header className="sticky top-0 z-40 flex min-h-20 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-4 md:px-6">
 
       {/* =====================================================
           LEFT
       ===================================================== */}
 
-      <div>
-        <h1 className="text-xl font-semibold text-slate-800">
-          Welcome, {fullName} 👋
-        </h1>
+      <div className="flex min-w-0 items-center gap-3">
 
-        <p className="mt-0.5 text-sm text-slate-500">
-          Here&apos;s what&apos;s happening with your bookstore today.
-        </p>
+        {/* ===================================================
+            MOBILE MENU BUTTON
+        =================================================== */}
+
+        <button
+          type="button"
+          onClick={handleMenuClick}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 md:hidden"
+          aria-label={
+            mobileMenuOpen
+              ? "Close menu"
+              : "Open menu"
+          }
+          aria-expanded={mobileMenuOpen}
+        >
+          {mobileMenuOpen ? (
+            <X size={22} />
+          ) : (
+            <Menu size={22} />
+          )}
+        </button>
+
+        {/* ===================================================
+            WELCOME TEXT
+        =================================================== */}
+
+        <div className="min-w-0">
+
+          <h1 className="truncate text-base font-semibold text-slate-800 sm:text-xl">
+            Welcome, {fullName} 👋
+          </h1>
+
+          <p className="mt-0.5 hidden text-sm text-slate-500 sm:block">
+            Here&apos;s what&apos;s happening with your bookstore today.
+          </p>
+
+        </div>
+
       </div>
 
       {/* =====================================================
           RIGHT
       ===================================================== */}
 
-      <div className="flex items-center gap-2 md:gap-4">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 md:gap-4">
 
         {/* ===================================================
             SEARCH
@@ -236,12 +280,13 @@ export default function Header({
           <button
             type="button"
             onClick={handleNotification}
-            className="relative rounded-xl p-2.5 text-slate-600 transition hover:bg-slate-100"
+            className="relative rounded-xl p-2 text-slate-600 transition hover:bg-slate-100 sm:p-2.5"
             aria-label="Notifications"
+            aria-expanded={openNotification}
           >
-            <Bell size={21} />
+            <Bell size={20} />
 
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white sm:right-1 sm:top-1">
               3
             </span>
           </button>
@@ -267,14 +312,14 @@ export default function Header({
           <button
             type="button"
             onClick={handleProfile}
-            className="flex items-center gap-3 rounded-xl p-1.5 transition hover:bg-slate-100"
+            className="flex items-center gap-2 rounded-xl p-1 transition hover:bg-slate-100 sm:gap-3 sm:p-1.5"
             aria-label="Profile menu"
             aria-expanded={openProfile}
           >
 
             {/* Avatar */}
 
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white sm:h-10 sm:w-10">
               {initials}
             </div>
 
@@ -282,7 +327,7 @@ export default function Header({
 
             <div className="hidden text-left md:block">
 
-              <p className="text-sm font-semibold text-slate-800">
+              <p className="max-w-32 truncate text-sm font-semibold text-slate-800">
                 {fullName}
               </p>
 
@@ -296,11 +341,6 @@ export default function Header({
 
           {/* =================================================
               PROFILE DROPDOWN
-
-              My Profile option inside this dropdown should
-              navigate to:
-
-              /dashboard/profile
           ================================================= */}
 
           {openProfile && (

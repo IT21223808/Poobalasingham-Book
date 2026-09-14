@@ -11,7 +11,10 @@ import {
   Product,
   getProducts,
 } from "@/services/product.service";
-
+import {
+  ArrowLeft,
+  ShoppingCart,
+} from "lucide-react";
 import {
   Category,
   getCategories,
@@ -156,6 +159,9 @@ export default function PosPage() {
 
   const [cart, setCart] =
     useState<PosCartItem[]>([]);
+
+  const [isMobileCartOpen, setIsMobileCartOpen] =
+  useState<boolean>(false);
 
   const [
     selectedCustomer,
@@ -1674,114 +1680,231 @@ export default function PosPage() {
           MAIN POS WORKSPACE
       ================================================= */}
 
-      <main className="flex min-w-0 flex-1 overflow-hidden">
+      {/* =================================================
+    MAIN POS WORKSPACE
+================================================= */}
+<main className="flex min-w-0 flex-1 overflow-hidden">
 
-        {/* LEFT */}
+  {/* =================================================
+      PRODUCTS SECTION
+  ================================================= */}
+  <section
+    className={`
+      min-w-0 flex-1 flex-col
+      space-y-3
+      overflow-hidden
+      p-3
+      ${isMobileCartOpen ? "hidden md:flex" : "flex"}
+    `}
+  >
 
-        <section className="flex min-w-0 flex-1 flex-col space-y-3 overflow-hidden p-3">
+    {/* =================================================
+        MOBILE PRODUCTS HEADER + CART BUTTON
+    ================================================= */}
+    <div className="flex shrink-0 items-center justify-between gap-3 md:hidden">
 
-          <CategoryFilter
-            categories={
-              categories
-            }
-            selectedCategoryId={
-              selectedCategoryId
-            }
-            onSelectCategory={
-              setSelectedCategoryId
-            }
-          />
+      <div className="min-w-0">
+        <h2 className="text-base font-bold text-slate-900">
+          Products
+        </h2>
 
-          <div className="no-scrollbar flex-1 overflow-y-auto pr-0.5">
-            <ProductGrid
-              products={
-                filteredProducts
-              }
-              cartItems={
-                cart
-              }
-              onAddToCart={
-                handleAddToCart
-              }
-              isLoading={
-                isLoadingProducts
-              }
-            />
-          </div>
-        </section>
+        <p className="text-xs text-slate-500">
+          Select products to add to the bill
+        </p>
+      </div>
 
-        {/* RIGHT */}
+      <button
+        type="button"
+        onClick={() =>
+          setIsMobileCartOpen(true)
+        }
+        className="relative flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+      >
+        <ShoppingCart size={18} />
 
-        <section className="h-full w-80 shrink-0 sm:w-96 md:w-[400px] xl:w-[440px]">
-          <PosCart
-            cartItems={
-              cart
-            }
-            customers={
-              customers
-            }
-            selectedCustomer={
-              selectedCustomer
-            }
-            onSelectCustomer={
-              setSelectedCustomer
-            }
-            onOpenNewCustomerModal={() =>
-              setIsQuickCustomerOpen(
-                true,
-              )
-            }
-            onUpdateQty={
-              handleUpdateQty
-            }
-            onRemoveItem={
-              handleRemoveItem
-            }
-            onClearCart={
-              handleClearCart
-            }
-            subtotal={
-              subtotal
-            }
-            discountAmount={
-              discountAmount
-            }
-            grandTotal={
-              grandTotal
-            }
-            onOpenDiscountModal={() =>
-              setIsDiscountModalOpen(
-                true,
-              )
-            }
-            onHoldBill={
-              handleHoldBill
-            }
-            onOpenHoldModal={() =>
-              setIsHoldModalOpen(
-                true,
-              )
-            }
-            onOpenReturnModal={() =>
-              setIsReturnModalOpen(
-                true,
-              )
-            }
-            onOpenPaymentModal={
-              handleOpenPayment
-            }
-            onEmailReceipt={
-              handleEmailReceipt
-            }
-            onViewReceipt={
-              handleViewReceipt
-            }
-            isHolding={
-              isHolding
-            }
-          />
-        </section>
-      </main>
+        <span>
+          Cart
+        </span>
+
+        {cart.length > 0 && (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[11px] font-extrabold text-blue-600">
+            {cart.length}
+          </span>
+        )}
+      </button>
+
+    </div>
+
+    {/* =================================================
+        CATEGORY FILTER
+    ================================================= */}
+    <CategoryFilter
+      categories={categories}
+      selectedCategoryId={
+        selectedCategoryId
+      }
+      onSelectCategory={
+        setSelectedCategoryId
+      }
+    />
+
+    {/* =================================================
+        PRODUCT GRID
+    ================================================= */}
+    <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto pr-0.5">
+
+      <ProductGrid
+        products={filteredProducts}
+        cartItems={cart}
+        onAddToCart={
+          handleAddToCart
+        }
+        isLoading={
+          isLoadingProducts
+        }
+      />
+
+    </div>
+
+  </section>
+
+  {/* =================================================
+      CART SECTION
+  ================================================= */}
+  <section
+    className={`
+      h-full
+      w-full
+      shrink-0
+      flex-col
+      ${isMobileCartOpen ? "flex" : "hidden md:flex"}
+      md:w-[400px]
+      xl:w-[440px]
+    `}
+  >
+
+    {/* =================================================
+        MOBILE CART HEADER
+    ================================================= */}
+    <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 py-3 md:hidden">
+
+      <button
+        type="button"
+        onClick={() =>
+          setIsMobileCartOpen(false)
+        }
+        className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+      >
+        <ArrowLeft size={18} />
+
+        <span>
+          Products
+        </span>
+      </button>
+
+      <div className="flex items-center gap-2">
+
+        <ShoppingCart
+          size={18}
+          className="text-blue-600"
+        />
+
+        <span className="text-sm font-extrabold text-slate-900">
+          Cart
+        </span>
+
+        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-blue-100 px-1.5 text-xs font-extrabold text-blue-700">
+          {cart.length}
+        </span>
+
+      </div>
+
+    </div>
+
+    {/* =================================================
+        CART CONTENT
+    ================================================= */}
+    <div className="min-h-0 flex-1 overflow-hidden">
+
+      <PosCart
+        cartItems={cart}
+
+        customers={customers}
+
+        selectedCustomer={
+          selectedCustomer
+        }
+
+        onSelectCustomer={
+          setSelectedCustomer
+        }
+
+        onOpenNewCustomerModal={() =>
+          setIsQuickCustomerOpen(true)
+        }
+
+        onUpdateQty={
+          handleUpdateQty
+        }
+
+        onRemoveItem={
+          handleRemoveItem
+        }
+
+        onClearCart={
+          handleClearCart
+        }
+
+        subtotal={
+          subtotal
+        }
+
+        discountAmount={
+          discountAmount
+        }
+
+        grandTotal={
+          grandTotal
+        }
+
+        onOpenDiscountModal={() =>
+          setIsDiscountModalOpen(true)
+        }
+
+        onHoldBill={
+          handleHoldBill
+        }
+
+        onOpenHoldModal={() =>
+          setIsHoldModalOpen(true)
+        }
+
+        onOpenReturnModal={() =>
+          setIsReturnModalOpen(true)
+        }
+
+        onOpenPaymentModal={
+          handleOpenPayment
+        }
+
+        onEmailReceipt={
+          handleEmailReceipt
+        }
+
+        onViewReceipt={
+          handleViewReceipt
+        }
+
+        isHolding={
+          isHolding
+        }
+      />
+
+    </div>
+
+  </section>
+
+</main>
 
       {/* =================================================
           OPENING BALANCE
@@ -1987,10 +2110,6 @@ export default function PosPage() {
         }
         heldBillId={
           activeHeldBillId
-        }
-
-        locationId={
-          userLocationId ?? undefined
         }
 
         onSaleSuccess={(

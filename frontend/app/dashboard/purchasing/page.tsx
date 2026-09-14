@@ -500,8 +500,8 @@ export default function PurchasingDashboardPage() {
 
         <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 shadow-sm">
-              <ShoppingCart className="h-6 w-6 text-white" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 shadow-sm">
+              <ShoppingCart className="h-6 w-6 text-blue-600" />
             </div>
 
             <div>
@@ -515,7 +515,7 @@ export default function PurchasingDashboardPage() {
                 </span>
               </div>
 
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-slate-500">
                 Monitor purchase orders, GRNs,
                 invoices and supplier returns.
               </p>
@@ -527,7 +527,17 @@ export default function PurchasingDashboardPage() {
               loadDashboard(true)
             }
             disabled={refreshing}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            title={
+              refreshing
+                ? "Refreshing..."
+                : "Refresh Data"
+            }
+            aria-label={
+              refreshing
+                ? "Refreshing..."
+                : "Refresh Data"
+            }
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:gap-2 sm:px-4 sm:text-sm sm:font-semibold"
           >
             <RefreshCw
               className={`h-4 w-4 ${
@@ -537,10 +547,13 @@ export default function PurchasingDashboardPage() {
               }`}
             />
 
-            {refreshing
-              ? "Refreshing..."
-              : "Refresh Data"}
+            <span className="hidden sm:inline">
+              {refreshing
+                ? "Refreshing..."
+                : "Refresh Data"}
+            </span>
           </button>
+
         </div>
 
         {/* =====================================================

@@ -522,43 +522,43 @@ export default function CashBookPage() {
 
       </div>
 
-      {/* ==================================================
-          SEARCH
-      ================================================== */}
+     {/* ==================================================
+    SEARCH
+================================================== */}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+<div className="mb-4 flex items-center gap-2">
 
-        <div className="relative min-w-[240px] flex-1">
+  <div className="relative flex-1">
 
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
 
-          <input
-            type="text"
-            placeholder="Search by transaction no, description, reference, category..."
-            value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                fetchCashBook();
-              }
-            }}
-            className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-          />
+    <input
+      type="text"
+      placeholder="Search by transaction no, description, reference, category..."
+      value={search}
+      onChange={(e) =>
+        setSearch(e.target.value)
+      }
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          fetchCashBook();
+        }
+      }}
+      className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-xs outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+    />
 
-        </div>
+  </div>
 
-        <button
-          type="button"
-          onClick={fetchCashBook}
-          disabled={loading}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Search
-        </button>
+  <button
+    type="button"
+    onClick={fetchCashBook}
+    disabled={loading}
+    className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    Search
+  </button>
 
-      </div>
+</div>
 
       {/* ==================================================
           CASH BOOK TABLE
