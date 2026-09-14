@@ -617,55 +617,55 @@ export class PosService {
   ========================================================= */
 
   private async generateInvoiceNumber(
-    manager: EntityManager,
-  ): Promise<string> {
-    const today =
-      this.getBusinessDate()
-        .replace(/-/g, '');
+  manager: EntityManager,
+): Promise<string> {
+  const today =
+    this.getBusinessDate()
+      .replace(/-/g, '');
 
-    const prefix =
-      `INV-${today}-`;
+  const prefix =
+    `INV-${today}-`;
 
-    const lastSale =
-      await manager
-        .getRepository(PosSale)
-        .createQueryBuilder('sale')
-        .select(
-          'sale.invoiceNumber',
-          'invoiceNumber',
-        )
-        .where(
-          'sale.invoiceNumber LIKE :prefix',
-          {
-            prefix: `${prefix}%`,
-          },
-        )
-        .orderBy(
-          'sale.invoiceNumber',
-          'DESC',
-        )
-        .getOne();
+  const lastSale =
+    await manager
+      .getRepository(PosSale)
+      .createQueryBuilder('sale')
+      .select(
+        'sale.invoiceNumber',
+        'invoiceNumber',
+      )
+      .where(
+        'sale.invoiceNumber LIKE :prefix',
+        {
+          prefix: `${prefix}%`,
+        },
+      )
+      .orderBy(
+        'sale.invoiceNumber',
+        'DESC',
+      )
+      .getRawOne();
 
-    let sequence = 1;
+  let sequence = 1;
 
-    if (
-      lastSale?.invoiceNumber
-    ) {
-      const match =
-        lastSale.invoiceNumber.match(
-          /-(\d+)$/,
-        );
+  if (
+    lastSale?.invoiceNumber
+  ) {
+    const match =
+      lastSale.invoiceNumber.match(
+        /-(\d+)$/,
+      );
 
-      if (match) {
-        sequence =
-          Number(match[1]) + 1;
-      }
+    if (match) {
+      sequence =
+        Number(match[1]) + 1;
     }
-
-    return `${prefix}${String(
-      sequence,
-    ).padStart(4, '0')}`;
   }
+
+  return `${prefix}${String(
+    sequence,
+  ).padStart(4, '0')}`;
+}
 
   /* =========================================================
      HOLD NUMBER
