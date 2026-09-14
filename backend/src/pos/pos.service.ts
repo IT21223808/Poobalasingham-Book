@@ -779,59 +779,43 @@ export class PosService {
   ========================================================= */
 
   private async generateFinanceTransactionNumber(
-    manager: EntityManager,
-  ): Promise<string> {
-    const today =
-      this.getBusinessDate()
-        .replace(/-/g, '');
+  manager: EntityManager,
+): Promise<string> {
+  const today = this.getBusinessDate().replace(/-/g, '');
 
-    const prefix =
-      `FIN-${today}-`;
+  const prefix = `FIN-${today}-`;
 
-    const lastTransaction =
-      await manager
-        .getRepository(
-          FinanceTransaction,
-        )
-        .createQueryBuilder(
-          'transaction',
-        )
-        .select(
-          'transaction.transactionNumber',
-          'transactionNumber',
-        )
-        .where(
-          'transaction.transactionNumber LIKE :prefix',
-          {
-            prefix: `${prefix}%`,
-          },
-        )
-        .orderBy(
-          'transaction.transactionNumber',
-          'DESC',
-        )
-        .getOne();
+  const lastTransaction = await manager
+    .getRepository(FinanceTransaction)
+    .createQueryBuilder('transaction')
+    .select('transaction.transactionNumber', 'transactionNumber')
+    .where(
+      'transaction.transactionNumber LIKE :prefix',
+      {
+        prefix: `${prefix}%`,
+      },
+    )
+    .orderBy(
+      'transaction.transactionNumber',
+      'DESC',
+    )
+    .getRawOne();
 
-    let sequence = 1;
+  let sequence = 1;
 
-    if (
-      lastTransaction?.transactionNumber
-    ) {
-      const match =
-        lastTransaction.transactionNumber.match(
-          /-(\d+)$/,
-        );
+  if (lastTransaction?.transactionNumber) {
+    const match =
+      lastTransaction.transactionNumber.match(
+        /-(\d+)$/,
+      );
 
-      if (match) {
-        sequence =
-          Number(match[1]) + 1;
-      }
+    if (match) {
+      sequence = Number(match[1]) + 1;
     }
-
-    return `${prefix}${String(
-      sequence,
-    ).padStart(4, '0')}`;
   }
+
+  return `${prefix}${String(sequence).padStart(4, '0')}`;
+}
 
   /* =========================================================
      FIND SALE BY CLIENT SALE ID
@@ -1622,6 +1606,13 @@ if (financePaymentMethod) {
 
       return savedSale;
     } catch (error: any) {
+
+  console.error('========== POS CREATE SALE ERROR ==========');
+  console.error('Error message:', error?.message);
+  console.error('Error code:', error?.code);
+  console.error('Error detail:', error?.detail);
+  console.error('Full error:', error);
+  console.error('============================================');
       if (
         queryRunner.isTransactionActive
       ) {
