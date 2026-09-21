@@ -42,7 +42,7 @@ jobs:
           script: |
             set -e
 
-            APP_DIR="/home/jathursika/Poobalasingham-Book-Depot"
+            APP_DIR="/srv/staff/jathursika/Poobalasingham-Book-Depot"
             DEPLOY_DIR="/srv/staff/jathursika/Poobalasingham-Book-Depot-deploy"
             ENV_BACKUP="/srv/staff/jathursika/poobalasingham-backend.env"
 
