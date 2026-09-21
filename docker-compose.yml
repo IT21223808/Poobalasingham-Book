@@ -13,13 +13,14 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_API_URL: http://72.60.233.61:3050/api
-    container_name: poobalasingham-frontend
-    ports:
-      - "3040:3000"
-    depends_on:
-      - backend
-    restart: unless-stopped
+  build:
+    context: ./frontend
+    args:
+      NEXT_PUBLIC_API_URL: http://72.60.233.61:3050/api
+      NEXT_PUBLIC_API_BASE_URL: http://72.60.233.61:3050/api
+  container_name: poobalasingham-frontend
+  ports:
+    - "3040:3000"
+  depends_on:
+    - backend
+  restart: unless-stopped
