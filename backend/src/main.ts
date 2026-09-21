@@ -24,9 +24,12 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: 'http://localhost:3000',
-    credentials: true,
-  });
+  origin: [
+    'http://localhost:3000',
+    'http://72.60.233.61:3040',
+  ],
+  credentials: true,
+});
 
   // Swagger
   const config = new DocumentBuilder()
