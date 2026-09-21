@@ -3,10 +3,13 @@ services:
     build:
       context: ./backend
     container_name: poobalasingham-backend
-    ports:
-      - "3050:5000"
+    network_mode: host
     env_file:
       - ./backend/.env
+    environment:
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: 15432
+      PORT: 3050
     restart: unless-stopped
 
   frontend:
