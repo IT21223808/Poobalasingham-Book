@@ -31,7 +31,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key_path: ${{ runner.temp }}/github_actions_key
           source: "deploy.tar.gz"
-          target: "/home/jathursika/Poobalasingham-Book-Depot-deploy"
+          target: "/srv/staff/jathursika/Poobalasingham-Book-Depot-deploy"
 
       - name: Deploy application
         uses: appleboy/ssh-action@v1
@@ -43,8 +43,8 @@ jobs:
             set -e
 
             APP_DIR="/home/jathursika/Poobalasingham-Book-Depot"
-            DEPLOY_DIR="/home/jathursika/Poobalasingham-Book-Depot-deploy"
-            ENV_BACKUP="/home/jathursika/poobalasingham-backend.env"
+            DEPLOY_DIR="/srv/staff/jathursika/Poobalasingham-Book-Depot-deploy"
+            ENV_BACKUP="/srv/staff/jathursika/poobalasingham-backend.env"
 
             if [ -f "$APP_DIR/backend/.env" ]; then
               cp "$APP_DIR/backend/.env" "$ENV_BACKUP"
