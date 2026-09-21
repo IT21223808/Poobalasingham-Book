@@ -13,6 +13,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Create SSH key file
+        shell: bash
+        run: |
+          printf '%s' "${{ secrets.SSH_PRIVATE_KEY_B64 }}" \
+            | base64 --decode > "$RUNNER_TEMP/github_actions_key"
+          chmod 600 "$RUNNER_TEMP/github_actions_key"
+
       - name: Create deployment package
         run: |
           git archive --format=tar.gz -o deploy.tar.gz HEAD
@@ -22,7 +29,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key_path: ${{ runner.temp }}/github_actions_key
           source: "deploy.tar.gz"
           target: "/home/jathursika/Poobalasingham-Book-Depot-deploy"
 
@@ -31,7 +38,7 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key_path: ${{ runner.temp }}/github_actions_key
           script: |
             set -e
 
@@ -39,24 +46,20 @@ jobs:
             DEPLOY_DIR="/home/jathursika/Poobalasingham-Book-Depot-deploy"
             ENV_BACKUP="/home/jathursika/poobalasingham-backend.env"
 
-            # Backup production environment file
             if [ -f "$APP_DIR/backend/.env" ]; then
               cp "$APP_DIR/backend/.env" "$ENV_BACKUP"
             fi
 
-            # Stop existing containers
             if [ -f "$APP_DIR/docker-compose.yml" ]; then
               cd "$APP_DIR"
               docker compose down || true
             fi
 
-            # Replace application files
             rm -rf "$APP_DIR"
             mkdir -p "$APP_DIR"
 
             tar -xzf "$DEPLOY_DIR/deploy.tar.gz" -C "$APP_DIR"
 
-            # Restore production environment file
             if [ -f "$ENV_BACKUP" ]; then
               mkdir -p "$APP_DIR/backend"
               cp "$ENV_BACKUP" "$APP_DIR/backend/.env"
@@ -65,12 +68,9 @@ jobs:
               exit 1
             fi
 
-            # Build and start containers
             cd "$APP_DIR"
             docker compose up -d --build
 
-            # Show running containers
             docker ps
 
-            # Cleanup deployment package
             rm -rf "$DEPLOY_DIR"
