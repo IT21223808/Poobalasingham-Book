@@ -1,6 +1,8 @@
 # Environment files
 backend/.env
+backend/.env.production
 frontend/.env.local
+frontend/.env.production
 
 # Logs
 *.log

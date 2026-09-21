@@ -1,0 +1,76 @@
+name: Deploy Poobalasingham ERP
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment package
+        run: |
+          git archive --format=tar.gz -o deploy.tar.gz HEAD
+
+      - name: Copy deployment package to server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy.tar.gz"
+          target: "/home/jathursika/Poobalasingham-Book-Depot-deploy"
+
+      - name: Deploy application
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+
+            APP_DIR="/home/jathursika/Poobalasingham-Book-Depot"
+            DEPLOY_DIR="/home/jathursika/Poobalasingham-Book-Depot-deploy"
+            ENV_BACKUP="/home/jathursika/poobalasingham-backend.env"
+
+            # Backup production environment file
+            if [ -f "$APP_DIR/backend/.env" ]; then
+              cp "$APP_DIR/backend/.env" "$ENV_BACKUP"
+            fi
+
+            # Stop existing containers
+            if [ -f "$APP_DIR/docker-compose.yml" ]; then
+              cd "$APP_DIR"
+              docker compose down || true
+            fi
+
+            # Replace application files
+            rm -rf "$APP_DIR"
+            mkdir -p "$APP_DIR"
+
+            tar -xzf "$DEPLOY_DIR/deploy.tar.gz" -C "$APP_DIR"
+
+            # Restore production environment file
+            if [ -f "$ENV_BACKUP" ]; then
+              mkdir -p "$APP_DIR/backend"
+              cp "$ENV_BACKUP" "$APP_DIR/backend/.env"
+            else
+              echo "ERROR: Production backend .env was not found."
+              exit 1
+            fi
+
+            # Build and start containers
+            cd "$APP_DIR"
+            docker compose up -d --build
+
+            # Show running containers
+            docker ps
+
+            # Cleanup deployment package
+            rm -rf "$DEPLOY_DIR"
