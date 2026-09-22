@@ -90,8 +90,8 @@ export default function InventoryPage() {
         }
 
         const response = await fetch(
-          "http://localhost:5000/api/inventory/dashboard",
-          {
+  "/api/inventory/dashboard",
+  {
             method: "GET",
             headers: {
               Authorization: `Bearer ${token}`,
