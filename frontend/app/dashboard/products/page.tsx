@@ -619,7 +619,7 @@ export default function ProductsPage() {
         <div className="flex items-start gap-3">
           {product.imageUrl ? (
             <img
-              src={`http://localhost:5000${product.imageUrl}`}
+              src={product.imageUrl}
               alt={product.productName}
               className="h-14 w-14 shrink-0 rounded-lg object-cover"
             />
@@ -1136,7 +1136,7 @@ export default function ProductsPage() {
 
                             {product.imageUrl ? (
                               <img
-                                src={`http://localhost:5000${product.imageUrl}`}
+                                src={product.imageUrl}
                                 alt={
                                   product.productName
                                 }
