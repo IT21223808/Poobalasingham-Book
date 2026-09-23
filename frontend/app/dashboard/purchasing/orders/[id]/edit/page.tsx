@@ -86,7 +86,7 @@ interface OrderItem {
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
+  "/api";
 
 const ORDERS_API = `${API_URL}/purchasing/orders`;
 const PRODUCTS_API = `${API_URL}/products`;

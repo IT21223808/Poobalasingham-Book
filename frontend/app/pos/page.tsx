@@ -62,7 +62,7 @@ import KeyboardShortcutGuide from "./components/KeyboardShortcutGuide";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
+  "/api";
 
 /* =========================================================
    POS PAGE

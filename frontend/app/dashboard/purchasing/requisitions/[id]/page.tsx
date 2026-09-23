@@ -54,7 +54,7 @@ interface PurchaseRequisition {
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000/api";
+  "/api";
 
 const REQUISITION_API =
   `${API_URL}/purchasing/requisitions`;
